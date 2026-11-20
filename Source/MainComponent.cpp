@@ -29,6 +29,8 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
         settings.save (props);
     };
 
+    view.onToggleFullscreen = [this] { toggleFullscreen(); };
+
     rescan();
     setSize (1300, 760);
     startTimerHz (2);
@@ -130,6 +132,16 @@ void MainComponent::openSettings()
     SettingsDialog::show (settings, [this] (Change c) { onChange (c); }, this);
 }
 
+void MainComponent::toggleFullscreen()
+{
+    auto& desk = juce::Desktop::getInstance();
+    auto* top = getTopLevelComponent();
+    const bool goFull = desk.getKioskModeComponent() != top;
+    desk.setKioskModeComponent (goFull ? top : nullptr, false);
+    view.setFullscreenState (goFull);
+    grabKeyboardFocus();
+}
+
 void MainComponent::timerCallback() { updateStatus(); }
 
 void MainComponent::updateStatus()
@@ -173,7 +185,13 @@ void MainComponent::resized()
 bool MainComponent::keyPressed (const juce::KeyPress& k)
 {
     if (k == juce::KeyPress::spaceKey)          { view.togglePause(); return true; }
-    if (k == juce::KeyPress::escapeKey)         { view.clearCursor(); return true; }
+    if (k == juce::KeyPress::F11Key)            { toggleFullscreen(); return true; }
+    if (k == juce::KeyPress::escapeKey)
+    {
+        if (juce::Desktop::getInstance().getKioskModeComponent() == getTopLevelComponent()) toggleFullscreen();
+        else view.clearCursor();
+        return true;
+    }
     if (k == juce::KeyPress::upKey)             { settings.refLevel = juce::jmin (0.0, settings.refLevel + 1);   onChange (Change::Visual); return true; }
     if (k == juce::KeyPress::downKey)           { settings.refLevel = juce::jmax (-80.0, settings.refLevel - 1); onChange (Change::Visual); return true; }
     if (k.getTextCharacter() == 's' || k.getTextCharacter() == 'S') { openSettings(); return true; }

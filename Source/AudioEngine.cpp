@@ -106,6 +106,7 @@ bool AudioEngine::start (const Source& s, juce::String& error)
     }
 
     current = s;
+    loudReset = true;
     running = true;
     {
         const juce::ScopedLock sl (cfgLock);
@@ -174,7 +175,7 @@ void AudioEngine::pushColumn (const float* col, int rows) noexcept
 void AudioEngine::run()
 {
     bool configured = false;
-    double busyMs = 0, audioMs = 0;
+    double busyMs = 0, audioMs = 0, loudSr = 0;
     std::vector<float> L (2048), R (2048);
 
     while (! threadShouldExit())
@@ -199,6 +200,15 @@ void AudioEngine::run()
 
         if (! configured || ! running) { wait (10); continue; }
 
+        // Loudness keeps running across display-setting changes; it restarts only on a new
+        // source, sample rate or channel pair, or when the user presses Reset.
+        if (loudReset.exchange (false) || std::abs (sampleRate.load() - loudSr) > 0.5)
+        {
+            loudSr = sampleRate.load();
+            loud.configure (loudSr, chL.load() == chR.load() ? 1 : 2);
+            lufsS = lufsI = truePeak = LoudnessMeter::kNone;
+        }
+
         if (const int d = dropped.exchange (0); d > 0) dsp.emitGap (d);
 
         const int ready = fifo.getNumReady();
@@ -220,6 +230,8 @@ void AudioEngine::run()
 
         const auto t0 = std::chrono::steady_clock::now();
         dsp.process (L.data(), R.data(), n1 + n2);
+        loud.process (L.data(), R.data(), n1 + n2);
+        lufsS = loud.getShortTerm(); lufsI = loud.getIntegrated(); truePeak = loud.getTruePeak();
         busyMs += std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - t0).count();
         audioMs += (n1 + n2) / sr * 1000.0;
         if (audioMs >= 500) { load = (float) (busyMs / audioMs); busyMs = audioMs = 0; }

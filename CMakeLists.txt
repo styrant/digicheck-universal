@@ -32,6 +32,7 @@ target_sources(Spectroscope PRIVATE
     Source/AudioEngine.cpp
     Source/LoopbackCapture.cpp
     Source/Reassigner.cpp
+    Source/LoudnessMeter.cpp
     Source/SpectrogramView.cpp
     Source/SettingsDialog.cpp)
 
@@ -60,3 +61,4 @@ endif()
 
 # Stand-alone DSP calibration test (no JUCE)
 add_executable(dsp_test tests/dsp_test.cpp Source/Reassigner.cpp)
+add_executable(loudness_test tests/loudness_test.cpp Source/LoudnessMeter.cpp)

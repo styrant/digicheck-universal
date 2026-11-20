@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "Reassigner.h"
 #include "LoopbackCapture.h"
+#include "LoudnessMeter.h"
 #include <atomic>
 #include <thread>
 
@@ -37,7 +38,11 @@ public:
     float getLoad() const noexcept                { return load.load(); }
     double getLatencySeconds() const noexcept     { return latency.load(); }
 
-    void setChannels (int left, int right)        { chL = left; chR = right; }
+    void setChannels (int left, int right)        { if (left != chL || right != chR) loudReset = true; chL = left; chR = right; }
+    void resetLoudness()                          { loudReset = true; }
+    double getShortTermLufs() const noexcept      { return lufsS.load(); }
+    double getIntegratedLufs() const noexcept     { return lufsI.load(); }
+    double getTruePeakDb() const noexcept         { return truePeak.load(); }
     void setConfig (const Reassigner::Config& c); // sampleRate is filled in by the engine
     void setFloorDb (double db)                   { pendingFloor = db; floorDirty = true; }
 
@@ -92,6 +97,10 @@ private:
     juce::AbstractFifo colFifo { kSlots };
     std::vector<float> colData;
     std::vector<int> colGen, colRows;
+
+    LoudnessMeter loud;
+    std::atomic<bool> loudReset { true };
+    std::atomic<double> lufsS { LoudnessMeter::kNone }, lufsI { LoudnessMeter::kNone }, truePeak { LoudnessMeter::kNone };
 
     std::atomic<float> load { 0 };
     std::atomic<double> latency { 0 }, sampleRate { 0 };

@@ -16,6 +16,8 @@ public:
 
     void startSourceByKey (const juce::String& key);   // used by --test-screenshot
     void openSettings();
+    void toggleFullscreen();
+    void setCursorForTest (double hz) { view.setCursorFrequency (hz); }
     Settings& getSettings() { return settings; }
 
 private:

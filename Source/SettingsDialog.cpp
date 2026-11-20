@@ -55,7 +55,7 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
     toggle (stationary, s.stationary, [this] (bool v) { s.stationary = v; notify (Change::Overlay); });
     addRow ("Stationary Display", stationary);
 
-    toggle (hidePanel, s.hidePanel, [this] (bool v) { s.hidePanel = v; notify (Change::Overlay); });
+    toggle (hidePanel, s.hidePanel, [this] (bool v) { s.hidePanel = v; notify (Change::Layout); });
     addRow ("Hide Control Panel", hidePanel);
 
     toggle (showScale, s.showScale, [this] (bool v) { s.showScale = v; notify (Change::Layout); });
@@ -64,6 +64,9 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
     juce::StringArray nn { "off" }; for (int i = 1; i < (int) std::size (noteRefs); ++i) nn.add ("A4 @ " + juce::String (noteRefs[i]) + "Hz");
     combo (note, nn, indexOf (noteRefs, s.noteRef, 4), [this] (int i) { s.noteRef = noteRefs[i]; notify (Change::Overlay); });
     addRow ("Show Note Cursor", note);
+
+    toggle (showLufs, s.showLufs, [this] (bool v) { s.showLufs = v; notify (Change::Layout); });
+    addRow ("Show LUFS Meter", showLufs);
 
     hint.setText ("Latency and CPU rise with FFT size and display speed. Turn reassignment off to compare with a plain FFT.",
                   juce::dontSendNotification);
@@ -74,11 +77,11 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
     ok.onClick = [this] { close(); };
     cancel.onClick = [this]
     {
-        const bool layout = snapshot.showScale != s.showScale;
+        const bool layout = snapshot.showScale != s.showScale || snapshot.showLufs != s.showLufs || snapshot.hidePanel != s.hidePanel;
         s.channel = snapshot.channel; s.reassign = snapshot.reassign; s.fftSize = snapshot.fftSize;
         s.refLevel = snapshot.refLevel; s.range = snapshot.range; s.compExp = snapshot.compExp; s.colour = snapshot.colour;
         s.speed = snapshot.speed; s.freqPreset = snapshot.freqPreset; s.grid = snapshot.grid; s.shortRange = snapshot.shortRange;
-        s.stationary = snapshot.stationary; s.hidePanel = snapshot.hidePanel; s.showScale = snapshot.showScale; s.noteRef = snapshot.noteRef;
+        s.stationary = snapshot.stationary; s.hidePanel = snapshot.hidePanel; s.showScale = snapshot.showScale; s.noteRef = snapshot.noteRef; s.showLufs = snapshot.showLufs;
         notify (layout ? Change::Layout : Change::Dsp);
         notify (Change::Visual);
         close();

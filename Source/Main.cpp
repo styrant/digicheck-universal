@@ -61,8 +61,10 @@ private:
     {
         auto* mc = window->content;
         auto& st = mc->getSettings();
-        st.grid = 3; st.showScale = false;
+        st.grid = 1; st.showScale = false; st.showLufs = true; st.hidePanel = false;
+        mc->getSettings().noteRef = 440;
         mc->startSourceByKey ("test");
+        juce::Timer::callAfterDelay (4000, [mc] { mc->setCursorForTest (440.0); });
         juce::Timer::callAfterDelay (9500, [this, path, mc]
         {
             juce::File out (juce::File::getCurrentWorkingDirectory().getChildFile (path));
