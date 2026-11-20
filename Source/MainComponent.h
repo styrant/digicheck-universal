@@ -20,6 +20,7 @@ public:
     void openSettings();
     void toggleFullscreen();
     void toggleKeyWindow();
+    void toggleTempoWindow();
     void setCursorForTest (double hz) { view.setCursorFrequency (hz); }
     void setView (int viewMode);
     Settings& getSettings() { return settings; }
@@ -49,7 +50,7 @@ private:
     bool barRevealed = false;
     juce::uint32 lastInBar = 0;
     int tick = 0;
-    std::unique_ptr<juce::DocumentWindow> keyWindow;
+    std::unique_ptr<juce::DocumentWindow> keyWindow, tempoWindow;
 
     void saveAll();
 

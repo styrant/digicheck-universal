@@ -48,7 +48,8 @@ Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**)
 ## Toolbar and windows
 - **Full screen**: F11 or the small button at the bottom right; Esc leaves. With **Auto-hide** on (button in the bottom strip, or Settings), the top toolbar hides in full screen. Touch the top edge with the mouse to bring it back.
 - **Key** (or K) opens a small always-on-top chart of major keys and their relative minors.
-- **LUFS** shows short-term, integrated (BS.1770 gated) and true-peak values. **Reset** restarts integrated loudness and the true-peak hold.
+- **Tempo** (or T) opens a BPM-to-milliseconds calculator: note values from 2/1 to 1/128, with optional triplet and dotted columns and a Tap button. Click a value to copy it.
+- **LUFS** shows short-term, integrated (BS.1770 gated) and true-peak values, colour-coded. Loudness is white below −14 LUFS, green from −14 to −9, yellow from −9 to −6, and red from −6 up. True peak is white below −1 dBTP, yellow from −1 to 0, and red above 0. **Reset** restarts integrated loudness and the true-peak hold.
 
 ## Controls
 - Click or drag on the display: frequency cursor (snaps to notes when Show Note Cursor is on). Double-click or Esc removes it.

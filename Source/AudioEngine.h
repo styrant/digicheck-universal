@@ -42,6 +42,8 @@ public:
     void setChannels (int left, int right)        { if (left != chL || right != chR) loudReset = true; chL = left; chR = right; }
     void resetLoudness()                          { loudReset = true; }
     void setAnalyzer (SpectrumAnalyzerProcessor* p) { analyzer = p; }   // fed from the DSP thread
+    // The spectrogram's (expensive) analysis only runs while its view is showing
+    void setSpectrogramActive (bool a)            { if (a && ! specActive.load()) specResume = true; specActive = a; }
     double getShortTermLufs() const noexcept      { return lufsS.load(); }
     double getIntegratedLufs() const noexcept     { return lufsI.load(); }
     double getTruePeakDb() const noexcept         { return truePeak.load(); }
@@ -101,6 +103,7 @@ private:
     std::vector<int> colGen, colRows;
 
     SpectrumAnalyzerProcessor* analyzer = nullptr;
+    std::atomic<bool> specActive { true }, specResume { false };
     LoudnessMeter loud;
     std::atomic<bool> loudReset { true };
     std::atomic<double> lufsS { LoudnessMeter::kNone }, lufsI { LoudnessMeter::kNone }, truePeak { LoudnessMeter::kNone };

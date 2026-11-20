@@ -16,7 +16,7 @@ namespace
 
 BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& proc) : s (st), engine (e)
 {
-    for (auto* b : { &viewSpec, &viewAna, &lufsBtn, &keyBtn, &pause, &refDown, &refUp,
+    for (auto* b : { &viewSpec, &viewAna, &lufsBtn, &keyBtn, &tempoBtn, &pause, &refDown, &refUp,
                      &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &autoHide, &full })
     {
         addAndMakeVisible (b);
@@ -36,6 +36,8 @@ BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& p
     keyBtn.setTooltip ("Major keys and their relative minors (K)");
     lufsBtn.onClick = [this] { if (onToggleLufs) onToggleLufs(); };
     keyBtn.onClick  = [this] { if (onToggleKey) onToggleKey(); };
+    tempoBtn.setTooltip ("BPM to milliseconds calculator (T)");
+    tempoBtn.onClick = [this] { if (onToggleTempo) onToggleTempo(); };
 
     pause.setTooltip ("Pause (Space)");
     refDown.setTooltip ("Reference level -1 dB (mouse wheel / Down)");
@@ -107,6 +109,7 @@ void BottomBar::refresh()
 void BottomBar::setPaused (bool p)     { pause.setButtonText (p ? ">" : "||"); }
 void BottomBar::setFullscreen (bool f) { full.setButtonText (f ? "Exit full screen" : "Full screen"); }
 void BottomBar::setKeyOpen (bool o)    { keyBtn.setToggleState (o, juce::dontSendNotification); }
+void BottomBar::setTempoOpen (bool o)  { tempoBtn.setToggleState (o, juce::dontSendNotification); }
 void BottomBar::setAnalyzerState (bool frozen, bool zoomed)
 {
     freeze.setToggleState (frozen, juce::dontSendNotification);
@@ -136,7 +139,8 @@ void BottomBar::resized()
     // left: view switch, LUFS and Key toggles
     viewSpec.setBounds (r.removeFromLeft (90)); viewAna.setBounds (r.removeFromLeft (78)); r.removeFromLeft (10);
     lufsBtn.setBounds (r.removeFromLeft (48)); r.removeFromLeft (4);
-    keyBtn.setBounds (r.removeFromLeft (40));  r.removeFromLeft (12);
+    keyBtn.setBounds (r.removeFromLeft (40));  r.removeFromLeft (4);
+    tempoBtn.setBounds (r.removeFromLeft (56)); r.removeFromLeft (12);
 
     // right corner: small Full screen / Auto-hide / Reset, then the loudness boxes
     auto small = [&] (juce::TextButton& b, int w) { b.setBounds (r.removeFromRight (w).withSizeKeepingCentre (w, 20)); r.removeFromRight (4); };
@@ -148,7 +152,7 @@ void BottomBar::resized()
     {
         small (resetBtn, 44);
         r.removeFromRight (4);
-        lufs.setBounds (r.removeFromRight (juce::jmin (420, juce::jmax (300, r.getWidth() / 2))));
+        lufs.setBounds (r.removeFromRight (juce::jmin (450, juce::jmax (330, r.getWidth() / 2))).expanded (0, 2));
         r.removeFromRight (12);
     }
 
@@ -190,24 +194,44 @@ void BottomBar::resized()
 
 void BottomBar::LufsReadout::paint (juce::Graphics& g)
 {
-    // Each box: small grey caption on top, large bold white value with a grey unit beneath it
-    struct Item { const char* caption; double v; const char* unit; };
-    const Item items[] = { { "SHORT-TERM", st, "LUFS" }, { "INTEGRATED", in, "LUFS" }, { "TRUE PEAK", tp, "dBTP" } };
+    // Each box: caption on top, a large bold value coloured by level, a unit, and a tinted gradient fill.
+    auto loudColour = [] (double v)
+    {
+        if (v < -14.0) return juce::Colours::white;
+        if (v < -9.0)  return juce::Colour (0xff3ddc84);   // green
+        if (v < -6.0)  return juce::Colour (0xffffd23f);   // yellow
+        return juce::Colour (0xffff5252);                  // red
+    };
+    auto peakColour = [] (double v)
+    {
+        if (v < -1.0) return juce::Colours::white;
+        if (v < 0.0)  return juce::Colour (0xffffd23f);
+        return juce::Colour (0xffff5252);
+    };
+    struct Item { const char* caption; double v; const char* unit; bool peak; };
+    const Item items[] = { { "SHORT-TERM", st, "LUFS", false }, { "INTEGRATED", in, "LUFS", false }, { "TRUE PEAK", tp, "dBTP", true } };
     const int w = getWidth() / 3, h = getHeight();
     const auto mono = juce::Font::getDefaultMonospacedFontName();
     for (int i = 0; i < 3; ++i)
     {
-        auto r = juce::Rectangle<int> (i * w, 0, w, h).reduced (3, 0);
-        g.setColour (juce::Colour (0xff1e1f22)); g.fillRoundedRectangle (r.toFloat(), 4.0f);
-        r = r.reduced (8, 1);
-        g.setColour (kLabel.withAlpha (0.55f)); g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
-        g.drawText (items[i].caption, r.removeFromTop (10), juce::Justification::centredLeft);
-        g.setFont (juce::FontOptions (11.0f));
-        g.drawText (items[i].unit, r.removeFromRight (30), juce::Justification::bottomRight);
         const bool has = active && std::isfinite (items[i].v);
-        g.setColour (has ? juce::Colours::white : kLabel.withAlpha (0.35f));
-        g.setFont (juce::FontOptions (mono, 17.0f, juce::Font::bold));
-        g.drawText (has ? juce::String (items[i].v, 1) : juce::String ("--.-"), r.withTrimmedRight (4).translated (0, 1),
+        const auto c = has ? (items[i].peak ? peakColour (items[i].v) : loudColour (items[i].v)) : kLabel.withAlpha (0.35f);
+        auto box = juce::Rectangle<int> (i * w, 0, w, h).reduced (3, 0).toFloat();
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1b1c1f), box.getX(), box.getY(),
+                                                 has ? juce::Colour (0xff1b1c1f).interpolatedWith (c, 0.30f) : juce::Colour (0xff222327),
+                                                 box.getRight(), box.getBottom(), false));
+        g.fillRoundedRectangle (box, 5.0f);
+        g.setColour (has ? c.withAlpha (0.55f) : juce::Colour (0xff3a3c40));
+        g.drawRoundedRectangle (box.reduced (0.5f), 5.0f, 1.0f);
+
+        auto r = box.toNearestInt().reduced (9, 2);
+        g.setColour (kLabel.withAlpha (0.75f)); g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+        g.drawText (items[i].caption, r.removeFromTop (11), juce::Justification::centredLeft);
+        g.setColour (kLabel.withAlpha (0.7f)); g.setFont (juce::FontOptions (11.5f, juce::Font::bold));
+        g.drawText (items[i].unit, r.removeFromRight (32), juce::Justification::bottomRight);
+        g.setColour (c);
+        g.setFont (juce::FontOptions (mono, 21.0f, juce::Font::bold));
+        g.drawText (has ? juce::String (items[i].v, 1) : juce::String ("--.-"), r.withTrimmedRight (5).translated (0, 1),
                     juce::Justification::centredRight);
     }
 }

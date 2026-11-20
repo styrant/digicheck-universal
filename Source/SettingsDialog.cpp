@@ -55,7 +55,7 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
     toggle (stationary, s.stationary, [this] (bool v) { s.stationary = v; notify (Change::Overlay); });
     addRow ("Stationary Display", stationary);
 
-    toggle (hidePanel, s.hidePanel, [this] (bool v) { s.hidePanel = v; notify (Change::Layout); });
+    toggle (hidePanel, s.hidePanel, [this] (bool v) { s.hidePanel = v; notify (Change::Bar); });
     addRow ("Hide Control Panel", hidePanel);
 
     toggle (showScale, s.showScale, [this] (bool v) { s.showScale = v; notify (Change::Layout); });
@@ -65,10 +65,10 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
     combo (note, nn, indexOf (noteRefs, s.noteRef, 4), [this] (int i) { s.noteRef = noteRefs[i]; notify (Change::Overlay); });
     addRow ("Show Note Cursor", note);
 
-    toggle (showLufs, s.showLufs, [this] (bool v) { s.showLufs = v; notify (Change::Layout); });
+    toggle (showLufs, s.showLufs, [this] (bool v) { s.showLufs = v; notify (Change::Bar); });
     addRow ("Show LUFS Meter", showLufs);
 
-    toggle (autoHideBar, s.autoHideBar, [this] (bool v) { s.autoHideBar = v; notify (Change::Layout); });
+    toggle (autoHideBar, s.autoHideBar, [this] (bool v) { s.autoHideBar = v; notify (Change::Bar); });
     addRow ("Auto-hide Toolbar (full screen)", autoHideBar);
 
     hint.setText ("Latency and CPU rise with FFT size and display speed. Turn reassignment off to compare with a plain FFT.",
@@ -80,13 +80,18 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
     ok.onClick = [this] { close(); };
     cancel.onClick = [this]
     {
-        const bool layout = snapshot.showScale != s.showScale || snapshot.showLufs != s.showLufs || snapshot.hidePanel != s.hidePanel || snapshot.autoHideBar != s.autoHideBar;
+        const bool dsp = snapshot.channel != s.channel || snapshot.reassign != s.reassign || snapshot.fftSize != s.fftSize
+                      || std::abs (snapshot.speed - s.speed) > 1e-9 || snapshot.freqPreset != s.freqPreset || snapshot.shortRange != s.shortRange;
+        const bool layout = snapshot.showScale != s.showScale;
         s.channel = snapshot.channel; s.reassign = snapshot.reassign; s.fftSize = snapshot.fftSize;
         s.refLevel = snapshot.refLevel; s.range = snapshot.range; s.compExp = snapshot.compExp; s.colour = snapshot.colour;
         s.speed = snapshot.speed; s.freqPreset = snapshot.freqPreset; s.grid = snapshot.grid; s.shortRange = snapshot.shortRange;
-        s.stationary = snapshot.stationary; s.hidePanel = snapshot.hidePanel; s.showScale = snapshot.showScale; s.noteRef = snapshot.noteRef; s.showLufs = snapshot.showLufs; s.autoHideBar = snapshot.autoHideBar;
-        notify (layout ? Change::Layout : Change::Dsp);
+        s.stationary = snapshot.stationary; s.hidePanel = snapshot.hidePanel; s.showScale = snapshot.showScale; s.noteRef = snapshot.noteRef;
+        s.showLufs = snapshot.showLufs; s.autoHideBar = snapshot.autoHideBar;
+        if (dsp) notify (Change::Dsp);
+        if (layout) notify (Change::Layout);
         notify (Change::Visual);
+        notify (Change::Bar);
         close();
     };
     addAndMakeVisible (ok); addAndMakeVisible (cancel);

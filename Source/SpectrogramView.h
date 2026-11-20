@@ -25,6 +25,7 @@ public:
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
@@ -34,7 +35,7 @@ public:
 private:
     void timerCallback() override;
     void rebuild();
-    void sendConfig();
+    void sendConfig (bool clearHistory = true);
     void buildLut();
     void repaintAll();
     int lutIndex (float db) const noexcept;

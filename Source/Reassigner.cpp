@@ -246,3 +246,11 @@ void Reassigner::emitGap (int numInputSamples)
     bufLen = framePos = 0;
     for (auto& a : acc) std::fill (a.begin(), a.end(), 0.0);
 }
+
+void Reassigner::resetStream()
+{
+    bufLen = framePos = 0;
+    for (auto& a : acc) std::fill (a.begin(), a.end(), 0.0);
+    std::fill (firHist.begin(), firHist.end(), 0.0);
+    firPos = decCnt = 0;
+}

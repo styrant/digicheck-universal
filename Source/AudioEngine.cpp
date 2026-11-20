@@ -210,14 +210,16 @@ void AudioEngine::run()
             lufsS = lufsI = truePeak = LoudnessMeter::kNone;
         }
 
-        if (const int d = dropped.exchange (0); d > 0) dsp.emitGap (d);
+        const bool spec = specActive.load();
+        if (spec && specResume.exchange (false)) dsp.resetStream();
+        if (const int d = dropped.exchange (0); d > 0 && spec) dsp.emitGap (d);
 
         const int ready = fifo.getNumReady();
         const double sr = sampleRate.load();
         if (ready > (int) (sr * 0.5))                                 // more than 0.5 s behind: skip ahead
         {
             fifo.finishedRead (ready);
-            dsp.emitGap (ready);
+            if (spec) dsp.emitGap (ready);
             continue;
         }
         if (ready < 256) { wait (3); continue; }
@@ -230,9 +232,18 @@ void AudioEngine::run()
         fifo.finishedRead (n1 + n2);
 
         const auto t0 = std::chrono::steady_clock::now();
-        dsp.process (L.data(), R.data(), n1 + n2);
-        loud.process (L.data(), R.data(), n1 + n2);
-        if (analyzer != nullptr) analyzer->processStereo (L.data(), R.data(), n1 + n2);   // no-op unless its view is showing
+        const int total = n1 + n2;
+        if (spec) dsp.process (L.data(), R.data(), total);
+        loud.process (L.data(), R.data(), total);
+        if (analyzer != nullptr)
+        {
+            // Feed the analyzer in ~10 ms slices so it publishes one update per 10 ms of audio, evenly,
+            // however large this chunk is (a single big chunk used to give one update per chunk, so
+            // the bars moved in uneven bursts).
+            const int slice = juce::jmax (64, (int) (sr / 100.0));
+            for (int off = 0; off < total; off += slice)
+                analyzer->processStereo (L.data() + off, R.data() + off, juce::jmin (slice, total - off));
+        }
         lufsS = loud.getShortTerm(); lufsI = loud.getIntegrated(); truePeak = loud.getTruePeak();
         busyMs += std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - t0).count();
         audioMs += (n1 + n2) / sr * 1000.0;

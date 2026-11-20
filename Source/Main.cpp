@@ -76,14 +76,16 @@ private:
             if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_analyzer.png")); s.openedOk())
             { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
             mc->setView (0);
+            mc->getSettings().bpm = 150.0; mc->getSettings().tempoTriplets = true; mc->getSettings().tempoDotted = false;
+            mc->toggleTempoWindow();
             mc->toggleKeyWindow();
             mc->openSettings();
             juce::Timer::callAfterDelay (800, [this, out]
             {
                 for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
                     if (auto* w = dynamic_cast<juce::DocumentWindow*> (juce::TopLevelWindow::getTopLevelWindow (i)))
-                        if (w->getName() == "Keys" && w->getContentComponent() != nullptr)
-                            if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_keys.png")); s.openedOk())
+                        if ((w->getName() == "Keys" || w->getName() == "Tempo") && w->getContentComponent() != nullptr)
+                            if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_" + w->getName().toLowerCase() + ".png")); s.openedOk())
                             { s.setPosition (0); s.truncate(); auto* c = w->getContentComponent(); juce::PNGImageFormat().writeImageToStream (c->createComponentSnapshot (c->getLocalBounds()), s); }
                 for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
                     if (auto* dw = dynamic_cast<juce::DialogWindow*> (juce::TopLevelWindow::getTopLevelWindow (i)))

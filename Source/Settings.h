@@ -23,6 +23,8 @@ struct Settings
     bool   autoHideBar = true;    // hide the top toolbar in full screen (reveal at the top edge)
 
     int    viewMode   = 0;        // 0 spectrogram, 1 analyzer
+    double bpm        = 120.0;    // tempo calculator
+    bool   tempoTriplets = false, tempoDotted = false;
     juce::String analyzerState;   // Spectrum Analyzer settings (XML)
 
     juce::String source;          // last used source key
@@ -63,6 +65,9 @@ struct Settings
         showLufs   = p.getBoolValue ("showLufs", showLufs);
         autoHideBar = p.getBoolValue ("autoHideBar", autoHideBar);
         viewMode   = p.getIntValue ("viewMode", viewMode);
+        bpm        = p.getDoubleValue ("bpm", bpm);
+        tempoTriplets = p.getBoolValue ("tempoTriplets", tempoTriplets);
+        tempoDotted   = p.getBoolValue ("tempoDotted", tempoDotted);
         analyzerState = p.getValue ("analyzerState", analyzerState);
         source     = p.getValue ("source", source);
         chL        = p.getIntValue ("chL", chL);
@@ -84,9 +89,11 @@ struct Settings
         p.setValue ("chL", chL);               p.setValue ("chR", chR);
         p.setValue ("windowState", windowState);
         p.setValue ("viewMode", viewMode);     p.setValue ("analyzerState", analyzerState);
+        p.setValue ("bpm", bpm);               p.setValue ("tempoTriplets", tempoTriplets);
+        p.setValue ("tempoDotted", tempoDotted);
         p.saveIfNeeded();
     }
 };
 
 // What kind of change happened, so the UI only does the work it needs to.
-enum class Change { Visual, Overlay, Layout, Dsp };
+enum class Change { Visual, Overlay, Layout, Dsp, Bar };   // Bar: toolbar/bottom-bar only, the display is untouched

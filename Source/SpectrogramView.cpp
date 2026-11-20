@@ -113,16 +113,36 @@ void SpectrogramView::rebuild()
     plot = area.reduced (kGutter, 0);
     if (plot.getWidth() < 10 || plot.getHeight() < 10) plot.setSize (juce::jmax (10, plot.getWidth()), juce::jmax (10, plot.getHeight()));
 
+    // Keep what is on screen across resizes / layout changes: carry the newest columns over and
+    // rescale them to the new number of rows (same log-frequency axis, so rows map proportionally).
+    const int oldW = W, oldH = H, oldWrite = writeCol;
+    std::vector<float> old;
+    old.swap (hist);
+
     const float scale = juce::Component::getApproximateScaleFactorForComponent (this);
     W = plot.getWidth();
     H = juce::jlimit (1, AudioEngine::kMaxRows, juce::roundToInt (plot.getHeight() * scale));
     img = juce::Image (juce::Image::ARGB, W, H, true, juce::SoftwareImageType());
     hist.assign ((size_t) W * (size_t) H, -std::numeric_limits<float>::infinity());
-    sendConfig();
+
+    int keep = 0;
+    if (old.size() == (size_t) oldW * (size_t) oldH && oldW > 1 && oldH > 1)
+    {
+        keep = juce::jmin (oldW, W);
+        for (int k = 0; k < keep; ++k)
+        {
+            const float* src = old.data() + (size_t) ((oldWrite - keep + k + oldW) % oldW) * (size_t) oldH;
+            float* dst = hist.data() + (size_t) k * (size_t) H;
+            for (int j = 0; j < H; ++j)
+                dst[j] = src[juce::jmin (oldH - 1, (int) ((j + 0.5) * oldH / H))];
+        }
+    }
+    sendConfig (keep == 0);
+    if (keep > 0) { writeCol = keep % W; repaintAll(); }
     repaint();
 }
 
-void SpectrogramView::sendConfig()
+void SpectrogramView::sendConfig (bool clearHistory)
 {
     Reassigner::Config c;
     c.fftSize = s.fftSize; c.pixelsPerSecond = s.speed; c.rows = H;
@@ -130,6 +150,7 @@ void SpectrogramView::sendConfig()
     c.reassign = s.reassign; c.shortRange = s.shortRange; c.channel = s.channel;
     c.floorDb = s.refLevel - s.range - 20;
     engine.setConfig (c);
+    if (! clearHistory) return;
     std::fill (hist.begin(), hist.end(), -std::numeric_limits<float>::infinity());
     img.clear (img.getBounds(), juce::Colours::black);
     writeCol = 0;
@@ -143,6 +164,7 @@ void SpectrogramView::settingsChanged (Change c)
         case Change::Overlay: break;
         case Change::Layout:  rebuild(); break;
         case Change::Dsp:     sendConfig(); break;
+        case Change::Bar:     break;
     }
     repaint();
 }
@@ -230,7 +252,8 @@ void SpectrogramView::mouseDrag (const juce::MouseEvent& e)
 {
     if (e.mods.isLeftButtonDown() && plot.contains (e.getMouseDownPosition())) setCursorFromY ((float) e.y);
 }
-void SpectrogramView::mouseDoubleClick (const juce::MouseEvent& e) { if (plot.contains (e.getPosition())) clearCursor(); }
+void SpectrogramView::mouseUp (const juce::MouseEvent&)            { clearCursor(); }     // cursor shows only while held
+void SpectrogramView::mouseDoubleClick (const juce::MouseEvent&)   {}
 void SpectrogramView::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
 {
     if (std::abs (w.deltaY) < 1.0e-6f) return;

@@ -33,6 +33,153 @@ namespace
         }
     };
 
+    //==========================================================================
+    // "Tempo" window: BPM -> note lengths in milliseconds, with triplet / dotted columns.
+    // Click a value to copy it.
+    class TempoChart : public juce::Component, private juce::Timer
+    {
+    public:
+        TempoChart (Settings& st, std::function<void()> changedCallback) : s (st), onChanged (std::move (changedCallback))
+        {
+            bpm.setSliderStyle (juce::Slider::IncDecButtons);
+            bpm.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 90, 30);
+            bpm.setRange (20.0, 400.0, 0.1);
+            bpm.setIncDecButtonsMode (juce::Slider::incDecButtonsDraggable_Vertical);
+            bpm.setValue (s.bpm, juce::dontSendNotification);
+            bpm.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour (0xff121316));
+            bpm.setColour (juce::Slider::textBoxOutlineColourId, juce::Colour (0xff3a3c40));
+            bpm.onValueChange = [this] { s.bpm = bpm.getValue(); changed(); };
+            addAndMakeVisible (bpm);
+
+            tap.setTooltip ("Tap along to set the tempo");
+            tap.onClick = [this] { tapped(); };
+            addAndMakeVisible (tap);
+
+            for (auto* t : { &triplets, &dotted }) addAndMakeVisible (t);
+            triplets.setToggleState (s.tempoTriplets, juce::dontSendNotification);
+            dotted.setToggleState (s.tempoDotted, juce::dontSendNotification);
+            triplets.onClick = [this] { s.tempoTriplets = triplets.getToggleState(); resizeToFit(); changed(); };
+            dotted.onClick   = [this] { s.tempoDotted   = dotted.getToggleState();   resizeToFit(); changed(); };
+            resizeToFit();
+        }
+
+        void resizeToFit() { setSize (250 + 112 * ((int) s.tempoTriplets + (int) s.tempoDotted), kTableTop + 9 * kRow + 44); }
+
+        void resized() override
+        {
+            auto top = getLocalBounds().reduced (16, 14).removeFromTop (32);
+            top.removeFromLeft (44);                                   // "BPM" caption
+            bpm.setBounds (top.removeFromLeft (150));
+            top.removeFromLeft (8);
+            tap.setBounds (top.removeFromLeft (56));
+            auto opts = getLocalBounds().reduced (16, 0).withTop (54).withHeight (24);
+            triplets.setBounds (opts.removeFromLeft (90));
+            dotted.setBounds (opts.removeFromLeft (90));
+            if (auto* w = findParentComponentOfClass<juce::DocumentWindow>()) w->setContentComponentSize (getWidth(), getHeight());
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            g.fillAll (juce::Colour (0xff1b1d22));
+            g.setColour (juce::Colours::white.withAlpha (0.55f)); g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+            g.drawText ("BPM", 16, 14, 40, 32, juce::Justification::centredLeft);
+
+            const auto cols = columns();
+            auto table = getLocalBounds().reduced (16, 0).withTop (kTableTop - 30);
+            auto head = table.removeFromTop (24);
+            g.drawText ("NOTE", head.removeFromLeft (kNoteW), juce::Justification::centredLeft);
+            for (auto& c : cols) g.drawText (c.name, head.removeFromLeft (kColW).withTrimmedRight (28), juce::Justification::centredRight);
+            g.setColour (juce::Colour (0xff3a3c40)); g.drawHorizontalLine (kTableTop - 4, 16.0f, (float) getWidth() - 16.0f);
+
+            static const char* notes[] = { "2/1", "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/64", "1/128" };
+            const auto mono = juce::Font::getDefaultMonospacedFontName();
+            for (int i = 0; i < 9; ++i)
+            {
+                auto line = juce::Rectangle<int> (16, kTableTop + i * kRow, getWidth() - 32, kRow);
+                if (i % 2 == 1) { g.setColour (juce::Colours::white.withAlpha (0.035f)); g.fillRect (line.expanded (6, 0)); }
+                if (i == 3) { g.setColour (juce::Colour (0xff4c8dff).withAlpha (0.12f)); g.fillRect (line.expanded (6, 0)); }  // the beat
+                g.setColour (juce::Colours::white); g.setFont (juce::FontOptions (16.0f, juce::Font::bold));
+                g.drawText (notes[i], line.removeFromLeft (kNoteW), juce::Justification::centredLeft);
+                for (auto& c : cols)
+                {
+                    const double ms = noteMs (i) * c.factor;
+                    auto cell = line.removeFromLeft (kColW);
+                    const bool copied = copiedRow == i && copiedCol == &c - cols.data();
+                    g.setColour (copied ? juce::Colour (0xff3ddc84) : c.colour);
+                    g.setFont (juce::FontOptions (mono, 17.0f, juce::Font::bold));
+                    g.drawText (copied ? juce::String ("copied") : fmt (ms), cell.withTrimmedRight (28), juce::Justification::centredRight);
+                    g.setColour (juce::Colours::white.withAlpha (0.45f)); g.setFont (juce::FontOptions (12.0f));
+                    g.drawText ("ms", cell.removeFromRight (24), juce::Justification::centredRight);
+                }
+            }
+            g.setColour (juce::Colours::white.withAlpha (0.4f)); g.setFont (juce::FontOptions (11.5f));
+            g.drawText ("Click a value to copy it", 16, getHeight() - 30, getWidth() - 32, 20, juce::Justification::centredLeft);
+        }
+
+        void mouseUp (const juce::MouseEvent& e) override
+        {
+            const int row = (e.y - kTableTop) / kRow, col = (e.x - 16 - kNoteW) / kColW;
+            const auto cols = columns();
+            if (e.y < kTableTop || row < 0 || row > 8 || e.x < 16 + kNoteW || col < 0 || col >= (int) cols.size()) return;
+            juce::SystemClipboard::copyTextToClipboard (fmt (noteMs (row) * cols[(size_t) col].factor));
+            copiedRow = row; copiedCol = col;
+            repaint();
+            startTimer (900);
+        }
+
+    private:
+        static constexpr int kTableTop = 120, kRow = 30, kNoteW = 70, kColW = 112;
+        struct Column { juce::String name; double factor; juce::Colour colour; };
+
+        std::vector<Column> columns() const
+        {
+            std::vector<Column> c { { "STRAIGHT", 1.0, juce::Colours::white } };
+            if (s.tempoTriplets) c.push_back ({ "TRIPLET", 2.0 / 3.0, juce::Colour (0xffb8c4ff) });
+            if (s.tempoDotted)   c.push_back ({ "DOTTED",  1.5,       juce::Colour (0xffffd9a0) });
+            return c;
+        }
+        double noteMs (int row) const { return 60000.0 / juce::jmax (1.0, s.bpm) * 4.0 * 2.0 / std::pow (2.0, row); }  // row 0 = 2/1
+        static juce::String fmt (double ms) { return ms >= 100.0 ? juce::String (juce::roundToInt (ms)) : juce::String (ms, 1); }
+
+        void changed() { repaint(); if (onChanged) onChanged(); }
+        void timerCallback() override { stopTimer(); copiedRow = copiedCol = -1; repaint(); }
+
+        void tapped()
+        {
+            const double now = juce::Time::getMillisecondCounterHiRes();
+            if (! taps.empty() && now - taps.back() > 2000.0) taps.clear();   // a pause starts a new tap sequence
+            taps.push_back (now);
+            if (taps.size() > 8) taps.erase (taps.begin());
+            if (taps.size() >= 2)
+            {
+                const double avg = (taps.back() - taps.front()) / (double) (taps.size() - 1);
+                bpm.setValue (juce::jlimit (20.0, 400.0, std::round (600000.0 / avg) / 10.0));
+            }
+        }
+
+        Settings& s;
+        std::function<void()> onChanged;
+        juce::Slider bpm;
+        juce::TextButton tap { "Tap" };
+        juce::ToggleButton triplets { "Triplets" }, dotted { "Dotted" };
+        std::vector<double> taps;
+        int copiedRow = -1, copiedCol = -1;
+    };
+
+    struct TempoWindow : public juce::DocumentWindow
+    {
+        TempoWindow (Settings& s, std::function<void()> changed, std::function<void()> closed)
+            : DocumentWindow ("Tempo", juce::Colour (0xff1b1d22), closeButton), onClosed (std::move (closed))
+        {
+            setUsingNativeTitleBar (true);
+            setContentOwned (new TempoChart (s, std::move (changed)), true);
+            setAlwaysOnTop (true);
+            setResizable (false, false);
+        }
+        void closeButtonPressed() override { setVisible (false); if (onClosed) onClosed(); }
+        std::function<void()> onClosed;
+    };
+
     struct KeyWindow : public juce::DocumentWindow
     {
         explicit KeyWindow (std::function<void()> closed)
@@ -88,9 +235,10 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     bottom.onPause           = [this] { view.togglePause(); };
     bottom.onRef             = [this] (int d) { settings.refLevel = juce::jlimit (-80.0, 0.0, settings.refLevel + d); onChange (Change::Visual); };
     bottom.onToggleKey       = [this] { toggleKeyWindow(); };
+    bottom.onToggleTempo     = [this] { toggleTempoWindow(); };
     bottom.onToggleFullscreen = [this] { toggleFullscreen(); };
-    bottom.onToggleAutoHide  = [this] { settings.autoHideBar = ! settings.autoHideBar; onChange (Change::Layout); };
-    bottom.onToggleLufs      = [this] { settings.showLufs = ! settings.showLufs; onChange (Change::Layout); };
+    bottom.onToggleAutoHide  = [this] { settings.autoHideBar = ! settings.autoHideBar; onChange (Change::Bar); };
+    bottom.onToggleLufs      = [this] { settings.showLufs = ! settings.showLufs; onChange (Change::Bar); };
     bottom.onZoomIn          = [this] { analyzerPanel.getView().zoomBy (0.6); };
     bottom.onZoomOut         = [this] { analyzerPanel.getView().zoomBy (1.0 / 0.6); };
     bottom.onFullRange       = [this] { analyzerPanel.getView().resetZoom(); };
@@ -130,6 +278,7 @@ void MainComponent::setView (int v)
     view.setVisible (! ana);
     analyzerPanel.setVisible (ana);
     analyzerPanel.setActive (ana);
+    engine.setSpectrogramActive (! ana);
     if (ana) analyzerPanel.getView().grabKeyboardFocus();
     bottom.refresh();
     saveAll();
@@ -214,7 +363,7 @@ void MainComponent::onChange (Change c)
     saveAll();
     view.settingsChanged (c);
     bottom.refresh();
-    if (c == Change::Layout) resized();      // auto-hide toolbar / LUFS may have changed
+    if (c == Change::Bar) resized();          // auto-hide toolbar may have changed (the spectrogram keeps its history)
 }
 
 void MainComponent::openSettings()
@@ -237,6 +386,21 @@ void MainComponent::toggleFullscreen()
 bool MainComponent::isFullscreen() const
 {
     return juce::Desktop::getInstance().getKioskModeComponent() == getTopLevelComponent();
+}
+
+void MainComponent::toggleTempoWindow()
+{
+    if (tempoWindow == nullptr)
+    {
+        tempoWindow = std::make_unique<TempoWindow> (settings, [this] { saveAll(); }, [this] { bottom.setTempoOpen (false); });
+        auto* w = tempoWindow.get();
+        const auto area = getScreenBounds();
+        w->setTopLeftPosition (area.getRight() - w->getWidth() - 400, area.getY() + 60);
+    }
+    const bool show = ! tempoWindow->isVisible();
+    tempoWindow->setVisible (show);
+    if (show) tempoWindow->toFront (false);
+    bottom.setTempoOpen (show);
 }
 
 void MainComponent::toggleKeyWindow()
@@ -343,6 +507,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
         return true;
     }
     if (k.getTextCharacter() == 'k' || k.getTextCharacter() == 'K') { toggleKeyWindow(); return true; }
+    if (k.getTextCharacter() == 't' || k.getTextCharacter() == 'T') { toggleTempoWindow(); return true; }
     if (k.getTextCharacter() == 's' || k.getTextCharacter() == 'S') { if (ana) analyzerPanel.toggleSettings(); else openSettings(); return true; }
     if (ana) return false;
     if (k == juce::KeyPress::upKey)             { settings.refLevel = juce::jmin (0.0, settings.refLevel + 1);   onChange (Change::Visual); return true; }

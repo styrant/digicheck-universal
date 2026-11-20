@@ -41,6 +41,7 @@ public:
     void setFloorDb (double db);
     void process (const float* left, const float* right, int numSamples);
     void emitGap (int numInputSamples);          // overload: emit white columns covering this many samples, reset
+    void resetStream();                          // drop buffered input (after a pause), keep the configuration
 
     const Config& getConfig() const noexcept { return cfg; }
     int    getDecimation() const noexcept   { return dec; }
