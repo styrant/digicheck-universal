@@ -70,6 +70,12 @@ private:
             juce::File out (juce::File::getCurrentWorkingDirectory().getChildFile (path));
             if (auto s = juce::FileOutputStream (out); s.openedOk())
             { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
+            mc->setView (1);   // Analyzer view
+            juce::Timer::callAfterDelay (3000, [this, out, mc]
+            {
+            if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_analyzer.png")); s.openedOk())
+            { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
+            mc->setView (0);
             mc->toggleKeyWindow();
             mc->openSettings();
             juce::Timer::callAfterDelay (800, [this, out]
@@ -89,6 +95,7 @@ private:
                             dw->exitModalState (0);
                         }
                 quit();
+            });
             });
         });
     }

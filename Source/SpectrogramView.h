@@ -5,8 +5,7 @@
 #include <optional>
 
 // The Spectroscope display, laid out like DigiCheck NG: a black plot inside a grey frame with
-// frequency labels in both side margins, and a grey control strip along the bottom that holds the
-// controls (pause, reference level, full screen, LUFS) and the loudness readout.
+// frequency labels in both side margins. The control strip lives in BottomBar (shared by both views).
 // Columns are one logical pixel wide; rows use full physical (DPI-scaled) resolution.
 class SpectrogramView : public juce::Component, private juce::Timer
 {
@@ -17,11 +16,10 @@ public:
     void sourceStarted();
     void sourceStopped();
     void togglePause();
+    bool isPaused() const noexcept { return paused; }
     void clearCursor();
-    void setFullscreenState (bool isFullscreen);
     void setCursorFrequency (double hz) { cursorF = hz; repaint(); }
-    std::function<void()> onToggleFullscreen, onToggleKey;
-    void setKeyWindowOpen (bool open) { keyBtn.setToggleState (open, juce::dontSendNotification); }
+    std::function<void (bool paused)> onPauseChanged;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -35,12 +33,10 @@ public:
 
 private:
     void timerCallback() override;
-    void layoutStrip();
     void rebuild();
     void sendConfig();
     void buildLut();
     void repaintAll();
-    void updateLufs();
     int lutIndex (float db) const noexcept;
     std::pair<double, double> effectiveRange() const;
     float freqToY (double f) const;
@@ -52,24 +48,11 @@ private:
     AudioEngine& engine;
     std::function<void (Change)> notify;
 
-    juce::Rectangle<int> plot, strip;
+    juce::Rectangle<int> plot;
     juce::Image img;
     std::vector<float> hist;
     int W = 1, H = 1, writeCol = 0, tick = 0;
     std::array<juce::PixelARGB, 512> lut;
     bool paused = false, running = false;
     std::optional<double> cursorF;
-
-    // Loudness values: small grey caption, large bold value, grey unit
-    struct LufsReadout : public juce::Component
-    {
-        double st = -INFINITY, in = -INFINITY, tp = -INFINITY;
-        bool active = false;
-        void paint (juce::Graphics&) override;
-    };
-
-    juce::TextButton pause { "||" }, down { "-" }, up { "+" }, full { "Full screen" }, autoHide { "Auto-hide" },
-                     lufsBtn { "LUFS" }, keyBtn { "Key" }, resetBtn { "Reset" };
-    juce::Label ref, readout;
-    LufsReadout lufs;
 };

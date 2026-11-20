@@ -106,6 +106,7 @@ bool AudioEngine::start (const Source& s, juce::String& error)
     }
 
     current = s;
+    if (analyzer != nullptr) analyzer->prepareToPlay (sampleRate.load(), 512);
     loudReset = true;
     running = true;
     {
@@ -231,6 +232,7 @@ void AudioEngine::run()
         const auto t0 = std::chrono::steady_clock::now();
         dsp.process (L.data(), R.data(), n1 + n2);
         loud.process (L.data(), R.data(), n1 + n2);
+        if (analyzer != nullptr) analyzer->processStereo (L.data(), R.data(), n1 + n2);   // no-op unless its view is showing
         lufsS = loud.getShortTerm(); lufsI = loud.getIntegrated(); truePeak = loud.getTruePeak();
         busyMs += std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - t0).count();
         audioMs += (n1 + n2) / sr * 1000.0;

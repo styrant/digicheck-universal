@@ -3,6 +3,8 @@
 #include "Settings.h"
 #include "AudioEngine.h"
 #include "SpectrogramView.h"
+#include "BottomBar.h"
+#include "AnalyzerPanel.h"
 
 class MainComponent : public juce::Component, private juce::Timer
 {
@@ -19,6 +21,7 @@ public:
     void toggleFullscreen();
     void toggleKeyWindow();
     void setCursorForTest (double hz) { view.setCursorFrequency (hz); }
+    void setView (int viewMode);
     Settings& getSettings() { return settings; }
 
 private:
@@ -48,10 +51,15 @@ private:
     int tick = 0;
     std::unique_ptr<juce::DocumentWindow> keyWindow;
 
+    void saveAll();
+
     juce::PropertiesFile& props;
     Settings settings;
+    SpectrumAnalyzerProcessor analyzerProc;   // declared before the engine: it must outlive the DSP thread
     AudioEngine engine;
     SpectrogramView view;
+    AnalyzerPanel analyzerPanel { analyzerProc };
+    BottomBar bottom { settings, engine, analyzerProc };
 
     juce::Label title { {}, "Spectroscope" }, status;
     juce::ComboBox source, chL, chR;

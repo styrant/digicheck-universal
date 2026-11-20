@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 project(Spectroscope VERSION 1.0.0 LANGUAGES C CXX)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # JUCE: use a local checkout if given (-DJUCE_DIR=...), otherwise download the pinned release.
@@ -36,7 +36,11 @@ target_sources(Spectroscope PRIVATE
     Source/Reassigner.cpp
     Source/LoudnessMeter.cpp
     Source/SpectrogramView.cpp
-    Source/SettingsDialog.cpp)
+    Source/SettingsDialog.cpp
+    Source/BottomBar.cpp
+    Source/analyzer/PluginProcessor.cpp
+    Source/analyzer/ui/AnalyzerView.cpp
+    Source/analyzer/ui/SettingsPanel.cpp)
 
 target_compile_definitions(Spectroscope PRIVATE
     JUCE_WEB_BROWSER=0
@@ -64,3 +68,4 @@ endif()
 # Stand-alone DSP calibration test (no JUCE)
 add_executable(dsp_test tests/dsp_test.cpp Source/Reassigner.cpp)
 add_executable(loudness_test tests/loudness_test.cpp Source/LoudnessMeter.cpp)
+add_executable(analyzer_dsp_test tests/analyzer_dsp_test.cpp)   # Spectrum Analyzer 2's own DSP tests

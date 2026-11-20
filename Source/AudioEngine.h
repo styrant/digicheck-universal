@@ -3,6 +3,7 @@
 #include "Reassigner.h"
 #include "LoopbackCapture.h"
 #include "LoudnessMeter.h"
+#include "analyzer/PluginProcessor.h"
 #include <atomic>
 #include <thread>
 
@@ -40,6 +41,7 @@ public:
 
     void setChannels (int left, int right)        { if (left != chL || right != chR) loudReset = true; chL = left; chR = right; }
     void resetLoudness()                          { loudReset = true; }
+    void setAnalyzer (SpectrumAnalyzerProcessor* p) { analyzer = p; }   // fed from the DSP thread
     double getShortTermLufs() const noexcept      { return lufsS.load(); }
     double getIntegratedLufs() const noexcept     { return lufsI.load(); }
     double getTruePeakDb() const noexcept         { return truePeak.load(); }
@@ -98,6 +100,7 @@ private:
     std::vector<float> colData;
     std::vector<int> colGen, colRows;
 
+    SpectrumAnalyzerProcessor* analyzer = nullptr;
     LoudnessMeter loud;
     std::atomic<bool> loudReset { true };
     std::atomic<double> lufsS { LoudnessMeter::kNone }, lufsI { LoudnessMeter::kNone }, truePeak { LoudnessMeter::kNone };

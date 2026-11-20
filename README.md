@@ -34,8 +34,19 @@ Set-up in Azure: create an Artifact Signing account (Basic plan), complete ident
 
 **L / R** choose which two channels of the source to analyse. **Channel Select** in Settings then picks left, right, the sum or the difference.
 
+## Views
+Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**). The bottom bar stays the same in both views: the LUFS readout, Key, Reset, Auto-hide and Full screen are always there. The controls in the middle change with the view.
+
+- **Spectrogram:** the reassigned spectrogram described below.
+- **Analyzer:** [Spectrum Analyzer 2](Source/analyzer/LICENSE), a constant-Q filter-bank analyzer (Seven Phases, MIT licence).
+  - Peak bars, peak hold and RMS average, at 3–24 bands per octave.
+  - Wheel zooms, drag pans, and shift+drag zooms to a selection.
+  - Hover for the band inspector. Right-click or **Settings** opens its settings panel.
+  - Keys: F freeze, R reset meters, 0 full range.
+  - It only runs while its view is visible, and its settings are saved with the app's.
+
 ## Toolbar and windows
-- **Full screen**: F11 or the button; Esc leaves. With **Auto-hide** on (button in the bottom strip, or Settings), the top toolbar hides in full screen. Touch the top edge with the mouse to bring it back.
+- **Full screen**: F11 or the small button at the bottom right; Esc leaves. With **Auto-hide** on (button in the bottom strip, or Settings), the top toolbar hides in full screen. Touch the top edge with the mouse to bring it back.
 - **Key** (or K) opens a small always-on-top chart of major keys and their relative minors.
 - **LUFS** shows short-term, integrated (BS.1770 gated) and true-peak values. **Reset** restarts integrated loudness and the true-peak hold.
 

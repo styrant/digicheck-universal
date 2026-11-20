@@ -52,6 +52,8 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     : props (p), view (settings, engine, [this] (Change c) { onChange (c); })
 {
     settings.load (props);
+    if (settings.analyzerState.isNotEmpty()) analyzerProc.restoreStateXml (settings.analyzerState);
+    engine.setAnalyzer (&analyzerProc);
     setWantsKeyboardFocus (true);
 
     title.setFont (juce::FontOptions (14.0f, juce::Font::bold));
@@ -64,10 +66,12 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     for (auto* c : std::initializer_list<juce::Component*> { &title, &source, &lblL, &chL, &lblR, &chR, &startBtn, &settingsBtn, &rescanBtn, &status })
         bar.addAndMakeVisible (c);
     addAndMakeVisible (view);
+    addChildComponent (analyzerPanel);
+    addAndMakeVisible (bottom);
     addAndMakeVisible (bar);
 
     startBtn.onClick    = [this] { if (engine.isRunning()) stopSource(); else startSelected(); };
-    settingsBtn.onClick = [this] { openSettings(); };
+    settingsBtn.onClick = [this] { if (settings.viewMode == BottomBar::Analyzer) analyzerPanel.toggleSettings(); else openSettings(); };
     rescanBtn.onClick   = [this] { rescan(); };
     source.onChange     = [this] { if (engine.isRunning()) startSelected(); };
     chL.onChange = chR.onChange = [this]
@@ -78,8 +82,23 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
         settings.save (props);
     };
 
-    view.onToggleFullscreen = [this] { toggleFullscreen(); };
-    view.onToggleKey = [this] { toggleKeyWindow(); };
+    // bottom bar
+    view.onPauseChanged      = [this] (bool isPaused) { bottom.setPaused (isPaused); };
+    bottom.onViewChange      = [this] (int v) { setView (v); };
+    bottom.onPause           = [this] { view.togglePause(); };
+    bottom.onRef             = [this] (int d) { settings.refLevel = juce::jlimit (-80.0, 0.0, settings.refLevel + d); onChange (Change::Visual); };
+    bottom.onToggleKey       = [this] { toggleKeyWindow(); };
+    bottom.onToggleFullscreen = [this] { toggleFullscreen(); };
+    bottom.onToggleAutoHide  = [this] { settings.autoHideBar = ! settings.autoHideBar; onChange (Change::Layout); };
+    bottom.onToggleLufs      = [this] { settings.showLufs = ! settings.showLufs; onChange (Change::Layout); };
+    bottom.onZoomIn          = [this] { analyzerPanel.getView().zoomBy (0.6); };
+    bottom.onZoomOut         = [this] { analyzerPanel.getView().zoomBy (1.0 / 0.6); };
+    bottom.onFullRange       = [this] { analyzerPanel.getView().resetZoom(); };
+    bottom.onFreeze          = [this] { analyzerPanel.getView().toggleFreeze(); };
+    bottom.onAnalyzerSettings = [this] { analyzerPanel.toggleSettings(); };
+    analyzerPanel.onStateChanged = [this] { bottom.setAnalyzerState (analyzerPanel.getView().isFrozen(), analyzerPanel.getView().isZoomed()); };
+    analyzerPanel.onStateChanged();
+    setView (settings.viewMode);
 
     rescan();
     setSize (1300, 760);
@@ -93,8 +112,27 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
 
 MainComponent::~MainComponent()
 {
-    settings.save (props);
+    saveAll();
     engine.stop();
+    engine.setAnalyzer (nullptr);
+}
+
+void MainComponent::saveAll()
+{
+    settings.analyzerState = analyzerProc.saveStateXml();
+    settings.save (props);
+}
+
+void MainComponent::setView (int v)
+{
+    settings.viewMode = juce::jlimit (0, 1, v);
+    const bool ana = settings.viewMode == BottomBar::Analyzer;
+    view.setVisible (! ana);
+    analyzerPanel.setVisible (ana);
+    analyzerPanel.setActive (ana);
+    if (ana) analyzerPanel.getView().grabKeyboardFocus();
+    bottom.refresh();
+    saveAll();
 }
 
 void MainComponent::rescan()
@@ -173,9 +211,10 @@ void MainComponent::fillChannelBoxes()
 
 void MainComponent::onChange (Change c)
 {
-    settings.save (props);
+    saveAll();
     view.settingsChanged (c);
-    if (c == Change::Layout) resized();      // auto-hide toolbar may have changed
+    bottom.refresh();
+    if (c == Change::Layout) resized();      // auto-hide toolbar / LUFS may have changed
 }
 
 void MainComponent::openSettings()
@@ -189,7 +228,7 @@ void MainComponent::toggleFullscreen()
     auto* top = getTopLevelComponent();
     const bool goFull = desk.getKioskModeComponent() != top;
     desk.setKioskModeComponent (goFull ? top : nullptr, false);
-    view.setFullscreenState (goFull);
+    bottom.setFullscreen (goFull);
     barRevealed = false;
     resized();
     grabKeyboardFocus();
@@ -204,7 +243,7 @@ void MainComponent::toggleKeyWindow()
 {
     if (keyWindow == nullptr)
     {
-        keyWindow = std::make_unique<KeyWindow> ([this] { view.setKeyWindowOpen (false); });
+        keyWindow = std::make_unique<KeyWindow> ([this] { bottom.setKeyOpen (false); });
         auto* w = keyWindow.get();
         const auto area = getScreenBounds();
         w->setTopLeftPosition (area.getRight() - w->getWidth() - 60, area.getY() + 60);
@@ -212,7 +251,7 @@ void MainComponent::toggleKeyWindow()
     const bool show = ! keyWindow->isVisible();
     keyWindow->setVisible (show);
     if (show) keyWindow->toFront (false);
-    view.setKeyWindowOpen (show);
+    bottom.setKeyOpen (show);
 }
 
 // Full screen with auto-hide: the toolbar is hidden and slides in when the mouse touches the top
@@ -259,9 +298,11 @@ void MainComponent::paint (juce::Graphics& g)
 void MainComponent::resized()
 {
     auto r = getLocalBounds();
+    bottom.setBounds (r.removeFromBottom (BottomBar::kHeight));
     if (barAutoHidden())
     {
         view.setBounds (r);                                   // display uses the whole screen
+        analyzerPanel.setBounds (r);
         bar.setBounds (r.removeFromTop (kBarH));              // toolbar overlays it when revealed
         bar.setVisible (barRevealed);
         if (barRevealed) bar.toFront (false);
@@ -271,6 +312,7 @@ void MainComponent::resized()
         bar.setBounds (r.removeFromTop (kBarH));
         bar.setVisible (true);
         view.setBounds (r);
+        analyzerPanel.setBounds (r);
     }
     layoutBar();
 }
@@ -290,7 +332,9 @@ void MainComponent::layoutBar()
 
 bool MainComponent::keyPressed (const juce::KeyPress& k)
 {
-    if (k == juce::KeyPress::spaceKey)          { view.togglePause(); return true; }
+    const bool ana = settings.viewMode == BottomBar::Analyzer;
+    if (k == juce::KeyPress::spaceKey)          { if (ana) analyzerPanel.getView().toggleFreeze(); else view.togglePause(); return true; }
+    if (k.getTextCharacter() == 'v' || k.getTextCharacter() == 'V') { setView (ana ? BottomBar::Spectrogram : BottomBar::Analyzer); return true; }
     if (k == juce::KeyPress::F11Key)            { toggleFullscreen(); return true; }
     if (k == juce::KeyPress::escapeKey)
     {
@@ -298,9 +342,10 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
         else view.clearCursor();
         return true;
     }
+    if (k.getTextCharacter() == 'k' || k.getTextCharacter() == 'K') { toggleKeyWindow(); return true; }
+    if (k.getTextCharacter() == 's' || k.getTextCharacter() == 'S') { if (ana) analyzerPanel.toggleSettings(); else openSettings(); return true; }
+    if (ana) return false;
     if (k == juce::KeyPress::upKey)             { settings.refLevel = juce::jmin (0.0, settings.refLevel + 1);   onChange (Change::Visual); return true; }
     if (k == juce::KeyPress::downKey)           { settings.refLevel = juce::jmax (-80.0, settings.refLevel - 1); onChange (Change::Visual); return true; }
-    if (k.getTextCharacter() == 's' || k.getTextCharacter() == 'S') { openSettings(); return true; }
-    if (k.getTextCharacter() == 'k' || k.getTextCharacter() == 'K') { toggleKeyWindow(); return true; }
     return false;
 }

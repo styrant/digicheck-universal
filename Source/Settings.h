@@ -22,6 +22,9 @@ struct Settings
     bool   showLufs   = true;
     bool   autoHideBar = true;    // hide the top toolbar in full screen (reveal at the top edge)
 
+    int    viewMode   = 0;        // 0 spectrogram, 1 analyzer
+    juce::String analyzerState;   // Spectrum Analyzer settings (XML)
+
     juce::String source;          // last used source key
     int    chL = 0, chR = 1;
     juce::String windowState;
@@ -59,6 +62,8 @@ struct Settings
         noteRef    = p.getIntValue ("noteRef", noteRef);
         showLufs   = p.getBoolValue ("showLufs", showLufs);
         autoHideBar = p.getBoolValue ("autoHideBar", autoHideBar);
+        viewMode   = p.getIntValue ("viewMode", viewMode);
+        analyzerState = p.getValue ("analyzerState", analyzerState);
         source     = p.getValue ("source", source);
         chL        = p.getIntValue ("chL", chL);
         chR        = p.getIntValue ("chR", chR);
@@ -78,6 +83,7 @@ struct Settings
         p.setValue ("showLufs", showLufs);     p.setValue ("autoHideBar", autoHideBar);
         p.setValue ("chL", chL);               p.setValue ("chR", chR);
         p.setValue ("windowState", windowState);
+        p.setValue ("viewMode", viewMode);     p.setValue ("analyzerState", analyzerState);
         p.saveIfNeeded();
     }
 };
