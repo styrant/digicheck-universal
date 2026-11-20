@@ -20,6 +20,7 @@ struct Settings
     bool   showScale  = false;
     int    noteRef    = 440;      // 0 = off
     bool   showLufs   = true;
+    bool   autoHideBar = true;    // hide the top toolbar in full screen (reveal at the top edge)
 
     juce::String source;          // last used source key
     int    chL = 0, chR = 1;
@@ -57,6 +58,7 @@ struct Settings
         showScale  = p.getBoolValue ("showScale", showScale);
         noteRef    = p.getIntValue ("noteRef", noteRef);
         showLufs   = p.getBoolValue ("showLufs", showLufs);
+        autoHideBar = p.getBoolValue ("autoHideBar", autoHideBar);
         source     = p.getValue ("source", source);
         chL        = p.getIntValue ("chL", chL);
         chR        = p.getIntValue ("chR", chR);
@@ -73,7 +75,7 @@ struct Settings
         p.setValue ("shortRange", shortRange); p.setValue ("stationary", stationary);
         p.setValue ("hidePanel", hidePanel);   p.setValue ("showScale", showScale);
         p.setValue ("noteRef", noteRef);       p.setValue ("source", source);
-        p.setValue ("showLufs", showLufs);
+        p.setValue ("showLufs", showLufs);     p.setValue ("autoHideBar", autoHideBar);
         p.setValue ("chL", chL);               p.setValue ("chR", chR);
         p.setValue ("windowState", windowState);
         p.saveIfNeeded();

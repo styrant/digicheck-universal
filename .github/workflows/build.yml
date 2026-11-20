@@ -11,6 +11,10 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      APP_VERSION: 1.2.${{ github.run_number }}
+      # Code signing turns on automatically once the Azure Artifact Signing secrets exist (see README).
+      SIGN: ${{ secrets.AZURE_CLIENT_SECRET != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,18 +30,64 @@ jobs:
       - name: Loudness (BS.1770) test
         run: build\Release\loudness_test.exe
 
-      - name: Upload artifact
+      - name: Sign Spectroscope.exe
+        if: env.SIGN == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\build\Spectroscope_artefacts\Release\Spectroscope.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc /Qp "/DAppVersion=$env:APP_VERSION" installer\Spectroscope.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Sign installer
+        if: env.SIGN == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\dist\SpectroscopeSetup.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Spectroscope-windows-x64
-          path: build/Spectroscope_artefacts/Release/Spectroscope.exe
+          path: |
+            dist/SpectroscopeSetup.exe
+            build/Spectroscope_artefacts/Release/Spectroscope.exe
 
       - name: Publish as the "latest" release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: Latest build
+          name: Latest build (${{ env.APP_VERSION }})
           prerelease: true
           make_latest: false
-          body: "Built from ${{ github.sha }}. Download Spectroscope.exe below."
-          files: build/Spectroscope_artefacts/Release/Spectroscope.exe
+          body: |
+            Version ${{ env.APP_VERSION }}, built from ${{ github.sha }}.
+            **SpectroscopeSetup.exe** installs it with Start menu / desktop shortcuts (no admin rights needed).
+            **Spectroscope.exe** is the same app as a single portable file.
+            Signed: ${{ env.SIGN }}
+          files: |
+            dist/SpectroscopeSetup.exe
+            build/Spectroscope_artefacts/Release/Spectroscope.exe

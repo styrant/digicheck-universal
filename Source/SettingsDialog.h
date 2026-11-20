@@ -26,7 +26,7 @@ private:
     std::function<void (Change)> notify;
 
     juce::ComboBox chan, fft, range, colour, freq, grid, rrange, note;
-    juce::ToggleButton reassign { "On" }, stationary { "On" }, hidePanel { "On" }, showScale { "On" }, showLufs { "On" };
+    juce::ToggleButton reassign { "On" }, stationary { "On" }, hidePanel { "On" }, showScale { "On" }, showLufs { "On" }, autoHideBar { "On" };
     juce::Slider ref, comp, speed;
     juce::Label refUnit { {}, "dB" }, speedUnit { {}, "px/s" }, hint;
     juce::TextButton ok { "OK" }, cancel { "Cancel" };

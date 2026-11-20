@@ -70,9 +70,15 @@ private:
             juce::File out (juce::File::getCurrentWorkingDirectory().getChildFile (path));
             if (auto s = juce::FileOutputStream (out); s.openedOk())
             { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
+            mc->toggleKeyWindow();
             mc->openSettings();
             juce::Timer::callAfterDelay (800, [this, out]
             {
+                for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
+                    if (auto* w = dynamic_cast<juce::DocumentWindow*> (juce::TopLevelWindow::getTopLevelWindow (i)))
+                        if (w->getName() == "Keys" && w->getContentComponent() != nullptr)
+                            if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_keys.png")); s.openedOk())
+                            { s.setPosition (0); s.truncate(); auto* c = w->getContentComponent(); juce::PNGImageFormat().writeImageToStream (c->createComponentSnapshot (c->getLocalBounds()), s); }
                 for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
                     if (auto* dw = dynamic_cast<juce::DialogWindow*> (juce::TopLevelWindow::getTopLevelWindow (i)))
                         if (auto* c = dw->getContentComponent())

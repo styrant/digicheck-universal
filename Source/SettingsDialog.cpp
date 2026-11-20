@@ -68,6 +68,9 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
     toggle (showLufs, s.showLufs, [this] (bool v) { s.showLufs = v; notify (Change::Layout); });
     addRow ("Show LUFS Meter", showLufs);
 
+    toggle (autoHideBar, s.autoHideBar, [this] (bool v) { s.autoHideBar = v; notify (Change::Layout); });
+    addRow ("Auto-hide Toolbar (full screen)", autoHideBar);
+
     hint.setText ("Latency and CPU rise with FFT size and display speed. Turn reassignment off to compare with a plain FFT.",
                   juce::dontSendNotification);
     hint.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.5f));
@@ -77,17 +80,17 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
     ok.onClick = [this] { close(); };
     cancel.onClick = [this]
     {
-        const bool layout = snapshot.showScale != s.showScale || snapshot.showLufs != s.showLufs || snapshot.hidePanel != s.hidePanel;
+        const bool layout = snapshot.showScale != s.showScale || snapshot.showLufs != s.showLufs || snapshot.hidePanel != s.hidePanel || snapshot.autoHideBar != s.autoHideBar;
         s.channel = snapshot.channel; s.reassign = snapshot.reassign; s.fftSize = snapshot.fftSize;
         s.refLevel = snapshot.refLevel; s.range = snapshot.range; s.compExp = snapshot.compExp; s.colour = snapshot.colour;
         s.speed = snapshot.speed; s.freqPreset = snapshot.freqPreset; s.grid = snapshot.grid; s.shortRange = snapshot.shortRange;
-        s.stationary = snapshot.stationary; s.hidePanel = snapshot.hidePanel; s.showScale = snapshot.showScale; s.noteRef = snapshot.noteRef; s.showLufs = snapshot.showLufs;
+        s.stationary = snapshot.stationary; s.hidePanel = snapshot.hidePanel; s.showScale = snapshot.showScale; s.noteRef = snapshot.noteRef; s.showLufs = snapshot.showLufs; s.autoHideBar = snapshot.autoHideBar;
         notify (layout ? Change::Layout : Change::Dsp);
         notify (Change::Visual);
         close();
     };
     addAndMakeVisible (ok); addAndMakeVisible (cancel);
-    setSize (480, 40 + (int) rows.size() * 30 + 90);
+    setSize (510, 40 + (int) rows.size() * 30 + 90);
 }
 
 void SettingsDialog::addRow (const juce::String& label, juce::Component& c, juce::Label* suffix)
@@ -136,7 +139,7 @@ void SettingsDialog::resized()
     for (size_t i = 0; i < rows.size(); ++i)
     {
         auto line = r.removeFromTop (30).reduced (0, 3);
-        labels[(int) i]->setBounds (line.removeFromLeft (170));
+        labels[(int) i]->setBounds (line.removeFromLeft (200));
         auto* c = rows[i].control;
         if (dynamic_cast<juce::Slider*> (c) != nullptr)
         {

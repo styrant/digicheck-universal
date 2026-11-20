@@ -3,7 +3,25 @@
 A native Windows recreation of the Spectroscope (reassigned spectrogram) from RME's DigiCheck NG that works with any audio interface. It was built for a Focusrite Scarlett 16i16 Gen 4.
 
 ## Getting it
-Every push to `main` is built by GitHub Actions. Download `Spectroscope.exe` from the **Latest build** release, or from the run's artifacts. It's a single file with nothing to install. Windows SmartScreen may warn the first time because the file isn't signed; choose **More info → Run anyway**.
+Every push to `main` is built by GitHub Actions and published to the **Latest build** release:
+- **SpectroscopeSetup.exe** installs per user (no admin rights), with a Start menu entry, an optional desktop shortcut and an uninstaller.
+- **Spectroscope.exe** is the same app as a single portable file.
+
+Until code signing is set up (below), Windows SmartScreen warns once when you run a freshly downloaded file: choose **More info → Run anyway**. Files the installer puts on disk don't carry the "downloaded from the internet" mark, so the installed app doesn't warn again.
+
+## Code signing (optional, Azure Artifact Signing)
+The workflow signs the exe and the installer automatically when these repository secrets exist (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `AZURE_TENANT_ID` | Directory (tenant) ID of the app registration |
+| `AZURE_CLIENT_ID` | Application (client) ID of the app registration |
+| `AZURE_CLIENT_SECRET` | A client secret of the app registration |
+| `SIGNING_ENDPOINT` | Your signing account's endpoint, e.g. `https://eus.codesigning.azure.net/` |
+| `SIGNING_ACCOUNT` | Artifact Signing account name |
+| `SIGNING_PROFILE` | Certificate profile name |
+
+Set-up in Azure: create an Artifact Signing account (Basic plan), complete identity validation as an individual, and create a Public Trust certificate profile. Then create an app registration with a client secret and give it the **Artifact Signing Certificate Profile Signer** role on the profile. Signed builds show a verified publisher. SmartScreen reputation still builds up over time, so very new builds may warn for a while.
 
 ## Sources
 | Source | Use it for |
@@ -15,6 +33,11 @@ Every push to `main` is built by GitHub Actions. Download `Spectroscope.exe` fro
 | **Test signal** | A sweep, chord, clicks and tones, for checking the display without an interface. |
 
 **L / R** choose which two channels of the source to analyse. **Channel Select** in Settings then picks left, right, the sum or the difference.
+
+## Toolbar and windows
+- **Full screen**: F11 or the button; Esc leaves. With **Auto-hide** on (button in the bottom strip, or Settings), the top toolbar hides in full screen. Touch the top edge with the mouse to bring it back.
+- **Key** (or K) opens a small always-on-top chart of major keys and their relative minors.
+- **LUFS** shows short-term, integrated (BS.1770 gated) and true-peak values. **Reset** restarts integrated loudness and the true-peak hold.
 
 ## Controls
 - Click or drag on the display: frequency cursor (snaps to notes when Show Note Cursor is on). Double-click or Esc removes it.

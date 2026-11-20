@@ -20,7 +20,8 @@ public:
     void clearCursor();
     void setFullscreenState (bool isFullscreen);
     void setCursorFrequency (double hz) { cursorF = hz; repaint(); }
-    std::function<void()> onToggleFullscreen;
+    std::function<void()> onToggleFullscreen, onToggleKey;
+    void setKeyWindowOpen (bool open) { keyBtn.setToggleState (open, juce::dontSendNotification); }
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -59,6 +60,16 @@ private:
     bool paused = false, running = false;
     std::optional<double> cursorF;
 
-    juce::TextButton pause { "||" }, down { "-" }, up { "+" }, full { "Full screen" }, lufsBtn { "LUFS" }, resetBtn { "Reset" };
-    juce::Label ref, readout, lufs;
+    // Loudness values: small grey caption, large bold value, grey unit
+    struct LufsReadout : public juce::Component
+    {
+        double st = -INFINITY, in = -INFINITY, tp = -INFINITY;
+        bool active = false;
+        void paint (juce::Graphics&) override;
+    };
+
+    juce::TextButton pause { "||" }, down { "-" }, up { "+" }, full { "Full screen" }, autoHide { "Auto-hide" },
+                     lufsBtn { "LUFS" }, keyBtn { "Key" }, resetBtn { "Reset" };
+    juce::Label ref, readout;
+    LufsReadout lufs;
 };

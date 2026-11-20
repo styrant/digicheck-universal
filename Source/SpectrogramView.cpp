@@ -18,12 +18,11 @@ namespace
 
     constexpr int kGutter = 44;        // frequency labels, both sides
     constexpr int kTop = 12;           // keeps the top label (e.g. 20k) fully visible
-    constexpr int kStrip = 38;         // bottom control strip
+    constexpr int kStrip = 40;         // bottom control strip
     constexpr int kStripMin = 12;      // bottom margin when the strip has nothing to show
     constexpr int kScaleW = 58;
     const juce::Colour kFrame (0xff2a2b2e), kFrameLine (0xff3a3c40), kLabel (0xffc8cacd);
 
-    juce::String fmtLoud (double v) { return std::isfinite (v) ? juce::String (v, 1) : juce::String ("--.-"); }
 }
 
 const juce::StringArray& SpectrogramView::colourNames()
@@ -51,7 +50,7 @@ SpectrogramView::SpectrogramView (Settings& st, AudioEngine& e, std::function<vo
 {
     setOpaque (true);
 
-    for (auto* b : { &pause, &down, &up, &full, &lufsBtn, &resetBtn })
+    for (auto* b : { &pause, &down, &up, &full, &autoHide, &lufsBtn, &keyBtn, &resetBtn })
     {
         addAndMakeVisible (b);
         b->setMouseCursor (juce::MouseCursor::NormalCursor);
@@ -62,8 +61,13 @@ SpectrogramView::SpectrogramView (Settings& st, AudioEngine& e, std::function<vo
     up.setTooltip ("Reference level +1 dB (mouse wheel / Up)");
     full.setTooltip ("Full screen (F11, Esc to leave)");
     lufsBtn.setTooltip ("Show or hide the loudness meter");
-    lufsBtn.setClickingTogglesState (true);
-    lufsBtn.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff4c8dff));
+    autoHide.setTooltip ("Hide the top toolbar in full screen; move the mouse to the top edge to show it");
+    keyBtn.setTooltip ("Major keys and their relative minors");
+    for (auto* b : { &lufsBtn, &autoHide, &keyBtn })
+    {
+        b->setClickingTogglesState (true);
+        b->setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff4c8dff));
+    }
     resetBtn.setTooltip ("Restart integrated loudness and true-peak hold");
 
     pause.onClick   = [this] { togglePause(); };
@@ -71,16 +75,16 @@ SpectrogramView::SpectrogramView (Settings& st, AudioEngine& e, std::function<vo
     up.onClick      = [this] { s.refLevel = juce::jmin (0.0, s.refLevel + 1);   notify (Change::Visual); };
     full.onClick    = [this] { if (onToggleFullscreen) onToggleFullscreen(); };
     lufsBtn.onClick = [this] { s.showLufs = lufsBtn.getToggleState(); notify (Change::Layout); };
+    autoHide.onClick = [this] { s.autoHideBar = autoHide.getToggleState(); notify (Change::Layout); };
+    keyBtn.onClick  = [this] { if (onToggleKey) onToggleKey(); };
     resetBtn.onClick = [this] { engine.resetLoudness(); };
 
     ref.setJustificationType (juce::Justification::centred);
     ref.setColour (juce::Label::backgroundColourId, juce::Colour (0xff1e1f22));
     ref.setColour (juce::Label::outlineColourId, juce::Colour (0xff4a4c51));
     readout.setColour (juce::Label::textColourId, kLabel.withAlpha (0.8f));
-    lufs.setJustificationType (juce::Justification::centredRight);
-    lufs.setColour (juce::Label::textColourId, kLabel);
-    lufs.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 13.0f, juce::Font::plain));
-    for (auto* l : { &ref, &readout, &lufs }) { addAndMakeVisible (l); l->setMouseCursor (juce::MouseCursor::NormalCursor); }
+    for (auto* l : { &ref, &readout }) { addAndMakeVisible (l); l->setMouseCursor (juce::MouseCursor::NormalCursor); }
+    addAndMakeVisible (lufs);
 
     buildLut();
     startTimerHz (60);
@@ -144,29 +148,59 @@ void SpectrogramView::resized() { rebuild(); }
 void SpectrogramView::layoutStrip()
 {
     const bool controls = ! s.hidePanel;
-    for (auto* c : std::initializer_list<juce::Component*> { &pause, &ref, &up, &down, &full, &lufsBtn, &readout })
+    for (auto* c : std::initializer_list<juce::Component*> { &pause, &ref, &up, &down, &full, &autoHide, &lufsBtn, &keyBtn, &readout })
         c->setVisible (controls);
     lufs.setVisible (s.showLufs); resetBtn.setVisible (s.showLufs);
     lufsBtn.setToggleState (s.showLufs, juce::dontSendNotification);
+    autoHide.setToggleState (s.autoHideBar, juce::dontSendNotification);
     if (strip.getHeight() < kStrip) return;
 
-    auto r = strip.reduced (kGutter, 6);
+    auto r = strip.reduced (kGutter, 5);
     if (s.showLufs)
     {
-        resetBtn.setBounds (r.removeFromRight (54)); r.removeFromRight (8);
-        lufs.setBounds (r.removeFromRight (juce::jmin (440, r.getWidth() / 2)));
+        resetBtn.setBounds (r.removeFromRight (54).reduced (0, 1)); r.removeFromRight (10);
+        lufs.setBounds (r.removeFromRight (juce::jmin (470, r.getWidth() * 3 / 5)));
+        r.removeFromRight (12);
     }
-    // centre group, like RME's: [||] [Ref: -20 dB] [+] [-]  [Full screen] [LUFS]
-    const int groupW = 34 + 4 + 96 + 4 + 30 + 4 + 30 + 14 + 96 + 4 + 50;
-    auto g = juce::Rectangle<int> (strip.getCentreX() - groupW / 2, r.getY(), groupW, r.getHeight());
-    if (g.getRight() > r.getRight()) g.setX (juce::jmax (r.getX(), r.getRight() - groupW));
-    pause.setBounds (g.removeFromLeft (34)); g.removeFromLeft (4);
-    ref.setBounds (g.removeFromLeft (96));   g.removeFromLeft (4);
-    up.setBounds (g.removeFromLeft (30));    g.removeFromLeft (4);
-    down.setBounds (g.removeFromLeft (30));  g.removeFromLeft (14);
-    full.setBounds (g.removeFromLeft (96));  g.removeFromLeft (4);
-    lufsBtn.setBounds (g.removeFromLeft (50));
-    readout.setBounds (r.withRight (pause.getX() - 8));
+    // [||] [Ref: -20 dB] [+] [-]   [Full screen] [Auto-hide]   [LUFS] [Key]
+    // Centred like RME's when there is room, otherwise left-aligned next to the loudness readout.
+    const int groupW = 34 + 4 + 96 + 4 + 30 + 4 + 30 + 14 + 92 + 4 + 82 + 14 + 50 + 4 + 46;
+    int gx = strip.getCentreX() - groupW / 2;
+    if (gx + groupW > r.getRight()) gx = r.getX();
+    auto g = juce::Rectangle<int> (gx, r.getY(), groupW, r.getHeight()).reduced (0, 1);
+    pause.setBounds (g.removeFromLeft (34));    g.removeFromLeft (4);
+    ref.setBounds (g.removeFromLeft (96));      g.removeFromLeft (4);
+    up.setBounds (g.removeFromLeft (30));       g.removeFromLeft (4);
+    down.setBounds (g.removeFromLeft (30));     g.removeFromLeft (14);
+    full.setBounds (g.removeFromLeft (92));     g.removeFromLeft (4);
+    autoHide.setBounds (g.removeFromLeft (82)); g.removeFromLeft (14);
+    lufsBtn.setBounds (g.removeFromLeft (50));  g.removeFromLeft (4);
+    keyBtn.setBounds (g.removeFromLeft (46));
+    readout.setBounds (gx > r.getX() + 120 ? r.withRight (gx - 8) : juce::Rectangle<int>());
+}
+
+void SpectrogramView::LufsReadout::paint (juce::Graphics& g)
+{
+    // Each box: small grey caption on top, large bold white value with a grey unit beneath it
+    struct Item { const char* caption; double v; const char* unit; };
+    const Item items[] = { { "SHORT-TERM", st, "LUFS" }, { "INTEGRATED", in, "LUFS" }, { "TRUE PEAK", tp, "dBTP" } };
+    const int w = getWidth() / 3, h = getHeight();
+    const auto mono = juce::Font::getDefaultMonospacedFontName();
+    for (int i = 0; i < 3; ++i)
+    {
+        auto r = juce::Rectangle<int> (i * w, 0, w, h).reduced (3, 0);
+        g.setColour (juce::Colour (0xff1e1f22)); g.fillRoundedRectangle (r.toFloat(), 4.0f);
+        r = r.reduced (8, 1);
+        g.setColour (kLabel.withAlpha (0.55f)); g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+        g.drawText (items[i].caption, r.removeFromTop (11), juce::Justification::centredLeft);
+        g.setFont (juce::FontOptions (11.0f));
+        g.drawText (items[i].unit, r.removeFromRight (30), juce::Justification::bottomRight);
+        const bool has = active && std::isfinite (items[i].v);
+        g.setColour (has ? juce::Colours::white : kLabel.withAlpha (0.35f));
+        g.setFont (juce::FontOptions (mono, 18.0f, juce::Font::bold));
+        g.drawText (has ? juce::String (items[i].v, 1) : juce::String ("--.-"), r.withTrimmedRight (4).translated (0, 1),
+                    juce::Justification::centredRight);
+    }
 }
 
 void SpectrogramView::rebuild()
@@ -237,10 +271,9 @@ void SpectrogramView::repaintAll()
 void SpectrogramView::updateLufs()
 {
     if (! s.showLufs) return;
-    if (! running) { lufs.setText ("Short-Term --.- LUFS   Integrated --.- LUFS   True Peak --.- dBTP", juce::dontSendNotification); return; }
-    lufs.setText ("Short-Term " + fmtLoud (engine.getShortTermLufs()) + " LUFS   Integrated "
-                  + fmtLoud (engine.getIntegratedLufs()) + " LUFS   True Peak " + fmtLoud (engine.getTruePeakDb()) + " dBTP",
-                  juce::dontSendNotification);
+    lufs.active = running;
+    lufs.st = engine.getShortTermLufs(); lufs.in = engine.getIntegratedLufs(); lufs.tp = engine.getTruePeakDb();
+    lufs.repaint();
 }
 
 void SpectrogramView::timerCallback()

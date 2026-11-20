@@ -22,7 +22,9 @@ endif()
 
 juce_add_gui_app(Spectroscope
     PRODUCT_NAME "Spectroscope"
-    COMPANY_NAME "DigiCheck Universal")
+    COMPANY_NAME "DigiCheck Universal"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png")
 
 juce_generate_juce_header(Spectroscope)
 
