@@ -1,3 +1,5 @@
+#include <cstdio>
+#include <cstdlib>
 #include "SpectrogramView.h"
 #include "FrameClock.h"
 
@@ -194,7 +196,7 @@ void SpectrogramView::rebuild()
 void SpectrogramView::sendConfig (bool clearHistory)
 {
     Reassigner::Config c;
-    c.fftSize = s.fftSize; c.pixelsPerSecond = s.speed; c.rows = H;
+    c.fftSize = s.fftSize; c.pixelsPerSecond = (effSpeed = effectiveSpeedFor (refreshHz)); c.rows = H;
     std::tie (c.fmin, c.fmax) = s.freqRange();
     c.reassign = s.reassign; c.shortRange = s.shortRange; c.channel = s.channel;
     c.floorDb = s.refLevel - s.range - 20;
@@ -268,6 +270,31 @@ void SpectrogramView::commitColumn (const float* col, std::optional<juce::Image:
     writeCol = (writeCol + 1) % W;
 }
 
+double SpectrogramView::effectiveSpeedFor (double refresh) const
+{
+    const double k = std::round (s.speed / refresh);
+    if (k >= 1.0 && std::abs (k * refresh - s.speed) <= 0.2 * s.speed) return k * refresh;
+    return s.speed;          // too far from a whole number of pixels per frame: keep the speed, steps vary by 1 px
+}
+
+void SpectrogramView::updateRefresh (double dt)
+{
+    // median vblank interval over 120 frames; a new rate is taken only when two windows in a row agree
+    if (dt <= 0.002 || dt > 0.1) return;
+    vblankDts.push_back (dt);
+    if (vblankDts.size() < 120) return;
+    std::nth_element (vblankDts.begin(), vblankDts.begin() + 60, vblankDts.end());
+    const double hz = 1.0 / vblankDts[60];
+    vblankDts.clear();
+    const bool agrees = std::abs (hz - lastHz) < 0.005 * hz;
+    lastHz = hz;
+    if (! agrees || std::abs (hz - refreshHz) < 0.005 * refreshHz) return;
+    refreshHz = hz;
+    const double e = effectiveSpeedFor (refreshHz);
+    if (std::abs (e - effSpeed) > 0.001 * effSpeed && running) sendConfig (false);   // re-time the DSP; picture kept
+    else effSpeed = e;
+}
+
 void SpectrogramView::onVBlank (double t)
 {
     const double dt = lastVBlank > 0 ? juce::jlimit (0.0, 0.1, t - lastVBlank) : 1.0 / 60.0;
@@ -284,20 +311,26 @@ void SpectrogramView::onVBlank (double t)
             ++pendCount;
         });
 
-    // 2. release columns at the display speed, nudged gently to keep ~30 ms buffered
-    const double rate = s.speed;
-    const double target = rate * 0.03 + 2.0;
-    if (pendCount > target * 4 + rate * 0.25)                 // far behind (e.g. after a stall): catch up
+    // 2. release a whole number of columns per frame, at the (snapped) display speed
+    updateRefresh (dt);
+    const int frames = juce::jlimit (1, 6, juce::roundToInt (dt * refreshHz));   // vblanks since the last call
+    const double perFrame = effSpeed / refreshHz;
+    const double target = perFrame * 2 + effSpeed * 0.02 + 1.0;                 // ~20 ms + 2 frames buffered
+    if (pendCount > target * 4 + effSpeed * 0.25)                               // far behind (after a stall): catch up
     {
         const int drop = pendCount - (int) target;
         pendHead = (pendHead + drop) % pendCap; pendCount -= drop;
     }
-    const double corr = juce::jlimit (0.85, 1.2, 1.0 + (pendCount - target) / (4.0 * target));
-    credit += rate * dt * corr;
-    int n = juce::jmin ((int) credit, pendCount);
+    credit += perFrame * frames;
+    int n = (int) std::floor (credit + 1.0e-6);
     credit -= n;
-    if (pendCount - n == 0) credit = juce::jmin (credit, 0.999);   // don't build up credit while starved
+    // keep the buffer near its target with an occasional one-column nudge (the DSP's hop is rounded)
+    if (pendCount - n > target + juce::jmax (2.0, perFrame * 2)) ++n;
+    else if (n > 0 && pendCount - n < 0.5 && perFrame >= 1.0 && pendCount > 0) --n;
+    if (n > pendCount) { n = pendCount; credit = juce::jmin (credit, 0.999); }   // starved: don't build up credit
 
+    static const bool paceLog = std::getenv ("SPECTROSCOPE_PACE_LOG") != nullptr;
+    if (paceLog) std::fprintf (stderr, "PACE %.4f %d %d %.3f %.1f %.2f\n", dt, n, pendCount, credit, effSpeed, refreshHz);
     std::optional<juce::Image::BitmapData> bd;
     {
         const juce::ScopedLock sl (glLock);
@@ -307,7 +340,7 @@ void SpectrogramView::onVBlank (double t)
             pendHead = (pendHead + 1) % pendCap; --pendCount;
         }
         // sub-pixel scroll: how far the next (already buffered) column has moved in
-        glScroll = writeCol + (pendCount > 0 && ! s.stationary ? credit : 0.0);
+        glScroll = writeCol;      // whole pixels only: sub-pixel offsets make thin lines shimmer
     }
     if (bd.has_value()) needsRepaint = true;
     bd.reset();
@@ -538,10 +571,10 @@ void SpectrogramView::paint (juce::Graphics& g)
             g.drawText (lbl, 0, ty, ui::px (kGutter) - 6, lh, juce::Justification::centredRight);
             g.drawText (lbl, plot.getRight() + 6, ty, ui::px (kGutter) - 6, lh, juce::Justification::centredLeft);
         }
-    if (vGrid && s.speed > 0)
-        for (int sec = 1; sec * s.speed < W; ++sec)
+    if (vGrid && effSpeed > 0)
+        for (int sec = 1; sec * effSpeed < W; ++sec)
         {
-            const int x = plot.getX() + juce::roundToInt (s.stationary ? sec * s.speed : W - sec * s.speed);
+            const int x = plot.getX() + juce::roundToInt (s.stationary ? sec * effSpeed : W - sec * effSpeed);
             g.setColour (juce::Colours::white.withAlpha (0.12f)); g.drawVerticalLine (x, (float) plot.getY(), (float) plot.getBottom());
             g.setColour (juce::Colours::white.withAlpha (0.45f)); g.setFont (juce::FontOptions (ui::fs (11.0f)));
             g.drawText ((s.stationary ? "" : "-") + juce::String (sec) + " s", x + 3, plot.getY() + 3, 50, 12, juce::Justification::left);

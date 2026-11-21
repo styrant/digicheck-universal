@@ -88,6 +88,13 @@ private:
     std::vector<float> pend;
     int pendCap = 0, pendHead = 0, pendCount = 0;
     double lastVBlank = 0, credit = 0;
+    // Smooth scrolling: the picture moves a whole number of pixels per monitor frame (sub-pixel
+    // offsets made thin lines shimmer). The scroll speed is snapped to k pixels per frame when that
+    // is within 20% of the chosen speed, so every frame moves by the same amount.
+    double effSpeed = 300.0, refreshHz = 60.0, lastHz = 0.0;
+    std::vector<double> vblankDts;
+    double effectiveSpeedFor (double refresh) const;
+    void updateRefresh (double dt);
     bool needsRepaint = false;
 
     // shared with the GL render thread (guarded by glLock)

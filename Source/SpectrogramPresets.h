@@ -33,22 +33,8 @@ namespace specpresets
               "The startup view: full range, balanced resolution" },
             { "Bass focus (20 Hz - 1 kHz)",            true, 16384, -20.0,  60.0,  0.0, 3,  200.0, 4,   3,  false,
               "Kick, bass and sub detail with a fine frequency grid" },
-            { "Low end & mix body (20 Hz - 2 kHz)",    true,  8192, -20.0,  60.0,  0.0, 0,  250.0, 3,   3,  true,
-              "Bass, low mids and fundamentals" },
-            { "Vocals & melody (20 Hz - 5 kHz)",       true,  4096, -24.0,  60.0,  0.2, 4,  300.0, 2,   1,  true,
-              "Fundamentals and the first harmonics of voices and instruments" },
-            { "Hi-hats & air (1 - 20 kHz)",            true,  1024, -26.0,  60.0,  0.3, 2,  600.0, 8,   1,  true,
-              "Cymbals, sibilance and the top end, with fast time resolution" },
-            { "Drums & transients",                    true,  1024, -20.0,  50.0,  0.0, 0,  800.0, 0,   1,  true,
-              "Very fast scrolling and short windows for sharp attacks" },
-            { "Mastering overview",                    true,  8192, -18.0,  80.0,  0.0, 1,  100.0, 0,   1,  true,
-              "Slow scroll over a whole song, wide dynamic range" },
-            { "Noise floor & quiet detail",            true,  4096, -40.0, 100.0,  0.5, 5,  300.0, 0,   1,  false,
-              "Reveals hiss, hum, reverb tails and low-level artefacts" },
             { "High contrast",                         true,  4096, -20.0,  40.0, -0.4, 0,  300.0, 0,   0,  true,
               "Only the strongest components stand out" },
-            { "Plain FFT (no reassignment)",          false,  4096, -20.0,  60.0,  0.0, 0,  300.0, 0,   1,  true,
-              "A conventional spectrogram, for comparison" },
         };
         return p;
     }
