@@ -24,6 +24,20 @@ bool KeyFinder::canReadFile (const juce::File& f) const
     return f.existsAsFile() && formats.findFormatForFileExtension (f.getFileExtension()) != nullptr;
 }
 
+void KeyFinder::reset()
+{
+    resetRequest = true;                          // the key thread also drops its frames and session sum
+    const juce::SpinLock::ScopedLockType sl (resultLock);
+    const bool ok = result.modelOk; const auto err = result.error;
+    result = {}; result.modelOk = ok; result.error = err;
+}
+
+void KeyFinder::clearFile()
+{
+    fileJob.reset();
+    setFileResult ({});
+}
+
 KeyFinder::FileResult KeyFinder::getFileResult() const
 {
     const juce::SpinLock::ScopedLockType sl (resultLock);

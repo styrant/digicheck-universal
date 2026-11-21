@@ -78,7 +78,13 @@ namespace
             browse.setTooltip ("Analyse an audio file");
             browse.onClick = [this] { browseForFile(); };
             reset.setTooltip ("Start the session estimate again");
-            reset.onClick = [this] { finder.reset(); };
+            reset.onClick = [this]
+            {
+                if (mode == File) { finder.clearFile(); mode = Idle; }     // back to the drop zone
+                else finder.reset();                                        // clears the live results now
+                updateButtons();
+                timerCallback();
+            };
             for (auto* b : { &record, &browse, &reset }) addAndMakeVisible (b);
             updateButtons();
             setSize (ui::px (kLeftW) + chart.getWidth(), ui::px (500));
@@ -327,7 +333,8 @@ namespace
             record.setButtonText (rec ? "Stop" : juce::String::fromUTF8 ("\xe2\x97\x8f  Record"));
             record.setColour (juce::TextButton::buttonColourId, rec ? kRed.withAlpha (0.85f) : juce::Colour (0xff2a2d33));
             record.setColour (juce::TextButton::textColourOffId, rec ? juce::Colours::white : kRed.brighter (0.3f));
-            reset.setVisible (mode == Live);
+            reset.setVisible (mode != Idle);
+            reset.setTooltip (mode == File ? "Clear the file result" : "Start the live estimate again");
         }
 
         void timerCallback() override
@@ -384,7 +391,13 @@ namespace
             resizeToFit();
         }
 
-        void resizeToFit() { setSize (ui::px (250) + ui::px (kColW) * ((int) s.tempoTriplets + (int) s.tempoDotted), ui::px (kTableTop) + 9 * ui::px (kRow) + ui::px (44)); }
+        void resizeToFit()
+        {
+            // wide enough for the BPM row (caption, value box, Tap) and for the table columns
+            const int topRow = 16 + ui::px (44) + ui::px (150) + 8 + ui::px (56) + 16;
+            const int table = ui::px (250) + ui::px (kColW) * ((int) s.tempoTriplets + (int) s.tempoDotted);
+            setSize (juce::jmax (topRow, table), ui::px (kTableTop) + 9 * ui::px (kRow) + ui::px (44));
+        }
 
         void resized() override
         {

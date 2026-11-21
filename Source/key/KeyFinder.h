@@ -21,7 +21,8 @@ public:
     // analysis runs only while active (the Key window is open)
     void setActive (bool a);
     bool isActive() const noexcept { return active.load(); }
-    void reset() { resetRequest = true; }
+    void reset();                                   // clears the live results (works while stopped too)
+    void clearFile();
 
     // DSP thread
     void push (const float* left, const float* right, int n, double sampleRate) noexcept;
