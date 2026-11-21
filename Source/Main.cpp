@@ -62,6 +62,7 @@ private:
         auto* mc = window->content;
         auto& st = mc->getSettings();
         st.grid = 1; st.showScale = false; st.showLufs = true; st.hidePanel = false;
+        if (! juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_GPU", {}).isNotEmpty()) { st.gpu = false; mc->applyRendererForTest(); }
         mc->getSettings().noteRef = 440;
         mc->startSourceByKey ("test");
         juce::Timer::callAfterDelay (4000, [mc] { mc->setCursorForTest (440.0); });

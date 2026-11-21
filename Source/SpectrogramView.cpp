@@ -49,7 +49,46 @@ SpectrogramView::SpectrogramView (Settings& st, AudioEngine& e, std::function<vo
 {
     setOpaque (true);
     buildLut();
-    startTimerHz (60);
+}
+
+//==============================================================================
+// Renderer selection and FPS
+void SpectrogramView::setGpuMode (bool useGpu)
+{
+    if (gpu == useGpu) return;
+    gpu = useGpu;
+    setOpaque (! gpu);                      // GPU: the plot is left transparent so the GL texture shows through
+    {
+        const juce::ScopedLock sl (glLock);
+        fullDirty = true;
+    }
+    repaintAll();
+    updateGlArea();
+    repaint();
+}
+
+double SpectrogramView::measureFps()
+{
+    const double now = juce::Time::getMillisecondCounterHiRes() * 0.001;
+    const int n = frames.exchange (0);
+    const double dt = now - fpsLastTime;
+    fpsLastTime = now;
+    return dt > 0 && dt < 10 ? n / dt : 0.0;
+}
+
+void SpectrogramView::updateGlArea()
+{
+    const juce::ScopedLock sl (glLock);
+    glArea = plot.toFloat() + getPosition().toFloat();      // the owner (OpenGL context component) is our parent
+    glVisible = isVisible() && gpu;
+    glStationary = s.stationary;
+}
+
+juce::uint32 SpectrogramView::rgbaFor (float db) const noexcept
+{
+    if (std::isnan (db)) return 0xffffffffu;
+    const auto& p = lut[(size_t) lutIndex (db)];
+    return (juce::uint32) p.getRed() | ((juce::uint32) p.getGreen() << 8) | ((juce::uint32) p.getBlue() << 16) | 0xff000000u;
 }
 
 void SpectrogramView::togglePause()
@@ -124,6 +163,13 @@ void SpectrogramView::rebuild()
     H = juce::jlimit (1, AudioEngine::kMaxRows, juce::roundToInt (plot.getHeight() * scale));
     img = juce::Image (juce::Image::ARGB, W, H, true, juce::SoftwareImageType());
     hist.assign ((size_t) W * (size_t) H, -std::numeric_limits<float>::infinity());
+    pendCap = 512; pendHead = pendCount = 0;
+    pend.assign ((size_t) pendCap * (size_t) H, 0.0f);
+    {
+        const juce::ScopedLock sl (glLock);
+        gpix.assign ((size_t) W * (size_t) H, 0xff000000u);
+        dirtyCols.clear(); fullDirty = true; glW = W; glH = H; glScroll = 0;
+    }
 
     int keep = 0;
     if (old.size() == (size_t) oldW * (size_t) oldH && oldW > 1 && oldH > 1)
@@ -139,6 +185,7 @@ void SpectrogramView::rebuild()
     }
     sendConfig (keep == 0);
     if (keep > 0) { writeCol = keep % W; repaintAll(); }
+    updateGlArea();
     repaint();
 }
 
@@ -153,7 +200,10 @@ void SpectrogramView::sendConfig (bool clearHistory)
     if (! clearHistory) return;
     std::fill (hist.begin(), hist.end(), -std::numeric_limits<float>::infinity());
     img.clear (img.getBounds(), juce::Colours::black);
-    writeCol = 0;
+    writeCol = 0; pendHead = pendCount = 0; credit = 0;
+    const juce::ScopedLock sl (glLock);
+    std::fill (gpix.begin(), gpix.end(), 0xff000000u);
+    fullDirty = true; glScroll = 0;
 }
 
 void SpectrogramView::settingsChanged (Change c)
@@ -161,7 +211,7 @@ void SpectrogramView::settingsChanged (Change c)
     switch (c)
     {
         case Change::Visual:  engine.setFloorDb (s.refLevel - s.range - 20); buildLut(); repaintAll(); break;
-        case Change::Overlay: break;
+        case Change::Overlay: updateGlArea(); break;
         case Change::Layout:  rebuild(); break;
         case Change::Dsp:     sendConfig(); break;
         case Change::Bar:     break;
@@ -170,10 +220,17 @@ void SpectrogramView::settingsChanged (Change c)
 }
 
 void SpectrogramView::sourceStarted() { running = true; sendConfig(); repaint(); }
-void SpectrogramView::sourceStopped() { running = false; repaint(); }
+void SpectrogramView::sourceStopped() { running = false; pendHead = pendCount = 0; repaint(); }
 
 void SpectrogramView::repaintAll()
 {
+    if (gpu)
+    {
+        const juce::ScopedLock sl (glLock);
+        for (size_t i = 0; i < hist.size() && i < gpix.size(); ++i) gpix[i] = rgbaFor (hist[i]);
+        fullDirty = true;
+        return;
+    }
     juce::Image::BitmapData bd (img, juce::Image::BitmapData::writeOnly);
     for (int x = 0; x < W; ++x)
     {
@@ -187,28 +244,183 @@ void SpectrogramView::repaintAll()
     }
 }
 
-void SpectrogramView::timerCallback()
+void SpectrogramView::commitColumn (const float* col, std::optional<juce::Image::BitmapData>& bd)
 {
-    if (running)
+    std::copy (col, col + H, hist.data() + (size_t) writeCol * (size_t) H);
+    if (gpu)
     {
-        std::optional<juce::Image::BitmapData> bd;
-        const int got = engine.popColumns ([&] (const float* col, int rows)
-        {
-            if (paused || rows != H) return;
-            if (! bd) bd.emplace (img, juce::Image::BitmapData::writeOnly);
-            std::copy (col, col + H, hist.data() + (size_t) writeCol * (size_t) H);
-            for (int j = 0; j < H; ++j)
-            {
-                auto* p = reinterpret_cast<juce::PixelARGB*> (bd->getPixelPointer (writeCol, H - 1 - j));
-                const float v = col[j];
-                *p = std::isnan (v) ? juce::PixelARGB (255, 255, 255, 255) : lut[(size_t) lutIndex (v)];
-            }
-            writeCol = (writeCol + 1) % W;
-        });
-        bd.reset();
-        if (got > 0) repaint (plot);
+        auto* dst = gpix.data() + (size_t) writeCol * (size_t) H;      // caller holds glLock
+        for (int j = 0; j < H; ++j) dst[j] = rgbaFor (col[j]);
+        dirtyCols.push_back (writeCol);
     }
-    if (++tick % 6 == 0 && cursorF) repaint (plot);    // keep the cursor's level readout current
+    else
+    {
+        if (! bd) bd.emplace (img, juce::Image::BitmapData::writeOnly);
+        for (int j = 0; j < H; ++j)
+        {
+            auto* p = reinterpret_cast<juce::PixelARGB*> (bd->getPixelPointer (writeCol, H - 1 - j));
+            const float v = col[j];
+            *p = std::isnan (v) ? juce::PixelARGB (255, 255, 255, 255) : lut[(size_t) lutIndex (v)];
+        }
+    }
+    writeCol = (writeCol + 1) % W;
+}
+
+void SpectrogramView::onVBlank (double t)
+{
+    const double dt = lastVBlank > 0 ? juce::jlimit (0.0, 0.1, t - lastVBlank) : 1.0 / 60.0;
+    lastVBlank = t;
+
+    // 1. take everything the DSP thread has produced into the jitter buffer
+    if (running)
+        engine.popColumns ([&] (const float* col, int rows)
+        {
+            if (paused || rows != H || pendCap == 0) return;
+            if (pendCount == pendCap) { pendHead = (pendHead + 1) % pendCap; --pendCount; }   // overflow: drop oldest
+            const int slot = (pendHead + pendCount) % pendCap;
+            std::copy (col, col + H, pend.data() + (size_t) slot * (size_t) H);
+            ++pendCount;
+        });
+
+    // 2. release columns at the display speed, nudged gently to keep ~30 ms buffered
+    const double rate = s.speed;
+    const double target = rate * 0.03 + 2.0;
+    if (pendCount > target * 4 + rate * 0.25)                 // far behind (e.g. after a stall): catch up
+    {
+        const int drop = pendCount - (int) target;
+        pendHead = (pendHead + drop) % pendCap; pendCount -= drop;
+    }
+    const double corr = juce::jlimit (0.85, 1.2, 1.0 + (pendCount - target) / (4.0 * target));
+    credit += rate * dt * corr;
+    int n = juce::jmin ((int) credit, pendCount);
+    credit -= n;
+    if (pendCount - n == 0) credit = juce::jmin (credit, 0.999);   // don't build up credit while starved
+
+    std::optional<juce::Image::BitmapData> bd;
+    {
+        const juce::ScopedLock sl (glLock);
+        for (; n > 0; --n)
+        {
+            commitColumn (pend.data() + (size_t) pendHead * (size_t) H, bd);
+            pendHead = (pendHead + 1) % pendCap; --pendCount;
+            if (! gpu) ++tick;
+        }
+        // sub-pixel scroll: how far the next (already buffered) column has moved in
+        glScroll = writeCol + (pendCount > 0 && ! s.stationary ? credit : 0.0);
+    }
+    const bool changed = bd.has_value() || (gpu && running);
+    bd.reset();
+
+    if (! gpu && changed) { repaint (plot); }
+    else if (gpu && s.stationary && running) repaint (plot);   // moving write line
+    if (++tick % 6 == 0 && cursorF) repaint (plot);             // keep the cursor's level readout current
+}
+
+//==============================================================================
+// OpenGL renderer (render thread)
+void SpectrogramView::glInit()
+{
+    using namespace juce::gl;
+    auto* ctx = juce::OpenGLContext::getCurrentContext();
+    if (ctx == nullptr) return;
+
+    const juce::String vs = R"(
+        attribute vec2 position;
+        attribute vec2 uv;
+        varying vec2 vUv;
+        void main() { vUv = uv; gl_Position = vec4 (position, 0.0, 1.0); })";
+    const juce::String fs = R"(
+        varying vec2 vUv;
+        uniform sampler2D tex;
+        void main() { gl_FragColor = texture2D (tex, vec2 (vUv.y, vUv.x)); })";   // texture: x = frequency, y = time
+
+    shader = std::make_unique<juce::OpenGLShaderProgram> (*ctx);
+    if (! shader->addVertexShader (juce::OpenGLHelpers::translateVertexShaderToV3 (vs))
+        || ! shader->addFragmentShader (juce::OpenGLHelpers::translateFragmentShaderToV3 (fs))
+        || ! shader->link())
+    {
+        DBG ("Spectrogram shader failed: " << shader->getLastError());
+        shader.reset();
+        return;
+    }
+    glGenTextures (1, &texId);
+    glGenBuffers (1, &vbo);
+    glGenVertexArrays (1, &vao);
+    texW = texH = 0;
+    const juce::ScopedLock sl (glLock);
+    fullDirty = true;
+}
+
+void SpectrogramView::glRelease()
+{
+    using namespace juce::gl;
+    if (texId != 0) glDeleteTextures (1, &texId);
+    if (vbo != 0)   glDeleteBuffers (1, &vbo);
+    if (vao != 0)   glDeleteVertexArrays (1, &vao);
+    texId = vbo = vao = 0;
+    shader.reset();
+}
+
+void SpectrogramView::glRender (float ownerW, float ownerH)
+{
+    using namespace juce::gl;
+    if (shader == nullptr || texId == 0 || ownerW <= 0 || ownerH <= 0) return;
+
+    juce::Rectangle<float> area;
+    double scroll; bool stationary; int w, h;
+    glBindTexture (GL_TEXTURE_2D, texId);
+    {
+        const juce::ScopedLock sl (glLock);
+        if (! glVisible) { glBindTexture (GL_TEXTURE_2D, 0); return; }
+        area = glArea; scroll = glScroll; stationary = glStationary; w = glW; h = glH;
+        glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
+        if (fullDirty || texW != h || texH != w)
+        {
+            // texture is (frequency x time): one texture row per display column, uploaded as-is
+            glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, h, w, 0, GL_RGBA, GL_UNSIGNED_BYTE, gpix.data());
+            glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            texW = h; texH = w;
+            fullDirty = false;
+        }
+        else
+            for (int x : dirtyCols)                               // only the new columns
+                if (x >= 0 && x < w)
+                    glTexSubImage2D (GL_TEXTURE_2D, 0, 0, x, h, 1, GL_RGBA, GL_UNSIGNED_BYTE, gpix.data() + (size_t) x * (size_t) h);
+        dirtyCols.clear();
+    }
+
+    // time coordinate: scrolling shows the newest column at the right edge; stationary shows 0..1
+    const float tRight = stationary ? 1.0f : (float) ((scroll - 0.5) / w);
+    const float tLeft  = stationary ? 0.0f : tRight - 1.0f;
+    auto nx = [&] (float x) { return x / ownerW * 2.0f - 1.0f; };
+    auto ny = [&] (float y) { return 1.0f - y / ownerH * 2.0f; };
+    const float x0 = nx (area.getX()), x1 = nx (area.getRight()), y0 = ny (area.getBottom()), y1 = ny (area.getY());
+    const float verts[] = { x0, y0, tLeft, 0.0f,   x1, y0, tRight, 0.0f,   x0, y1, tLeft, 1.0f,   x1, y1, tRight, 1.0f };
+
+    glBindVertexArray (vao);
+    glBindBuffer (GL_ARRAY_BUFFER, vbo);
+    glBufferData (GL_ARRAY_BUFFER, sizeof (verts), verts, GL_STREAM_DRAW);
+    shader->use();
+    shader->setUniform ("tex", 0);
+    const auto pos = (GLuint) glGetAttribLocation (shader->getProgramID(), "position");
+    const auto uv  = (GLuint) glGetAttribLocation (shader->getProgramID(), "uv");
+    glEnableVertexAttribArray (pos);
+    glVertexAttribPointer (pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof (float), nullptr);
+    glEnableVertexAttribArray (uv);
+    glVertexAttribPointer (uv, 2, GL_FLOAT, GL_FALSE, 4 * sizeof (float), (void*) (2 * sizeof (float)));
+    glActiveTexture (GL_TEXTURE0);
+    glBindTexture (GL_TEXTURE_2D, texId);
+    glDisable (GL_BLEND);
+    glDrawArrays (GL_TRIANGLE_STRIP, 0, 4);
+    glDisableVertexAttribArray (pos);
+    glDisableVertexAttribArray (uv);
+    glBindBuffer (GL_ARRAY_BUFFER, 0);
+    glBindVertexArray (0);
+    glBindTexture (GL_TEXTURE_2D, 0);
+    frames.fetch_add (1);
 }
 
 juce::String SpectrogramView::cursorText() const
@@ -264,11 +476,23 @@ void SpectrogramView::mouseWheelMove (const juce::MouseEvent&, const juce::Mouse
 //==============================================================================
 void SpectrogramView::paint (juce::Graphics& g)
 {
-    g.fillAll (kFrame);
-    g.setColour (juce::Colours::black); g.fillRect (plot);
+    if (gpu)
+    {
+        // the GL texture is drawn underneath: paint only the frame around the plot
+        juce::Graphics::ScopedSaveState ss (g);
+        g.excludeClipRegion (plot);
+        g.fillAll (kFrame);
+    }
+    else
+    {
+        g.fillAll (kFrame);
+        g.setColour (juce::Colours::black); g.fillRect (plot);
+        frames.fetch_add (running ? 1 : 0);
+    }
     g.setColour (kFrameLine); g.drawRect (plot.expanded (1));
 
-    // spectrogram image
+    // spectrogram image (CPU renderer)
+    if (! gpu)
     {
         juce::Graphics::ScopedSaveState ss (g);
         g.reduceClipRegion (plot);

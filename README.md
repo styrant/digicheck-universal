@@ -45,6 +45,12 @@ Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**)
   - Keys: F freeze, R reset meters, 0 full range.
   - It only runs while its view is visible, and its settings are saved with the app's.
 
+## Rendering
+- The display is synced to the monitor's refresh rate (60/120/144 Hz…). New spectrogram columns pass through a ~30 ms buffer and are released at exactly the display speed, so the scroll is even on every frame.
+- **GPU Rendering (OpenGL)** is on by default (Settings → GPU Rendering). The spectrogram history is an OpenGL texture: each frame uploads only the new columns and scrolls with sub-pixel precision. The rest of the interface, including the Analyzer, is drawn on the GPU too.
+- Turn it off to use the CPU renderer, e.g. if your graphics driver has OpenGL problems.
+- The status bar shows the renderer and the measured frame rate, e.g. `GPU 144 fps`.
+
 ## Toolbar and windows
 - **Full screen**: F11 or the small button at the bottom right; Esc leaves. With **Auto-hide** on (button in the bottom strip, or Settings), the top toolbar hides in full screen. Touch the top edge with the mouse to bring it back.
 - **Key** (or K) opens a small always-on-top chart of major keys and their relative minors.

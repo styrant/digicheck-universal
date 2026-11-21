@@ -71,6 +71,9 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
     toggle (autoHideBar, s.autoHideBar, [this] (bool v) { s.autoHideBar = v; notify (Change::Bar); });
     addRow ("Auto-hide Toolbar (full screen)", autoHideBar);
 
+    toggle (gpuToggle, s.gpu, [this] (bool v) { s.gpu = v; notify (Change::Bar); });
+    addRow ("GPU Rendering (OpenGL)", gpuToggle);
+
     hint.setText ("Latency and CPU rise with FFT size and display speed. Turn reassignment off to compare with a plain FFT.",
                   juce::dontSendNotification);
     hint.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.5f));
@@ -87,7 +90,7 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
         s.refLevel = snapshot.refLevel; s.range = snapshot.range; s.compExp = snapshot.compExp; s.colour = snapshot.colour;
         s.speed = snapshot.speed; s.freqPreset = snapshot.freqPreset; s.grid = snapshot.grid; s.shortRange = snapshot.shortRange;
         s.stationary = snapshot.stationary; s.hidePanel = snapshot.hidePanel; s.showScale = snapshot.showScale; s.noteRef = snapshot.noteRef;
-        s.showLufs = snapshot.showLufs; s.autoHideBar = snapshot.autoHideBar;
+        s.showLufs = snapshot.showLufs; s.autoHideBar = snapshot.autoHideBar; s.gpu = snapshot.gpu;
         if (dsp) notify (Change::Dsp);
         if (layout) notify (Change::Layout);
         notify (Change::Visual);

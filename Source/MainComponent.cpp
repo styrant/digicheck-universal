@@ -248,6 +248,14 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     analyzerPanel.onStateChanged();
     setView (settings.viewMode);
 
+    // GPU rendering: one OpenGL context for the whole window. The spectrogram draws its texture in
+    // renderOpenGL(); every component (including the analyzer) is then painted on top by the GPU.
+    glContext.setRenderer (this);
+    glContext.setComponentPaintingEnabled (true);
+    glContext.setContinuousRepainting (true);          // render every vblank
+    glContext.setPreferredVersion ({ 3, 2 });
+    applyRenderer();
+
     rescan();
     setSize (1300, 760);
     startTimerHz (20);
@@ -260,6 +268,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
 
 MainComponent::~MainComponent()
 {
+    glContext.detach();
     saveAll();
     engine.stop();
     engine.setAnalyzer (nullptr);
@@ -269,6 +278,31 @@ void MainComponent::saveAll()
 {
     settings.analyzerState = analyzerProc.saveStateXml();
     settings.save (props);
+}
+
+void MainComponent::applyRenderer()
+{
+    if (settings.gpu && ! glContext.isAttached())
+    {
+        view.setGpuMode (true);
+        glContext.attachTo (*this);
+    }
+    else if (! settings.gpu && glContext.isAttached())
+    {
+        glContext.detach();
+        view.setGpuMode (false);
+        repaint();
+    }
+}
+
+void MainComponent::newOpenGLContextCreated() { view.glInit(); }
+void MainComponent::openGLContextClosing()    { view.glRelease(); }
+
+void MainComponent::renderOpenGL()
+{
+    using namespace juce::gl;
+    juce::OpenGLHelpers::clear (juce::Colour (0xff0b0c0e));
+    view.glRender (ownerW.load(), ownerH.load());
 }
 
 void MainComponent::setView (int v)
@@ -363,7 +397,7 @@ void MainComponent::onChange (Change c)
     saveAll();
     view.settingsChanged (c);
     bottom.refresh();
-    if (c == Change::Bar) resized();          // auto-hide toolbar may have changed (the spectrogram keeps its history)
+    if (c == Change::Bar) { applyRenderer(); resized(); }   // toolbar / renderer changes (the spectrogram keeps its history)
 }
 
 void MainComponent::openSettings()
@@ -441,6 +475,9 @@ void MainComponent::timerCallback()
 
 void MainComponent::updateStatus()
 {
+    const double fps = view.measureFps();          // measured every status update (twice a second)
+    const juce::String render = (glContext.isAttached() ? "GPU" : "CPU")
+        + (settings.viewMode == BottomBar::Spectrogram && engine.isRunning() ? " " + juce::String (juce::roundToInt (fps)) + " fps" : juce::String());
     if (error.isNotEmpty()) { status.setText ("Could not start: " + error, juce::dontSendNotification); return; }
     if (! engine.isRunning()) { status.setText ("Stopped", juce::dontSendNotification); return; }
     const auto& src = engine.getCurrentSource();
@@ -450,17 +487,18 @@ void MainComponent::updateStatus()
     status.setText (kind + "  |  " + juce::String (engine.getSampleRate() / 1000.0, 1) + " kHz  |  "
                     + juce::String (engine.getChannelNames().size()) + " ch  |  latency "
                     + juce::String (juce::roundToInt (engine.getLatencySeconds() * 1000)) + " ms  |  DSP "
-                    + juce::String (juce::roundToInt (engine.getLoad() * 100)) + "%",
+                    + juce::String (juce::roundToInt (engine.getLoad() * 100)) + "%  |  " + render,
                     juce::dontSendNotification);
 }
 
 void MainComponent::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff0b0c0e));
+    if (! glContext.isAttached()) g.fillAll (juce::Colour (0xff0b0c0e));   // GPU: children cover everything
 }
 
 void MainComponent::resized()
 {
+    ownerW = (float) getWidth(); ownerH = (float) getHeight();
     auto r = getLocalBounds();
     bottom.setBounds (r.removeFromBottom (BottomBar::kHeight));
     if (barAutoHidden())

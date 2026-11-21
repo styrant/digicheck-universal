@@ -6,7 +6,7 @@
 #include "BottomBar.h"
 #include "AnalyzerPanel.h"
 
-class MainComponent : public juce::Component, private juce::Timer
+class MainComponent : public juce::Component, private juce::Timer, private juce::OpenGLRenderer
 {
 public:
     explicit MainComponent (juce::PropertiesFile& props);
@@ -23,6 +23,7 @@ public:
     void toggleTempoWindow();
     void setCursorForTest (double hz) { view.setCursorFrequency (hz); }
     void setView (int viewMode);
+    void applyRendererForTest() { applyRenderer(); }
     Settings& getSettings() { return settings; }
 
 private:
@@ -53,6 +54,13 @@ private:
     std::unique_ptr<juce::DocumentWindow> keyWindow, tempoWindow;
 
     void saveAll();
+    void applyRenderer();
+    void newOpenGLContextCreated() override;
+    void renderOpenGL() override;
+    void openGLContextClosing() override;
+
+    juce::OpenGLContext glContext;
+    std::atomic<float> ownerW { 1.0f }, ownerH { 1.0f };
 
     juce::PropertiesFile& props;
     Settings settings;
