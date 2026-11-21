@@ -35,7 +35,7 @@ Set-up in Azure: create an Artifact Signing account (Basic plan), complete ident
 **L / R** choose which two channels of the source to analyse. **Channel Select** in Settings then picks left, right, the sum or the difference.
 
 ## Views
-Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**). The bottom bar stays the same in both views: the LUFS readout, Key, Reset, Auto-hide and Full screen are always there. The controls in the middle change with the view.
+Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**). The bottom bar stays the same in both views: Options, the LUFS readout, Key, Tempo, Reset and Full screen are always there. The controls in the middle change with the view.
 
 - **Spectrogram:** the reassigned spectrogram described below.
 - **Analyzer:** [Spectrum Analyzer 2](Source/analyzer/LICENSE), a constant-Q filter-bank analyzer (Seven Phases, MIT licence).
