@@ -272,6 +272,8 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     bottom.onFullRange       = [this] { analyzerPanel.getView().resetZoom(); };
     bottom.onFreeze          = [this] { analyzerPanel.getView().toggleFreeze(); };
     bottom.onAnalyzerSettings = [this] { analyzerPanel.toggleSettings(); };
+    bottom.onSpectrogramPresets = [this] (juce::Component& a) { showSpectrogramPresets (a); };
+    bottom.onAnalyzerPresets    = [this] (juce::Component& a) { showAnalyzerPresets (a); };
     analyzerPanel.onStateChanged = [this] { bottom.setAnalyzerState (analyzerPanel.getView().isFrozen(), analyzerPanel.getView().isZoomed()); };
     analyzerPanel.onStateChanged();
     setView (settings.viewMode);
@@ -656,9 +658,191 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
     }
     if (k.getTextCharacter() == 'k' || k.getTextCharacter() == 'K') { toggleKeyWindow(); return true; }
     if (k.getTextCharacter() == 't' || k.getTextCharacter() == 'T') { toggleTempoWindow(); return true; }
+    if (k.getTextCharacter() == 'p' || k.getTextCharacter() == 'P')
+    {
+        if (! settings.hidePanel) bottom.clickPresets (ana);
+        return true;
+    }
     if (k.getTextCharacter() == 's' || k.getTextCharacter() == 'S') { if (ana) analyzerPanel.toggleSettings(); else openSettings(); return true; }
     if (ana) return false;
     if (k == juce::KeyPress::upKey)             { settings.refLevel = juce::jmin (0.0, settings.refLevel + 1);   onChange (Change::Visual); return true; }
     if (k == juce::KeyPress::downKey)           { settings.refLevel = juce::jmax (-80.0, settings.refLevel - 1); onChange (Change::Visual); return true; }
     return false;
+}
+
+//==============================================================================
+// Presets (bottom bar "Presets" buttons)
+
+void MainComponent::askPresetName (const juce::String& title, std::function<void (const juce::String&)> done)
+{
+    auto* w = new juce::AlertWindow (title, "Name for the preset:", juce::MessageBoxIconType::NoIcon, this);
+    w->addTextEditor ("name", {}, {});
+    w->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([w, done] (int r)
+    {
+        const auto name = w->getTextEditorContents ("name").trim();
+        if (r == 1 && name.isNotEmpty()) done (name);
+    }), true);
+    if (auto* ed = w->getTextEditor ("name")) ed->grabKeyboardFocus();
+}
+
+void MainComponent::showSpectrogramPresets (juce::Component& anchor)
+{
+    const auto& builtIn = specpresets::builtIn();
+    auto user = specpresets::loadUser (props);
+
+    juce::PopupMenu m, del;
+    m.addSectionHeader ("Views");
+    for (size_t i = 0; i < builtIn.size(); ++i)
+    {
+        juce::PopupMenu::Item it (builtIn[i].name);
+        it.itemID = 1 + (int) i;
+        it.isTicked = specpresets::matches (builtIn[i], settings);
+        m.addItem (it);
+    }
+    if (! user.empty())
+    {
+        m.addSectionHeader ("My presets");
+        for (size_t i = 0; i < user.size(); ++i)
+        {
+            m.addItem (1000 + (int) i, user[i].name, true, specpresets::matches (user[i], settings));
+            del.addItem (2000 + (int) i, user[i].name);
+        }
+    }
+    m.addSeparator();
+    m.addItem (3000, "Save current view as preset...");
+    if (! user.empty()) m.addSubMenu ("Delete preset", del);
+
+    juce::Component::SafePointer<MainComponent> safe (this);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&anchor).withPreferredPopupDirection (juce::PopupMenu::Options::PopupDirection::upwards),
+                     [safe, user] (int id) mutable
+    {
+        auto* self = safe.getComponent();
+        if (self == nullptr || id == 0) return;
+        auto applyPreset = [self] (const specpresets::Preset& p)
+        {
+            specpresets::apply (p, self->settings);
+            self->onChange (Change::Dsp);
+            self->onChange (Change::Overlay);
+            self->onChange (Change::Visual);
+        };
+        const auto& b = specpresets::builtIn();
+        if (id >= 1 && id <= (int) b.size()) applyPreset (b[(size_t) id - 1]);
+        else if (id >= 1000 && id < 1000 + (int) user.size()) applyPreset (user[(size_t) id - 1000]);
+        else if (id >= 2000 && id < 2000 + (int) user.size())
+        {
+            user.erase (user.begin() + (id - 2000));
+            specpresets::saveUser (self->props, user);
+        }
+        else if (id == 3000)
+            self->askPresetName ("Save spectrogram preset", [safe] (const juce::String& name)
+            {
+                auto* me = safe.getComponent();
+                if (me == nullptr) return;
+                auto list = specpresets::loadUser (me->props);
+                auto p = specpresets::fromSettings (me->settings, name);
+                auto it = std::find_if (list.begin(), list.end(), [&] (auto& x) { return x.name == name; });
+                if (it != list.end()) *it = p; else list.push_back (p);   // same name replaces
+                specpresets::saveUser (me->props, list);
+            });
+    });
+}
+
+namespace
+{
+    // analyzer user presets: full analyzer state (settings and colours) under "analyzerPresets"
+    std::vector<std::pair<juce::String, juce::String>> loadAnalyzerPresets (juce::PropertiesFile& props)
+    {
+        std::vector<std::pair<juce::String, juce::String>> out;
+        if (auto xml = props.getXmlValue ("analyzerPresets"))
+            for (auto* e : xml->getChildIterator())
+                if (e->getStringAttribute ("name").isNotEmpty())
+                    out.emplace_back (e->getStringAttribute ("name"), e->getStringAttribute ("state"));
+        return out;
+    }
+    void saveAnalyzerPresets (juce::PropertiesFile& props, const std::vector<std::pair<juce::String, juce::String>>& list)
+    {
+        juce::XmlElement root ("Presets");
+        for (auto& p : list)
+        {
+            auto* e = root.createNewChildElement ("Preset");
+            e->setAttribute ("name", p.first);
+            e->setAttribute ("state", p.second);
+        }
+        props.setValue ("analyzerPresets", &root);
+        props.saveIfNeeded();
+    }
+}
+
+void MainComponent::importAnalyzerPreset()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Import Spectrum Analyzer v1.x preset",
+                                                   juce::File::getSpecialLocation (juce::File::userDocumentsDirectory), "*.fxp;*.fxb");
+    juce::Component::SafePointer<MainComponent> safe (this);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [safe] (const juce::FileChooser& fc)
+    {
+        auto* self = safe.getComponent();
+        if (self == nullptr || fc.getResult() == juce::File()) return;
+        juce::String importError;
+        if (! self->analyzerProc.importLegacyFile (fc.getResult(), importError))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Import failed", importError);
+        self->analyzerPanel.refreshSettings();
+        self->saveAll();
+    });
+}
+
+void MainComponent::showAnalyzerPresets (juce::Component& anchor)
+{
+    auto user = loadAnalyzerPresets (props);
+    juce::PopupMenu m, del;
+    m.addSectionHeader ("Factory presets");
+    for (int i = 0; i < analyzerProc.getNumPrograms(); ++i)
+        m.addItem (1 + i, analyzerProc.getProgramName (i));
+    if (! user.empty())
+    {
+        m.addSectionHeader ("My presets");
+        for (size_t i = 0; i < user.size(); ++i)
+        {
+            m.addItem (1000 + (int) i, user[i].first);
+            del.addItem (2000 + (int) i, user[i].first);
+        }
+    }
+    m.addSeparator();
+    m.addItem (3000, "Save current settings as preset...");
+    if (! user.empty()) m.addSubMenu ("Delete preset", del);
+    m.addItem (3001, "Import v1.x preset (.fxp / .fxb)...");
+
+    juce::Component::SafePointer<MainComponent> safe (this);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&anchor).withPreferredPopupDirection (juce::PopupMenu::Options::PopupDirection::upwards),
+                     [safe, user] (int id) mutable
+    {
+        auto* self = safe.getComponent();
+        if (self == nullptr || id == 0) return;
+        if (id >= 1 && id <= self->analyzerProc.getNumPrograms()) self->analyzerProc.setCurrentProgram (id - 1);
+        else if (id >= 1000 && id < 1000 + (int) user.size()) self->analyzerProc.restoreStateXml (user[(size_t) id - 1000].second);
+        else if (id >= 2000 && id < 2000 + (int) user.size())
+        {
+            user.erase (user.begin() + (id - 2000));
+            saveAnalyzerPresets (self->props, user);
+            return;
+        }
+        else if (id == 3000)
+        {
+            self->askPresetName ("Save analyzer preset", [safe] (const juce::String& name)
+            {
+                auto* me = safe.getComponent();
+                if (me == nullptr) return;
+                auto list = loadAnalyzerPresets (me->props);
+                const auto state = me->analyzerProc.saveStateXml();
+                auto it = std::find_if (list.begin(), list.end(), [&] (auto& x) { return x.first == name; });
+                if (it != list.end()) it->second = state; else list.emplace_back (name, state);
+                saveAnalyzerPresets (me->props, list);
+            });
+            return;
+        }
+        else if (id == 3001) { self->importAnalyzerPreset(); return; }
+        self->analyzerPanel.refreshSettings();
+        self->saveAll();
+    });
 }

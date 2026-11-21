@@ -33,6 +33,7 @@ public:
     }
 
     AnalyzerView& getView() noexcept { return view; }
+    void refreshSettings() { if (settings.isVisible()) settings.refresh(); view.repaint(); }
     std::function<void()> onStateChanged;      // freeze / zoom changed
 
     void resized() override

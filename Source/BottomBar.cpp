@@ -17,7 +17,7 @@ namespace
 
 BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& proc) : s (st), engine (e)
 {
-    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &lufsBtn, &keyBtn, &tempoBtn, &pause, &refDown, &refUp, &specSettings,
+    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &lufsBtn, &keyBtn, &tempoBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
                      &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &full })
     {
         addAndMakeVisible (b);
@@ -45,6 +45,10 @@ BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& p
     tempoBtn.setTooltip ("BPM to milliseconds calculator (T)");
     tempoBtn.onClick = [this] { if (onToggleTempo) onToggleTempo(); };
 
+    specPresets.setTooltip ("Spectrogram presets: built-in views and your own (P)");
+    anaPresets.setTooltip ("Analyzer presets (P)");
+    specPresets.onClick = [this] { if (onSpectrogramPresets) onSpectrogramPresets (specPresets); };
+    anaPresets.onClick  = [this] { if (onAnalyzerPresets) onAnalyzerPresets (anaPresets); };
     pause.setTooltip ("Pause (Space)");
     refDown.setTooltip ("Reference level -1 dB (mouse wheel / Down)");
     refUp.setTooltip ("Reference level +1 dB (mouse wheel / Up)");
@@ -164,25 +168,30 @@ void BottomBar::resized()
         small (resetBtn, ui::px (44));
         r.removeFromRight (ui::px (4));
         // leave the middle controls their minimum width; the loudness boxes shrink first
-        const int minGroup = spec ? ui::px (34 + 4 + 96 + 4 + 30 + 4 + 30) : ui::px (28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
-        const int lufsW = juce::jlimit (ui::px (240), ui::px (450), juce::jmin (r.getWidth() / 2, r.getWidth() - minGroup - ui::px (16)));
+        // the analyzer's combo boxes get room only if the loudness boxes can stay comfortably wide
+        const int compact = spec ? ui::px (66 + 6 + 34 + 4 + 96 + 4 + 30 + 4 + 30) : ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
+        const int withCombos = compact + ui::px (64 + 4 + 122 + 4 + 84 + 10);
+        auto lufsFor = [&] (int group) { return juce::jmin (ui::px (450), juce::jmin (r.getWidth() / 2, r.getWidth() - group - ui::px (16))); };
+        const int minGroup = (! spec && lufsFor (withCombos) >= ui::px (330)) ? withCombos : compact;
+        const int lufsW = juce::jmax (ui::px (240), lufsFor (minGroup));
         lufs.setBounds (r.removeFromRight (lufsW).expanded (0, 2));
         r.removeFromRight (ui::px (12));
     }
 
     // centre: controls for the current view (dropping the least important ones if space is short)
-    for (auto* c : std::initializer_list<juce::Component*> { &pause, &ref, &refDown, &refUp, &specSettings })
+    for (auto* c : std::initializer_list<juce::Component*> { &specPresets, &pause, &ref, &refDown, &refUp, &specSettings })
         c->setVisible (spec && controls);
-    for (auto* c : std::initializer_list<juce::Component*> { &bpoBox, &chanBox, &gridBox, &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings })
+    for (auto* c : std::initializer_list<juce::Component*> { &anaPresets, &bpoBox, &chanBox, &gridBox, &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings })
         c->setVisible (! spec && controls);
     if (! controls) return;
 
     if (spec)
     {
-        const bool roomForSettings = r.getWidth() >= ui::px (34 + 4 + 96 + 4 + 30 + 4 + 30 + 10 + 72);
+        const bool roomForSettings = r.getWidth() >= ui::px (66 + 6 + 34 + 4 + 96 + 4 + 30 + 4 + 30 + 10 + 72);
         specSettings.setVisible (roomForSettings);
-        const int w = juce::jmin (r.getWidth(), ui::px (34 + 4 + 96 + 4 + 30 + 4 + 30 + (roomForSettings ? 10 + 72 : 0)));
+        const int w = juce::jmin (r.getWidth(), ui::px (66 + 6 + 34 + 4 + 96 + 4 + 30 + 4 + 30 + (roomForSettings ? 10 + 72 : 0)));
         auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
+        specPresets.setBounds (g.removeFromLeft (ui::px (66))); g.removeFromLeft (ui::px (6));
         pause.setBounds (g.removeFromLeft (ui::px (34))); g.removeFromLeft (ui::px (4));
         ref.setBounds (g.removeFromLeft (ui::px (96)));   g.removeFromLeft (ui::px (4));
         refUp.setBounds (g.removeFromLeft (ui::px (30))); g.removeFromLeft (ui::px (4));
@@ -191,11 +200,12 @@ void BottomBar::resized()
         return;
     }
 
-    const bool roomForCombos = r.getWidth() >= ui::px (680);
+    const bool roomForCombos = r.getWidth() >= ui::px (66 + 6 + 64 + 4 + 122 + 4 + 84 + 10 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
     for (auto* c : { &bpoBox, &chanBox, &gridBox }) c->setVisible (roomForCombos);
-    const int wButtons = ui::px (28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
+    const int wButtons = ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
     const int w = wButtons + (roomForCombos ? ui::px (64 + 4 + 122 + 4 + 84 + 10) : 0);
     auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
+    anaPresets.setBounds (g.removeFromLeft (ui::px (66))); g.removeFromLeft (ui::px (6));
     if (roomForCombos)
     {
         bpoBox.setBounds (g.removeFromLeft (ui::px (64)));  g.removeFromLeft (ui::px (4));

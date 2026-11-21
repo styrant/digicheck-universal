@@ -135,29 +135,7 @@ public:
             addRow (nullptr, sw);
         }
 
-        header ("Presets");
-        for (int i = 0; i < processor.getNumPrograms(); ++i)
-            presets.addItem (processor.getProgramName (i), i + 1);
-        presets.setTextWhenNothingSelected ("Factory presets...");
-        presets.onChange = [this]
-        {
-            const int i = presets.getSelectedItemIndex();
-            if (i >= 0) processor.setCurrentProgram (i);
-            presets.setSelectedId (0, juce::dontSendNotification);
-        };
-        addRow (makeLabel ("Load"), &presets);
-
-        importButton.onClick = [this] { importLegacy(); };
-        addRow (nullptr, &importButton);
-        saveDefault.onClick = [this]
-        {
-            processor.saveCurrentAsDefault();
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Spectrum Analyzer",
-                                                    "Current settings will be used for new instances.");
-        };
-        addRow (nullptr, &saveDefault);
-        clearDefault.onClick = [this] { processor.forgetUserDefault(); };
-        addRow (nullptr, &clearDefault);
+        // Presets (factory, import, default) are in the bottom bar's Presets button.
 
         help.setText ("Mouse: wheel = zoom, drag = pan, shift+drag = zoom to selection, "
                       "ctrl/cmd+wheel = ceiling, alt+wheel = range, double-click = reset meters, "
@@ -270,24 +248,6 @@ private:
         addRow (nullptr, b);
     }
 
-    void importLegacy()
-    {
-        chooser = std::make_unique<juce::FileChooser> ("Import Spectrum Analyzer v1.x preset",
-                                                       juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
-                                                       "*.fxp;*.fxb");
-        juce::Component::SafePointer<Content> safe (this);
-        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [safe] (const juce::FileChooser& fc)
-        {
-            auto* self = safe.getComponent();
-            if (self == nullptr || fc.getResult() == juce::File()) return;
-            juce::String error;
-            if (! self->processor.importLegacyFile (fc.getResult(), error))
-                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Import failed", error);
-            self->refresh();
-        });
-    }
-
     SettingsPanel& owner;
     SpectrumAnalyzerProcessor& processor;
     APVTS& state;
@@ -304,12 +264,8 @@ private:
 
     juce::ToggleButton inspector;
     juce::TextButton fullRange { "Show full frequency range" };
-    juce::ComboBox schemes, presets;
-    juce::TextButton importButton { "Import v1.x preset (.fxp / .fxb)..." };
-    juce::TextButton saveDefault  { "Save current settings as default" };
-    juce::TextButton clearDefault { "Restore factory default for new instances" };
+    juce::ComboBox schemes;
     juce::Label help;
-    std::unique_ptr<juce::FileChooser> chooser;
 };
 
 //==============================================================================

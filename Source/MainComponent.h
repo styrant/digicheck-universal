@@ -7,6 +7,7 @@
 #include "BottomBar.h"
 #include "AnalyzerPanel.h"
 #include "FrameClock.h"
+#include "SpectrogramPresets.h"
 
 class MainComponent : public juce::Component, private juce::Timer, private juce::OpenGLRenderer
 {
@@ -46,6 +47,11 @@ private:
     void setOptionsVisible (bool);
     void layoutOptions();
     void onFrame (double vblankTime);
+    void showSpectrogramPresets (juce::Component& anchor);
+    void showAnalyzerPresets (juce::Component& anchor);
+    void askPresetName (const juce::String& title, std::function<void (const juce::String&)> done);
+    void importAnalyzerPreset();
+    std::unique_ptr<juce::FileChooser> chooser;
 
     // "Options" pop-up above the bottom bar: audio input (source, channels, start/stop) and display
     // (GPU rendering, frame-rate limit). Replaces the old top toolbar.
