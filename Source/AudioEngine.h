@@ -4,6 +4,7 @@
 #include "LoopbackCapture.h"
 #include "LoudnessMeter.h"
 #include "analyzer/PluginProcessor.h"
+#include "key/KeyFinder.h"
 #include <atomic>
 #include <thread>
 
@@ -42,6 +43,7 @@ public:
     void setChannels (int left, int right)        { if (left != chL || right != chR) loudReset = true; chL = left; chR = right; }
     void resetLoudness()                          { loudReset = true; }
     void setAnalyzer (SpectrumAnalyzerProcessor* p) { analyzer = p; }   // fed from the DSP thread
+    void setKeyFinder (KeyFinder* k)              { keyFinder = k; }  // fed from the DSP thread (while active)
     // The spectrogram's (expensive) analysis only runs while its view is showing
     void setSpectrogramActive (bool a)            { if (a && ! specActive.load()) specResume = true; specActive = a; }
     double getShortTermLufs() const noexcept      { return lufsS.load(); }
@@ -103,6 +105,7 @@ private:
     std::vector<int> colGen, colRows;
 
     SpectrumAnalyzerProcessor* analyzer = nullptr;
+    KeyFinder* keyFinder = nullptr;
     std::atomic<bool> specActive { true }, specResume { false };
     LoudnessMeter loud;
     std::atomic<bool> loudReset { true };

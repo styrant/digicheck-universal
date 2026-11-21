@@ -40,7 +40,21 @@ target_sources(Spectroscope PRIVATE
     Source/BottomBar.cpp
     Source/analyzer/PluginProcessor.cpp
     Source/analyzer/ui/AnalyzerView.cpp
-    Source/analyzer/ui/SettingsPanel.cpp)
+    Source/analyzer/ui/SettingsPanel.cpp
+    Source/key/KeyNet.cpp
+    Source/key/KeyCqt.cpp
+    Source/key/KeyFinder.cpp)
+
+# Key finder model (OpenKeyScan KeyNet, MIT; exported by tools/export_keynet.py)
+juce_add_binary_data(SpectroscopeData SOURCES Resources/keynet.bin)
+target_link_libraries(Spectroscope PRIVATE SpectroscopeData)
+
+# the network's matrix maths is the only hot loop that benefits from AVX2 / FMA
+if(MSVC)
+    set_source_files_properties(Source/key/KeyNet.cpp PROPERTIES COMPILE_OPTIONS "/O2;/arch:AVX2;/fp:fast")
+else()
+    set_source_files_properties(Source/key/KeyNet.cpp PROPERTIES COMPILE_OPTIONS "-O3;-mavx2;-mfma")
+endif()
 
 target_compile_definitions(Spectroscope PRIVATE
     JUCE_WEB_BROWSER=0
@@ -70,3 +84,4 @@ endif()
 add_executable(dsp_test tests/dsp_test.cpp Source/Reassigner.cpp)
 add_executable(loudness_test tests/loudness_test.cpp Source/LoudnessMeter.cpp)
 add_executable(analyzer_dsp_test tests/analyzer_dsp_test.cpp)   # Spectrum Analyzer 2's own DSP tests
+add_executable(key_test tests/key_test.cpp Source/key/KeyNet.cpp Source/key/KeyCqt.cpp)   # key finder vs PyTorch / librosa

@@ -33,6 +33,9 @@ jobs:
       - name: Spectrum analyzer DSP test
         run: build\Release\analyzer_dsp_test.exe
 
+      - name: Key finder test (vs PyTorch / librosa)
+        run: build\Release\key_test.exe Resources\keynet.bin tests\data
+
       - name: Sign Spectroscope.exe
         if: env.SIGN == 'true'
         uses: azure/artifact-signing-action@v2

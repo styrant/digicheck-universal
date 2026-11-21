@@ -93,6 +93,7 @@ private:
     juce::PropertiesFile& props;
     Settings settings;
     SpectrumAnalyzerProcessor analyzerProc;   // declared before the engine: it must outlive the DSP thread
+    KeyFinder keyFinder;                      // likewise fed from the DSP thread
     AudioEngine engine;
     SpectrogramView view;
     AnalyzerPanel analyzerPanel { analyzerProc };
