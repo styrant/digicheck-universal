@@ -38,6 +38,19 @@ public:
     };
     Result getResult() const;
 
+    // ---- audio files: the whole file, like the original OpenKeyScan analyzer
+    struct FileResult
+    {
+        enum State { None, Working, Done, Failed } state = None;
+        juce::String name, error;
+        double progress = 0, seconds = 0;
+        std::array<float, 24> probs {};
+    };
+    void analyzeFile (const juce::File& f);
+    FileResult getFileResult() const;
+    juce::String getFileWildcard() const;
+    bool canReadFile (const juce::File& f) const;
+
     static constexpr int kWindowFrames = 100;      // 20 s, as in training
     static constexpr int kMinFrames = 25;          // first result after 5 s
     static constexpr int kStepFrames = 15;         // a new estimate every 3 s
@@ -62,5 +75,20 @@ private:
 
     mutable juce::SpinLock resultLock;
     Result result;
+
+    class FileJob : public juce::Thread
+    {
+    public:
+        explicit FileJob (KeyFinder& o) : juce::Thread ("Key file analysis"), owner (o) {}
+        ~FileJob() override { stopThread (8000); }
+        juce::File file;
+    private:
+        void run() override;
+        KeyFinder& owner;
+    };
+    juce::AudioFormatManager formats;
+    std::unique_ptr<FileJob> fileJob;
+    FileResult fileResult;
+    void setFileResult (const FileResult& r) { const juce::SpinLock::ScopedLockType sl (resultLock); fileResult = r; }
 };
 

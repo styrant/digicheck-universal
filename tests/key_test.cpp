@@ -121,6 +121,12 @@ int main (int argc, char** argv)
             std::snprintf (msg, sizeof msg, "%5.1f kHz %-8s CQT mean %.3f max %.3f, predicted %s (python: %s)", sr / 1000, KeyNet::keyName (cls).c_str(),
                            sum / cnt, mx, KeyNet::keyName (am).c_str(), KeyNet::keyName (cls).c_str());
             check (sum / cnt < 0.03 && mx < 0.25 && am == cls, msg);
+            if (sr == 48000.0)
+            {
+                const auto zl = net.runLong (spec.data(), 105, (int) T - 2, 60, nullptr);   // forced into 2 chunks
+                int al = 0; for (int i = 1; i < 24; ++i) if (zl[(size_t) i] > zl[(size_t) al]) al = i;
+                check (al == cls, "         chunked whole-file inference agrees");
+            }
         }
     }
     std::printf (fails ? "%d FAILED\n" : "all passed\n", fails);

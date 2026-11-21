@@ -17,6 +17,7 @@ public:
     // Appends samples; calls onFrame (const float* log1pMagnitudes[kBins], float rmsDb) for each finished frame.
     template <typename Fn> void process (const float* x, int n, Fn&& onFrame);
     double getSampleRate() const noexcept { return sr; }
+    int flushSamples() const noexcept { return maxHalfAfter; }   // zeros to append at the end of a file (= librosa's padding)
 
 private:
     struct Kernel { std::vector<float> re, im; int half = 0; float scale = 1; };

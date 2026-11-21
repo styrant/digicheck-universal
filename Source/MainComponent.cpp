@@ -64,120 +64,224 @@ namespace
     };
 
     //==========================================================================
-    // Key finder: live estimate of the input's key (OpenKeyScan network), next to the key chart.
-    class KeyFinderPanel : public juce::Component, private juce::Timer
+    // Key finder: the key of the live input (Record) or of an audio file (Browse / drag & drop),
+    // next to the key chart.
+    class KeyFinderPanel : public juce::Component, public juce::FileDragAndDropTarget, private juce::Timer
     {
     public:
         KeyFinderPanel (KeyFinder& k, AudioEngine& e) : finder (k), engine (e)
         {
             addAndMakeVisible (chart);
+            record.setClickingTogglesState (false);
+            record.setTooltip ("Analyse the live input");
+            record.onClick = [this] { setRecording (! finder.isActive()); };
+            browse.setTooltip ("Analyse an audio file");
+            browse.onClick = [this] { browseForFile(); };
             reset.setTooltip ("Start the session estimate again");
             reset.onClick = [this] { finder.reset(); };
-            addAndMakeVisible (reset);
-            setSize (ui::px (kLeftW) + chart.getWidth(), chart.getHeight());
+            for (auto* b : { &record, &browse, &reset }) addAndMakeVisible (b);
+            updateButtons();
+            setSize (ui::px (kLeftW) + chart.getWidth(), ui::px (500));
             startTimerHz (4);
             timerCallback();
+        }
+
+        ~KeyFinderPanel() override { finder.setActive (false); }
+
+        void setRecording (bool on)
+        {
+            if (on) { finder.reset(); mode = Live; }
+            finder.setActive (on);
+            updateButtons();
+            repaint();
         }
 
         void resized() override
         {
             chart.setBounds (getLocalBounds().removeFromRight (chart.getWidth()));
+            auto top = juce::Rectangle<int> (ui::px (20), 14, ui::px (kLeftW) - ui::px (40), ui::px (30));
+            record.setBounds (top.removeFromLeft (ui::px (110)));
+            top.removeFromLeft (ui::px (8));
+            browse.setBounds (top.removeFromLeft (ui::px (100)));
             reset.setBounds (ui::px (20), getHeight() - ui::px (44), ui::px (110), ui::px (28));
+        }
+
+        // ---- drag & drop
+        bool isInterestedInFileDrag (const juce::StringArray& files) override
+        {
+            for (auto& f : files) if (finder.canReadFile (juce::File (f))) return true;
+            return false;
+        }
+        void fileDragEnter (const juce::StringArray&, int, int) override { dragOver = true; repaint(); }
+        void fileDragExit (const juce::StringArray&) override { dragOver = false; repaint(); }
+        void filesDropped (const juce::StringArray& files, int, int) override
+        {
+            dragOver = false;
+            for (auto& f : files)
+                if (finder.canReadFile (juce::File (f))) { analyse (juce::File (f)); break; }
+            repaint();
         }
 
         void paint (juce::Graphics& g) override
         {
             g.fillAll (juce::Colour (0xff1b1d22));
-            auto r = juce::Rectangle<int> (0, 0, ui::px (kLeftW), getHeight()).reduced (ui::px (20), 14);
             g.setColour (juce::Colour (0xff3a3c40)); g.drawVerticalLine (ui::px (kLeftW), 14.0f, (float) getHeight() - 14.0f);
+            auto r = juce::Rectangle<int> (0, 0, ui::px (kLeftW), getHeight()).reduced (ui::px (20), 14).withTrimmedTop (ui::px (46));
 
-            auto caption = [&] (juce::Rectangle<int> area, const juce::String& text, const juce::String& right = {})
-            {
-                g.setColour (juce::Colours::white.withAlpha (0.55f)); g.setFont (juce::FontOptions (ui::fs (12.0f), juce::Font::bold));
-                g.drawText (text, area, juce::Justification::centredLeft);
-                if (right.isNotEmpty())
-                {
-                    g.setColour (juce::Colours::white.withAlpha (0.4f)); g.setFont (juce::FontOptions (ui::fs (11.5f)));
-                    g.drawText (right, area, juce::Justification::centredRight);
-                }
-            };
-            auto bar = [&] (juce::Rectangle<int> area, float p, juce::Colour c)
-            {
-                g.setColour (juce::Colours::white.withAlpha (0.07f)); g.fillRoundedRectangle (area.toFloat(), 3.0f);
-                g.setColour (c); g.fillRoundedRectangle (area.toFloat().withWidth (juce::jmax (4.0f, area.getWidth() * p)), 3.0f);
-            };
-            auto tags = [] (int cls) { return juce::String (KeyNet::camelot (cls)) + "   " + KeyNet::openKey (cls); };
+            if (mode == Idle)        paintIdle (g, r);
+            else if (mode == Live)   paintLive (g, r);
+            else                     paintFile (g, r);
 
-            // ---- now
-            caption (r.removeFromTop (ui::px (22)), "NOW", res.nowValid ? "last " + juce::String (juce::roundToInt (res.windowSeconds)) + " s" : juce::String());
-            const int now = res.nowValid ? best (res.now, 0) : -1;
-            if (now >= 0)
+            if (dragOver)
             {
-                g.setColour (juce::Colour (0xff3ddc84)); g.setFont (juce::FontOptions (ui::fs (34.0f), juce::Font::bold));
-                g.drawText (KeyNet::keyName (now), r.removeFromTop (ui::px (44)), juce::Justification::centredLeft);
-                auto line = r.removeFromTop (ui::px (24));
-                g.setColour (juce::Colours::white); g.setFont (juce::FontOptions (ui::fs (17.0f), juce::Font::bold));
-                g.drawText (tags (now), line, juce::Justification::centredLeft);
-                g.setColour (juce::Colours::white.withAlpha (0.7f)); g.setFont (juce::FontOptions (ui::fs (14.0f)));
-                g.drawText (juce::String (juce::roundToInt (res.now[(size_t) now] * 100)) + "%", line, juce::Justification::centredRight);
-                r.removeFromTop (4);
-                bar (r.removeFromTop (ui::px (8)), res.now[(size_t) now], juce::Colour (0xff3ddc84));
-                r.removeFromTop (ui::px (12));
-                caption (r.removeFromTop (ui::px (20)), "ALSO LIKELY");
-                for (int rank = 1; rank <= 2; ++rank)
-                {
-                    const int c = best (res.now, rank);
-                    auto l = r.removeFromTop (ui::px (24));
-                    g.setColour (juce::Colours::white.withAlpha (0.85f)); g.setFont (juce::FontOptions (ui::fs (14.5f)));
-                    g.drawText (KeyNet::keyName (c) + "  (" + KeyNet::camelot (c) + ")", l.removeFromLeft (ui::px (170)), juce::Justification::centredLeft);
-                    g.setColour (juce::Colours::white.withAlpha (0.6f)); g.setFont (juce::FontOptions (ui::fs (13.0f)));
-                    g.drawText (juce::String (juce::roundToInt (res.now[(size_t) c] * 100)) + "%", l.removeFromRight (ui::px (40)), juce::Justification::centredRight);
-                    bar (l.reduced (4, l.getHeight() / 2 - 3), res.now[(size_t) c], juce::Colour (0xff8a93a6));
-                }
+                g.setColour (kGreen.withAlpha (0.10f)); g.fillRect (getLocalBounds());
+                g.setColour (kGreen); g.drawRect (getLocalBounds(), 3);
             }
+        }
+
+    private:
+        enum Mode { Idle, Live, File };
+        static constexpr int kLeftW = 360;
+        inline static const juce::Colour kGreen { 0xff3ddc84 }, kBlue { 0xff7fb0ff }, kRed { 0xffe5484d };
+
+        void paintIdle (juce::Graphics& g, juce::Rectangle<int> r)
+        {
+            auto zone = r.withTrimmedTop (ui::px (6)).withTrimmedBottom (ui::px (6)).toFloat();
+            juce::Path p; p.addRoundedRectangle (zone, 10.0f);
+            const float dash[] = { 8.0f, 6.0f };
+            juce::PathStrokeType (1.5f).createDashedStroke (p, p, dash, 2);
+            g.setColour (juce::Colours::white.withAlpha (0.25f)); g.fillPath (p);
+            auto t = zone.toNearestInt().reduced (ui::px (18));
+            t.removeFromTop (t.getHeight() / 2 - ui::px (70));
+            g.setColour (juce::Colours::white.withAlpha (0.85f)); g.setFont (juce::FontOptions (ui::fs (18.0f), juce::Font::bold));
+            g.drawText ("Drag & drop audio here", t.removeFromTop (ui::px (30)), juce::Justification::centred);
+            g.setColour (juce::Colours::white.withAlpha (0.5f)); g.setFont (juce::FontOptions (ui::fs (13.0f)));
+            g.drawText ("WAV, AIFF, FLAC, OGG, MP3", t.removeFromTop (ui::px (22)), juce::Justification::centred);
+            t.removeFromTop (ui::px (24));
+            g.setColour (juce::Colours::white.withAlpha (0.6f)); g.setFont (juce::FontOptions (ui::fs (14.0f)));
+            g.drawFittedText ("or press Browse to pick a file,\nor Record to analyse the live input", t.removeFromTop (ui::px (48)), juce::Justification::centred, 2);
+        }
+
+        void paintLive (juce::Graphics& g, juce::Rectangle<int> r)
+        {
+            caption (g, r.removeFromTop (ui::px (22)), finder.isActive() ? "RECORDING  -  NOW" : "NOW (stopped)",
+                     res.nowValid ? "last " + juce::String (juce::roundToInt (res.windowSeconds)) + " s" : juce::String());
+            const int now = res.nowValid ? best (res.now, 0) : -1;
+            if (now >= 0) keyBlock (g, r, res.now, kGreen);
             else
             {
                 g.setColour (juce::Colours::white.withAlpha (0.75f)); g.setFont (juce::FontOptions (ui::fs (16.0f)));
                 g.drawFittedText (statusText(), r.removeFromTop (ui::px (150)).withTrimmedTop (ui::px (10)), juce::Justification::topLeft, 5);
             }
 
-            // ---- session
-            r = r.withTop (ui::px (250));
+            r = r.withTop (ui::px (296));
             g.setColour (juce::Colour (0xff3a3c40)); g.drawHorizontalLine (r.getY() - 10, (float) r.getX(), (float) r.getRight());
             const int secs = (int) res.secondsHeard;
-            caption (r.removeFromTop (ui::px (22)), "SESSION", secs > 0 ? juce::String (secs / 60) + "m " + juce::String (secs % 60).paddedLeft ('0', 2) + "s analysed" : juce::String());
+            caption (g, r.removeFromTop (ui::px (22)), "SESSION", secs > 0 ? juce::String (secs / 60) + "m " + juce::String (secs % 60).paddedLeft ('0', 2) + "s analysed" : juce::String());
             const int ses = res.sessionValid ? best (res.session, 0) : -1;
             if (ses >= 0)
             {
                 auto line = r.removeFromTop (ui::px (34));
-                g.setColour (juce::Colour (0xff7fb0ff)); g.setFont (juce::FontOptions (ui::fs (24.0f), juce::Font::bold));
+                g.setColour (kBlue); g.setFont (juce::FontOptions (ui::fs (24.0f), juce::Font::bold));
                 g.drawText (KeyNet::keyName (ses), line, juce::Justification::centredLeft);
                 g.setColour (juce::Colours::white.withAlpha (0.7f)); g.setFont (juce::FontOptions (ui::fs (14.0f)));
                 g.drawText (juce::String (juce::roundToInt (res.session[(size_t) ses] * 100)) + "%", line, juce::Justification::centredRight);
                 g.setColour (juce::Colours::white); g.setFont (juce::FontOptions (ui::fs (15.0f), juce::Font::bold));
                 g.drawText (tags (ses), r.removeFromTop (ui::px (22)), juce::Justification::centredLeft);
-                r.removeFromTop (ui::px (10));
-                caption (r.removeFromTop (ui::px (20)), "MIXES WELL WITH");
-                const int n = ses % 12, off = ses < 12 ? 0 : 12;
-                juce::String mixes;
-                for (int c : { (n + 11) % 12 + off, (n + 1) % 12 + off, n + (12 - off) })
-                    mixes << KeyNet::camelot (c) << " " << KeyNet::keyName (c).substr (0, KeyNet::keyName (c).find (' ')) << (KeyNet::isMajor (c) ? "" : "m") << "     ";
-                g.setColour (juce::Colours::white.withAlpha (0.8f)); g.setFont (juce::FontOptions (ui::fs (14.0f)));
-                g.drawText (mixes.trimEnd(), r.removeFromTop (ui::px (22)), juce::Justification::centredLeft);
+                r.removeFromTop (ui::px (8));
+                mixes (g, r, ses);
             }
             else
             {
                 g.setColour (juce::Colours::white.withAlpha (0.4f)); g.setFont (juce::FontOptions (ui::fs (13.5f)));
-                g.drawText ("Builds up over the whole song", r.removeFromTop (ui::px (24)), juce::Justification::centredLeft);
+                g.drawText ("Builds up while recording", r.removeFromTop (ui::px (24)), juce::Justification::centredLeft);
             }
-
-            g.setColour (juce::Colours::white.withAlpha (0.35f)); g.setFont (juce::FontOptions (ui::fs (11.0f)));
-            g.drawText ("Listens while this window is open", ui::px (140), getHeight() - ui::px (44), ui::px (kLeftW) - ui::px (150), ui::px (28),
-                        juce::Justification::centredRight);
         }
 
-    private:
-        static constexpr int kLeftW = 360;
+        void paintFile (juce::Graphics& g, juce::Rectangle<int> r)
+        {
+            const int secs = juce::roundToInt (file.seconds);
+            caption (g, r.removeFromTop (ui::px (22)), "FILE", secs > 0 ? juce::String (secs / 60) + ":" + juce::String (secs % 60).paddedLeft ('0', 2) : juce::String());
+            g.setColour (juce::Colours::white.withAlpha (0.85f)); g.setFont (juce::FontOptions (ui::fs (14.0f)));
+            g.drawFittedText (file.name, r.removeFromTop (ui::px (22)), juce::Justification::centredLeft, 1, 0.8f);
+            r.removeFromTop (ui::px (12));
+
+            if (file.state == KeyFinder::FileResult::Working)
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.7f)); g.setFont (juce::FontOptions (ui::fs (15.0f)));
+                g.drawText ("Analysing...  " + juce::String (juce::roundToInt (file.progress * 100)) + "%", r.removeFromTop (ui::px (26)), juce::Justification::centredLeft);
+                bar (g, r.removeFromTop (ui::px (8)), (float) file.progress, kGreen);
+            }
+            else if (file.state == KeyFinder::FileResult::Failed)
+            {
+                g.setColour (kRed); g.setFont (juce::FontOptions (ui::fs (15.0f)));
+                g.drawFittedText (file.error, r.removeFromTop (ui::px (80)), juce::Justification::topLeft, 4);
+            }
+            else if (file.state == KeyFinder::FileResult::Done)
+            {
+                keyBlock (g, r, file.probs, kGreen);
+                r.removeFromTop (ui::px (16));
+                mixes (g, r, best (file.probs, 0));
+            }
+        }
+
+        // big key, tags, confidence and the two runners-up
+        void keyBlock (juce::Graphics& g, juce::Rectangle<int>& r, const std::array<float, 24>& p, juce::Colour c)
+        {
+            const int k = best (p, 0);
+            g.setColour (c); g.setFont (juce::FontOptions (ui::fs (34.0f), juce::Font::bold));
+            g.drawText (KeyNet::keyName (k), r.removeFromTop (ui::px (44)), juce::Justification::centredLeft);
+            auto line = r.removeFromTop (ui::px (24));
+            g.setColour (juce::Colours::white); g.setFont (juce::FontOptions (ui::fs (17.0f), juce::Font::bold));
+            g.drawText (tags (k), line, juce::Justification::centredLeft);
+            g.setColour (juce::Colours::white.withAlpha (0.7f)); g.setFont (juce::FontOptions (ui::fs (14.0f)));
+            g.drawText (juce::String (juce::roundToInt (p[(size_t) k] * 100)) + "%", line, juce::Justification::centredRight);
+            r.removeFromTop (4);
+            bar (g, r.removeFromTop (ui::px (8)), p[(size_t) k], c);
+            r.removeFromTop (ui::px (12));
+            caption (g, r.removeFromTop (ui::px (20)), "ALSO LIKELY");
+            for (int rank = 1; rank <= 2; ++rank)
+            {
+                const int o = best (p, rank);
+                auto l = r.removeFromTop (ui::px (24));
+                g.setColour (juce::Colours::white.withAlpha (0.85f)); g.setFont (juce::FontOptions (ui::fs (14.5f)));
+                g.drawText (KeyNet::keyName (o) + "  (" + KeyNet::camelot (o) + ")", l.removeFromLeft (ui::px (170)), juce::Justification::centredLeft);
+                g.setColour (juce::Colours::white.withAlpha (0.6f)); g.setFont (juce::FontOptions (ui::fs (13.0f)));
+                g.drawText (juce::String (juce::roundToInt (p[(size_t) o] * 100)) + "%", l.removeFromRight (ui::px (40)), juce::Justification::centredRight);
+                bar (g, l.reduced (4, l.getHeight() / 2 - 3), p[(size_t) o], juce::Colour (0xff8a93a6));
+            }
+        }
+
+        void mixes (juce::Graphics& g, juce::Rectangle<int>& r, int k)
+        {
+            caption (g, r.removeFromTop (ui::px (20)), "MIXES WELL WITH");
+            const int n = k % 12, off = k < 12 ? 0 : 12;
+            juce::String txt;
+            for (int c : { (n + 11) % 12 + off, (n + 1) % 12 + off, n + (12 - off) })
+            {
+                const auto name = KeyNet::keyName (c);
+                txt << KeyNet::camelot (c) << " " << name.substr (0, name.find (' ')) << (KeyNet::isMajor (c) ? "" : "m") << "     ";
+            }
+            g.setColour (juce::Colours::white.withAlpha (0.8f)); g.setFont (juce::FontOptions (ui::fs (14.0f)));
+            g.drawText (txt.trimEnd(), r.removeFromTop (ui::px (22)), juce::Justification::centredLeft);
+        }
+
+        static void caption (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& text, const juce::String& right = {})
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.55f)); g.setFont (juce::FontOptions (ui::fs (12.0f), juce::Font::bold));
+            g.drawText (text, area, juce::Justification::centredLeft);
+            if (right.isNotEmpty())
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.4f)); g.setFont (juce::FontOptions (ui::fs (11.5f)));
+                g.drawText (right, area, juce::Justification::centredRight);
+            }
+        }
+        static void bar (juce::Graphics& g, juce::Rectangle<int> area, float p, juce::Colour c)
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.07f)); g.fillRoundedRectangle (area.toFloat(), 3.0f);
+            g.setColour (c); g.fillRoundedRectangle (area.toFloat().withWidth (juce::jmax (4.0f, area.getWidth() * p)), 3.0f);
+        }
+        static juce::String tags (int cls) { return juce::String (KeyNet::camelot (cls)) + "   " + KeyNet::openKey (cls); }
 
         static int best (const std::array<float, 24>& p, int rank)
         {
@@ -190,24 +294,64 @@ namespace
         juce::String statusText() const
         {
             if (! res.modelOk) return "The key model could not be loaded: " + res.error;
+            if (! finder.isActive()) return "Press Record to analyse the live input.";
             if (! engine.isRunning()) return "No input. Open Options (bottom left), choose an input and press Start.";
             if (res.quiet) return "Too quiet to judge. Waiting for music...";
             const int heard = (int) res.secondsHeard, need = KeyFinder::kMinFrames / 5;
             return "Listening... " + juce::String (juce::jmin (heard, need)) + " / " + juce::String (need) + " s";
         }
 
+        void browseForFile()
+        {
+            chooser = std::make_unique<juce::FileChooser> ("Choose an audio file to analyse",
+                juce::File::getSpecialLocation (juce::File::userMusicDirectory), finder.getFileWildcard());
+            juce::Component::SafePointer<KeyFinderPanel> safe (this);
+            chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [safe] (const juce::FileChooser& fc)
+            {
+                if (safe != nullptr && fc.getResult().existsAsFile()) safe->analyse (fc.getResult());
+            });
+        }
+
+        void analyse (const juce::File& f)
+        {
+            if (finder.isActive()) finder.setActive (false);      // a file replaces the live analysis
+            mode = File;
+            finder.analyzeFile (f);
+            updateButtons();
+            timerCallback();
+        }
+
+        void updateButtons()
+        {
+            const bool rec = finder.isActive();
+            record.setButtonText (rec ? "Stop" : juce::String::fromUTF8 ("\xe2\x97\x8f  Record"));
+            record.setColour (juce::TextButton::buttonColourId, rec ? kRed.withAlpha (0.85f) : juce::Colour (0xff2a2d33));
+            record.setColour (juce::TextButton::textColourOffId, rec ? juce::Colours::white : kRed.brighter (0.3f));
+            reset.setVisible (mode == Live);
+        }
+
         void timerCallback() override
         {
             res = finder.getResult();
-            chart.setKeys (res.nowValid ? best (res.now, 0) : -1, res.sessionValid ? best (res.session, 0) : -1);
+            file = finder.getFileResult();
+            if (finder.isActive() != shownActive) { shownActive = finder.isActive(); updateButtons(); }
+            if (mode == Live)
+                chart.setKeys (res.nowValid ? best (res.now, 0) : -1, res.sessionValid ? best (res.session, 0) : -1);
+            else if (mode == File)
+                chart.setKeys (file.state == KeyFinder::FileResult::Done ? best (file.probs, 0) : -1, -1);
+            else chart.setKeys (-1, -1);
             repaint (0, 0, ui::px (kLeftW), getHeight());
         }
 
         KeyFinder& finder;
         AudioEngine& engine;
         KeyFinder::Result res;
+        KeyFinder::FileResult file;
+        Mode mode = Idle;
+        bool dragOver = false, shownActive = false;
         KeyChart chart;
-        juce::TextButton reset { "Reset" };
+        juce::TextButton record, browse { "Browse..." }, reset { "Reset" };
+        std::unique_ptr<juce::FileChooser> chooser;
     };
 
     //==========================================================================
@@ -725,7 +869,7 @@ void MainComponent::toggleKeyWindow()
         w->setTopLeftPosition (area.getRight() - w->getWidth() - 60, area.getY() + 60);
     }
     const bool show = ! keyWindow->isVisible();
-    keyFinder.setActive (show);
+    if (! show) keyFinder.setActive (false);          // closing the window stops recording
     keyWindow->setVisible (show);
     if (show) keyWindow->toFront (false);
     bottom.setKeyOpen (show);

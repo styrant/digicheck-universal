@@ -55,11 +55,13 @@ Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**)
 ## Toolbar and windows
 - **Options** (bottom left, or O) opens a pop-up panel with the audio input (source, L/R channels, Start/Stop, Rescan), the status line and the display options (GPU rendering, frame rate limit). There is no top toolbar, so the analysis uses the full height. Click anywhere else or press Esc to close it.
 - **Full screen**: F11 or the small button at the bottom right; Esc leaves. This is *windowed* (borderless) full screen. The window is deliberately 1 px taller than the monitor, so graphics drivers don't promote the OpenGL window to exclusive full screen. That keeps HDR and the video signal undisturbed.
-- **Key finder** (Key button or K): opens a window that listens to the selected input and estimates its musical key, with the key chart beside it.
+- **Key finder** (Key button or K): a window that finds the musical key of the live input or of an audio file, with the key chart beside it. Nothing is analysed until you choose:
+  - **Record**: analyses the selected input until Stop (or until the window closes).
+  - **Browse...** or **drag & drop** a file (WAV, AIFF, FLAC, OGG, MP3; also WMA on Windows): the whole file is analysed, as the original OpenKeyScan does, with a progress bar.
   - *Now*: the key of the last 20 s, refreshed every 3 s, with the two next most likely keys.
-  - *Session*: the average over everything heard since the window opened or Reset (silence is ignored); also lists the Camelot-compatible keys.
+  - *Session*: the average over everything heard since Record or Reset (silence is ignored); also lists the Camelot-compatible keys.
   - Keys are shown as names, Camelot (8A) and Open Key (1m). The chart marks the current key (filled) and the session key (outlined).
-  - Analysis only runs while the window is open (about 7% of one CPU core).
+  - Recording uses about 7% of one CPU core; a 3-minute file takes a few seconds.
   - The model is OpenKeyScan's KeyNet (Korzeniowski & Widmer 2018, trained on GiantSteps), from styrant/openkeyscan-analyzer (MIT, see licenses/). It runs natively in C++: a constant-Q front end matching librosa's and the 9-layer CNN; tests/key_test checks both against librosa and PyTorch. tools/export_keynet.py regenerates Resources/keynet.bin from a checkpoint.
 - **Presets** (bottom bar, left of the view's controls, or P):
   - Spectrogram: built-in views (Default, Bass focus, High contrast). They change only the display and analysis settings, never the input. You can save the current view under your own name, and delete your presets.

@@ -5,6 +5,7 @@
 KeyFinder::KeyFinder() : juce::Thread ("Key finder")
 {
     ring.assign ((size_t) kRing, 0.0f);
+    formats.registerBasicFormats();
     std::string err;
     const bool ok = net.load (BinaryData::keynet_bin, (size_t) BinaryData::keynet_binSize, err);
     const juce::SpinLock::ScopedLockType sl (resultLock);
@@ -13,7 +14,97 @@ KeyFinder::KeyFinder() : juce::Thread ("Key finder")
     startThread (juce::Thread::Priority::low);       // idles while the Key window is closed
 }
 
-KeyFinder::~KeyFinder() { stopThread (4000); }
+KeyFinder::~KeyFinder() { fileJob.reset(); stopThread (4000); }
+
+//==============================================================================
+juce::String KeyFinder::getFileWildcard() const { return formats.getWildcardForAllFormats(); }
+
+bool KeyFinder::canReadFile (const juce::File& f) const
+{
+    return f.existsAsFile() && formats.findFormatForFileExtension (f.getFileExtension()) != nullptr;
+}
+
+KeyFinder::FileResult KeyFinder::getFileResult() const
+{
+    const juce::SpinLock::ScopedLockType sl (resultLock);
+    return fileResult;
+}
+
+void KeyFinder::analyzeFile (const juce::File& f)
+{
+    fileJob.reset();                                     // cancels a file still being analysed
+    FileResult r;
+    r.state = FileResult::Working;
+    r.name = f.getFileName();
+    setFileResult (r);
+    fileJob = std::make_unique<FileJob> (*this);
+    fileJob->file = f;
+    fileJob->startThread (juce::Thread::Priority::low);
+}
+
+void KeyFinder::FileJob::run()
+{
+    FileResult r;
+    r.state = FileResult::Working;
+    r.name = file.getFileName();
+    auto fail = [&] (const juce::String& why) { r.state = FileResult::Failed; r.error = why; owner.setFileResult (r); };
+
+    std::unique_ptr<juce::AudioFormatReader> reader (owner.formats.createReaderFor (file));
+    if (reader == nullptr) { fail ("This file type can't be read (try WAV, AIFF, FLAC, OGG or MP3)."); return; }
+    if (! owner.net.isLoaded()) { fail ("The key model could not be loaded."); return; }
+    const double sr = reader->sampleRate;
+    const auto total = reader->lengthInSamples;
+    const int nch = (int) juce::jmax (1u, reader->numChannels);
+    if (sr < 8000 || total < (juce::int64) (sr * 5)) { fail ("The file is shorter than 5 seconds."); return; }
+    r.seconds = (double) total / sr;
+
+    // 1. decode (mono = mean of all channels, as librosa) and compute the CQT frames
+    KeyCqt cqt;
+    cqt.configure (sr);
+    std::vector<std::vector<float>> frames;
+    frames.reserve ((size_t) (r.seconds / KeyCqt::kHopSeconds) + 8);
+    auto keep = [&] (const float* f, float) { frames.emplace_back (f, f + KeyCqt::kBins); };
+    constexpr int kBlock = 65536;
+    juce::AudioBuffer<float> buf (nch, kBlock);
+    std::vector<float> mono (kBlock);
+    for (juce::int64 pos = 0; pos < total; pos += kBlock)
+    {
+        if (threadShouldExit()) return;
+        const int n = (int) juce::jmin<juce::int64> (kBlock, total - pos);
+        reader->read (&buf, 0, n, pos, true, true);
+        for (int i = 0; i < n; ++i)
+        {
+            float v = 0;
+            for (int c = 0; c < nch; ++c) v += buf.getSample (c, i);
+            mono[(size_t) i] = v / (float) nch;
+        }
+        cqt.process (mono.data(), n, keep);
+        r.progress = 0.4 * (double) (pos + n) / (double) total;
+        owner.setFileResult (r);
+    }
+    std::vector<float> zeros ((size_t) cqt.flushSamples(), 0.0f);
+    cqt.process (zeros.data(), (int) zeros.size(), keep);
+    if (frames.size() > 2) frames.resize (frames.size() - 2);    // as the original drops the last 2 frames
+    const int T = (int) frames.size();
+
+    // 2. the network over the whole file (in chunks of up to 2 minutes)
+    std::vector<float> spec ((size_t) KeyCqt::kBins * (size_t) T);
+    for (int t = 0; t < T; ++t)
+        for (int b = 0; b < KeyCqt::kBins; ++b) spec[(size_t) b * (size_t) T + (size_t) t] = frames[(size_t) t][(size_t) b];
+    frames.clear();
+    const auto z = owner.net.runLong (spec.data(), KeyCqt::kBins, T, 600, [&] (double p)
+    {
+        r.progress = 0.4 + 0.6 * p;
+        owner.setFileResult (r);
+        return ! threadShouldExit();
+    });
+    if (z.size() != 24) return;                           // cancelled
+    const auto p = KeyNet::softmax (z);
+    for (int i = 0; i < 24; ++i) r.probs[(size_t) i] = p[(size_t) i];
+    r.progress = 1.0;
+    r.state = FileResult::Done;
+    owner.setFileResult (r);
+}
 
 void KeyFinder::setActive (bool a)
 {

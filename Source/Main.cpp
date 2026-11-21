@@ -137,12 +137,18 @@ private:
             mc->toggleTempoWindow();
             mc->toggleKeyWindow();
             mc->openSettings();
-            juce::Timer::callAfterDelay (800, [this, out]
+            // optional: drop an audio file on the key finder (SPECTROSCOPE_TEST_KEYFILE=/path/song.wav)
+            const auto keyFile = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_KEYFILE", {});
+            for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows() && keyFile.isNotEmpty(); ++i)
+                if (auto* w = dynamic_cast<juce::DocumentWindow*> (juce::TopLevelWindow::getTopLevelWindow (i)))
+                    if (auto* t = dynamic_cast<juce::FileDragAndDropTarget*> (w->getContentComponent()))
+                        t->filesDropped (juce::StringArray (keyFile), 10, 10);
+            juce::Timer::callAfterDelay (keyFile.isNotEmpty() ? 12000 : 800, [this, out]
             {
                 for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
                     if (auto* w = dynamic_cast<juce::DocumentWindow*> (juce::TopLevelWindow::getTopLevelWindow (i)))
-                        if ((w->getName() == "Keys" || w->getName() == "Tempo") && w->getContentComponent() != nullptr)
-                            if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_" + w->getName().toLowerCase() + ".png")); s.openedOk())
+                        if ((w->getName() == "Key finder" || w->getName() == "Tempo") && w->getContentComponent() != nullptr)
+                            if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + (w->getName() == "Tempo" ? "_tempo" : "_keys") + ".png")); s.openedOk())
                             { s.setPosition (0); s.truncate(); auto* c = w->getContentComponent(); juce::PNGImageFormat().writeImageToStream (c->createComponentSnapshot (c->getLocalBounds()), s); }
                 for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
                     if (auto* dw = dynamic_cast<juce::DialogWindow*> (juce::TopLevelWindow::getTopLevelWindow (i)))

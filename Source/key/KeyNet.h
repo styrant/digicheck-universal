@@ -8,6 +8,7 @@
 //          12..23 = 1B..12B (major).
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,12 @@ public:
 
     // spec: row-major [bins][frames] (bins = 105). Returns 24 logits.
     std::vector<float> run (const float* spec, int bins, int frames) const;
+
+    // Whole songs: the network in chunks of up to `chunk` frames, logits averaged by each chunk's
+    // pooled size (= global average over the whole input, up to chunk-border effects).
+    // progress (0..1) returns false to cancel (the result is then empty).
+    std::vector<float> runLong (const float* spec, int bins, int frames, int chunk,
+                                const std::function<bool (double)>& progress) const;
 
     static std::vector<float> softmax (const std::vector<float>& logits);
 

@@ -60,33 +60,39 @@ bool KeyNet::load (const void* data, size_t size, std::string& error)
 }
 
 // 'same' convolution as im2col + blocked GEMM, then ELU.  in: [cin][H][W], out: [cout][H][W]
+// The im2col matrix is built one block of output positions at a time, so memory stays small
+// even for a whole song.
 void KeyNet::convElu (const Layer& L, const std::vector<float>& in, int H, int W, std::vector<float>& out,
                       std::vector<float>& col)
 {
     const int k = L.k, pad = k / 2, P = H * W, K = L.cin * k * k;
-    col.assign ((size_t) K * P, 0.0f);
-    for (int c = 0; c < L.cin; ++c)
-        for (int dy = 0; dy < k; ++dy)
-            for (int dx = 0; dx < k; ++dx)
-            {
-                float* dst = col.data() + (size_t) ((c * k + dy) * k + dx) * P;
-                const float* src = in.data() + (size_t) c * P;
-                for (int y = 0; y < H; ++y)
-                {
-                    const int sy = y + dy - pad;
-                    if (sy < 0 || sy >= H) continue;
-                    const int x0 = std::max (0, pad - dx), x1 = std::min (W, W + pad - dx);
-                    std::memcpy (dst + y * W + x0, src + sy * W + x0 + dx - pad, sizeof (float) * (size_t) std::max (0, x1 - x0));
-                }
-            }
-
-    out.assign ((size_t) L.cout * P, 0.0f);
-    // GEMM out[cout][P] = W[cout][K] x col[K][P]: blocks of 256 columns, 4 output channels at a time,
-    // so each loaded column value feeds four multiply-adds (the compiler vectorises the inner loop)
     constexpr int kBlock = 256;
+    col.resize ((size_t) K * kBlock);
+    out.assign ((size_t) L.cout * P, 0.0f);
+
     for (int p0 = 0; p0 < P; p0 += kBlock)
     {
         const int n = std::min (kBlock, P - p0);
+        // im2col for positions p0 .. p0 + n: col[kk][i]
+        for (int c = 0; c < L.cin; ++c)
+        {
+            const float* src = in.data() + (size_t) c * P;
+            for (int dy = 0; dy < k; ++dy)
+                for (int dx = 0; dx < k; ++dx)
+                {
+                    float* dst = col.data() + (size_t) ((c * k + dy) * k + dx) * kBlock;
+                    int y = p0 / W, x = p0 % W;
+                    for (int i = 0; i < n; ++i)
+                    {
+                        const int sy = y + dy - pad, sx = x + dx - pad;
+                        dst[i] = (sy >= 0 && sy < H && sx >= 0 && sx < W) ? src[sy * W + sx] : 0.0f;
+                        if (++x == W) { x = 0; ++y; }
+                    }
+                }
+        }
+
+        // GEMM out[cout][block] = W[cout][K] x col[K][block], 4 output channels at a time, so each
+        // loaded column value feeds four multiply-adds (the compiler vectorises the inner loop)
         int o = 0;
         for (; o + 4 <= L.cout; o += 4)
         {
@@ -101,7 +107,7 @@ void KeyNet::convElu (const Layer& L, const std::vector<float>& in, int H, int W
             for (int kk = 0; kk < K; ++kk)
             {
                 const float a0 = w0[kk], a1 = w1[kk], a2 = w2[kk], a3 = w3[kk];
-                const float* __restrict src = col.data() + (size_t) kk * P + p0;
+                const float* __restrict src = col.data() + (size_t) kk * kBlock;
                 for (int i = 0; i < n; ++i)
                 {
                     const float v = src[i];
@@ -116,7 +122,7 @@ void KeyNet::convElu (const Layer& L, const std::vector<float>& in, int H, int W
             for (int kk = 0; kk < K; ++kk)
             {
                 const float w = wrow[kk];
-                const float* __restrict src = col.data() + (size_t) kk * P + p0;
+                const float* __restrict src = col.data() + (size_t) kk * kBlock;
                 for (int i = 0; i < n; ++i) dst[i] += w * src[i];
             }
         }
@@ -162,6 +168,31 @@ std::vector<float> KeyNet::run (const float* spec, int bins, int frames) const
         logits[(size_t) c] = (float) (s / std::max (1, P));
     }
     return logits;
+}
+
+std::vector<float> KeyNet::runLong (const float* spec, int bins, int frames, int chunk,
+                                   const std::function<bool (double)>& progress) const
+{
+    if (frames <= chunk) { auto z = run (spec, bins, frames); if (progress) progress (1.0); return z; }
+    const int n = (frames + chunk - 1) / chunk, len = (frames + n - 1) / n;      // equal-sized chunks
+    std::vector<double> sum (24, 0.0);
+    double weight = 0;
+    std::vector<float> part;
+    for (int c = 0; c < n; ++c)
+    {
+        const int t0 = c * len, t1 = std::min (frames, t0 + len), T = t1 - t0;
+        if (T < 8) break;
+        part.resize ((size_t) bins * T);
+        for (int b = 0; b < bins; ++b) std::copy (spec + (size_t) b * frames + t0, spec + (size_t) b * frames + t1, part.data() + (size_t) b * T);
+        const auto z = run (part.data(), bins, T);
+        const double w = (double) (bins / 8) * (T / 8);
+        for (size_t i = 0; i < z.size() && i < 24; ++i) sum[i] += w * z[i];
+        weight += w;
+        if (progress && ! progress ((double) t1 / frames)) return {};
+    }
+    std::vector<float> out (24);
+    for (int i = 0; i < 24; ++i) out[(size_t) i] = (float) (sum[(size_t) i] / std::max (1e-9, weight));
+    return out;
 }
 
 std::vector<float> KeyNet::softmax (const std::vector<float>& z)
