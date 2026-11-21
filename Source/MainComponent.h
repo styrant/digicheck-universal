@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include "UiScale.h"
 #include "Settings.h"
 #include "AudioEngine.h"
 #include "SpectrogramView.h"
@@ -20,6 +21,10 @@ public:
     void startSourceByKey (const juce::String& key);   // used by --test-screenshot
     void openSettings();
     void toggleFullscreen();
+    void setFullscreenState (bool isFullscreen);     // called by the window owner
+    void suspendGpu();                               // around moving to another window
+    void resumeGpu();
+    std::function<void (bool wantFullscreen)> onFullscreenRequest;
     void toggleKeyWindow();
     void toggleTempoWindow();
     void setCursorForTest (double hz) { view.setCursorFrequency (hz); }
@@ -37,6 +42,7 @@ private:
     void updateStatus();
     bool isFullscreen() const;
     void toggleOptions();
+    void applyTextScale();
     void setOptionsVisible (bool);
     void layoutOptions();
     void onFrame (double vblankTime);
@@ -50,7 +56,7 @@ private:
             auto r = getLocalBounds().toFloat();
             g.setColour (juce::Colour (0xf21b1d22)); g.fillRoundedRectangle (r, 8.0f);
             g.setColour (juce::Colour (0xff3a3c40)); g.drawRoundedRectangle (r.reduced (0.5f), 8.0f, 1.0f);
-            g.setColour (juce::Colours::white.withAlpha (0.5f)); g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+            g.setColour (juce::Colours::white.withAlpha (0.5f)); g.setFont (juce::FontOptions (ui::fs (10.5f), juce::Font::bold));
             for (auto& h : headings) g.drawText (h.second, h.first, juce::Justification::centredLeft);
         }
         std::vector<std::pair<juce::Rectangle<int>, juce::String>> headings;
@@ -87,8 +93,10 @@ private:
     BottomBar bottom { settings, engine, analyzerProc };
 
     juce::Label status;
-    juce::ComboBox source, chL, chR, fpsBox;
-    juce::Label lblL { {}, "L" }, lblR { {}, "R" }, lblFps { {}, "Frame rate limit" };
+    juce::ComboBox source, chL, chR, fpsBox, textBox;
+    juce::Slider textSlider;
+    juce::Label lblL { {}, "L" }, lblR { {}, "R" }, lblFps { {}, "Frame rate limit" }, lblText { {}, "Text size" };
+    bool fullscreen = false, gpuSuspended = false;
     juce::TextButton startBtn { "Start" }, settingsBtn { "View settings" }, rescanBtn { "Rescan" };
     juce::ToggleButton gpuToggle { "GPU rendering (OpenGL)" };
     juce::VBlankAttachment frameTick { this, [this] (double t) { onFrame (t); } };

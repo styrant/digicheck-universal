@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include "UiScale.h"
 #include "Settings.h"
 
 // "Spectroscope Settings" — same fields, order and wording as DigiCheck NG's dialog.

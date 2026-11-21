@@ -41,7 +41,7 @@ Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**)
 - **Analyzer:** [Spectrum Analyzer 2](Source/analyzer/LICENSE), a constant-Q filter-bank analyzer (Seven Phases, MIT licence).
   - Peak bars, peak hold and RMS average, at 3–24 bands per octave.
   - Wheel zooms, drag pans, and shift+drag zooms to a selection.
-  - Hover for the band inspector. Right-click or **Settings** opens its settings panel.
+  - Hover for the readout (frequency, level, note and cents). Right-click or **Settings** opens its settings panel.
   - Keys: F freeze, R reset meters, 0 full range.
   - It only runs while its view is visible, and its settings are saved with the app's.
 
@@ -54,7 +54,8 @@ Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**)
 
 ## Toolbar and windows
 - **Options** (bottom left, or O) opens a pop-up panel with the audio input (source, L/R channels, Start/Stop, Rescan), the status line and the display options (GPU rendering, frame rate limit). There is no top toolbar, so the analysis uses the full height. Click anywhere else or press Esc to close it.
-- **Full screen**: F11 or the small button at the bottom right; Esc leaves.
+- **Full screen**: F11 or the small button at the bottom right; Esc leaves. This is *windowed* (borderless) full screen. The window is deliberately 1 px taller than the monitor, so graphics drivers don't promote the OpenGL window to exclusive full screen. That keeps HDR and the video signal undisturbed.
+- **Text size** (in Options): Small, Medium (default), Large, or Custom (70–200%). It applies to all text in the app; with larger sizes the bars and panels grow to fit.
 - **Key** (or K) opens a small always-on-top chart of major keys and their relative minors.
 - **Tempo** (or T) opens a BPM-to-milliseconds calculator: note values from 2/1 to 1/128, with optional triplet and dotted columns and a Tap button. Click a value to copy it.
 - **LUFS** shows short-term, integrated (BS.1770 gated) and true-peak values, colour-coded. Loudness is white below −14 LUFS, green from −14 to −9, yellow from −9 to −6, and red from −6 up. True peak is white below −1 dBTP, yellow from −1 to 0, and red above 0. **Reset** restarts integrated loudness and the true-peak hold.

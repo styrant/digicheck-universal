@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include "UiScale.h"
 #include "Settings.h"
 #include "AudioEngine.h"
 #include "analyzer/PluginProcessor.h"
@@ -16,7 +17,7 @@ class BottomBar : public juce::Component, private juce::Timer
 {
 public:
     enum View { Spectrogram = 0, Analyzer = 1 };
-    static constexpr int kHeight = 42;
+    static int height() { return ui::px (42); }
 
     BottomBar (Settings&, AudioEngine&, SpectrumAnalyzerProcessor&);
     ~BottomBar() override;

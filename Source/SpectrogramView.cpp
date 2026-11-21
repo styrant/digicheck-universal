@@ -96,6 +96,7 @@ void SpectrogramView::togglePause()
 {
     paused = ! paused;
     if (onPauseChanged) onPauseChanged (paused);
+    if (cursorF) repaint (plot);
 }
 
 void SpectrogramView::clearCursor()
@@ -147,10 +148,10 @@ void SpectrogramView::resized() { rebuild(); }
 void SpectrogramView::rebuild()
 {
     auto area = getLocalBounds();
-    area.removeFromBottom (kBottom);
-    if (s.showScale) area.removeFromRight (kScaleW);
-    area.removeFromTop (kTop);
-    plot = area.reduced (kGutter, 0);
+    area.removeFromBottom (ui::px (kBottom));
+    if (s.showScale) area.removeFromRight (ui::px (kScaleW));
+    area.removeFromTop (ui::px (kTop));
+    plot = area.reduced (ui::px (kGutter), 0);
     if (plot.getWidth() < 10 || plot.getHeight() < 10) plot.setSize (juce::jmax (10, plot.getWidth()), juce::jmax (10, plot.getHeight()));
 
     // Keep what is on screen across resizes / layout changes: carry the newest columns over and
@@ -315,7 +316,6 @@ void SpectrogramView::onVBlank (double t)
     if (! frameclock::clock().due (t)) return;
     if (! gpu && needsRepaint) { needsRepaint = false; repaint (plot); }
     else if (gpu && s.stationary && running) repaint (plot);   // moving write line
-    if (++cursorTick % 6 == 0 && cursorF) repaint (plot);       // keep the cursor's level readout current
 }
 
 //==============================================================================
@@ -436,6 +436,9 @@ juce::String SpectrogramView::cursorText() const
     const juce::String note = juce::String (noteNames[((midi % 12) + 12) % 12]) + juce::String (midi / 12 - 1);
     juce::String t = s.noteRef > 0 ? note + "  " + hz (f)
                                    : hz (f) + "  (" + note + (cents >= 0 ? " +" : " ") + juce::String (juce::roundToInt (cents)) + " ct)";
+    if (! paused) return t;      // the level only means something on a still picture
+
+    // paused: level at the cursor in the newest column on screen
     const auto [lo, hi] = effectiveRange();
     const int j = (int) (std::log (f / lo) / std::log (hi / lo) * H);
     const int col = (writeCol - 1 + W) % W;
@@ -513,7 +516,7 @@ void SpectrogramView::paint (juce::Graphics& g)
     // frequency labels (both margins, like RME) and grid
     const auto [lo, hi] = effectiveRange();
     const bool hGrid = s.grid == 1 || s.grid == 3, vGrid = s.grid == 2 || s.grid == 3;
-    g.setFont (juce::FontOptions (11.5f));
+    g.setFont (juce::FontOptions (ui::fs (11.5f)));
     float lastY = 1.0e9f;
     for (double dec = 1; dec <= 100000; dec *= 10)
         for (int m = 1; m <= 9; ++m)
@@ -527,20 +530,20 @@ void SpectrogramView::paint (juce::Graphics& g)
                 g.setColour (juce::Colours::white.withAlpha (major ? 0.16f : 0.06f));
                 g.drawHorizontalLine (juce::roundToInt (y), (float) plot.getX(), (float) plot.getRight());
             }
-            if (lastY - y < 12.0f) continue;               // keep labels from overlapping
+            if (lastY - y < ui::fs (12.0f)) continue;      // keep labels from overlapping
             lastY = y;
             const juce::String lbl = f >= 1000 ? juce::String (f / 1000) + "k" : juce::String ((int) f);
-            const int ty = juce::roundToInt (y) - 7;
+            const int lh = juce::roundToInt (ui::fs (14.0f)), ty = juce::roundToInt (y) - lh / 2;
             g.setColour (kLabel);
-            g.drawText (lbl, 0, ty, kGutter - 6, 14, juce::Justification::centredRight);
-            g.drawText (lbl, plot.getRight() + 6, ty, kGutter - 6, 14, juce::Justification::centredLeft);
+            g.drawText (lbl, 0, ty, ui::px (kGutter) - 6, lh, juce::Justification::centredRight);
+            g.drawText (lbl, plot.getRight() + 6, ty, ui::px (kGutter) - 6, lh, juce::Justification::centredLeft);
         }
     if (vGrid && s.speed > 0)
         for (int sec = 1; sec * s.speed < W; ++sec)
         {
             const int x = plot.getX() + juce::roundToInt (s.stationary ? sec * s.speed : W - sec * s.speed);
             g.setColour (juce::Colours::white.withAlpha (0.12f)); g.drawVerticalLine (x, (float) plot.getY(), (float) plot.getBottom());
-            g.setColour (juce::Colours::white.withAlpha (0.45f)); g.setFont (juce::FontOptions (11.0f));
+            g.setColour (juce::Colours::white.withAlpha (0.45f)); g.setFont (juce::FontOptions (ui::fs (11.0f)));
             g.drawText ((s.stationary ? "" : "-") + juce::String (sec) + " s", x + 3, plot.getY() + 3, 50, 12, juce::Justification::left);
         }
 
@@ -553,14 +556,14 @@ void SpectrogramView::paint (juce::Graphics& g)
     // colour scale: 0 .. -120 dBFS
     if (s.showScale)
     {
-        const int x0 = getWidth() - kScaleW + 4, top = plot.getY(), sh = plot.getHeight();
+        const int x0 = getWidth() - ui::px (kScaleW) + 4, top = plot.getY(), sh = plot.getHeight();
         for (int i = 0; i < sh; ++i)
         {
             const auto& p = lut[(size_t) lutIndex ((float) (-120.0 * i / sh))];
             g.setColour (juce::Colour (p.getRed(), p.getGreen(), p.getBlue())); g.fillRect (x0, top + i, 14, 1);
         }
         g.setColour (kFrameLine); g.drawRect (x0 - 1, top - 1, 16, sh + 2);
-        g.setColour (kLabel); g.setFont (juce::FontOptions (11.0f));
+        g.setColour (kLabel); g.setFont (juce::FontOptions (ui::fs (11.0f)));
         for (int db = 0; db >= -120; db -= 20)
             g.drawText (juce::String (db), x0 + 18, top + (int) (-db / 120.0 * sh) - 6, 36, 12, juce::Justification::left);
         const float yr = top + (float) (-s.refLevel / 120.0 * sh);
@@ -575,19 +578,20 @@ void SpectrogramView::paint (juce::Graphics& g)
         g.setColour (juce::Colours::white.withAlpha (0.9f));
         g.drawHorizontalLine (y, (float) plot.getX(), (float) plot.getRight());
         const auto txt = cursorText();
-        g.setFont (juce::FontOptions (12.0f));
-        const int tw = juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), txt) + 12;
+        g.setFont (juce::FontOptions (ui::fs (16.0f), juce::Font::bold));
+        const int th = juce::roundToInt (ui::fs (16.0f)) + 10;
+        const int tw = juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), txt) + 18;
         const int bx = juce::jmax (plot.getX() + 4, plot.getRight() - tw - 8);
-        const int by = juce::jlimit (plot.getY() + 2, plot.getBottom() - 20, y - 22);
-        g.setColour (juce::Colours::black.withAlpha (0.7f)); g.fillRect (bx, by, tw, 18);
-        g.setColour (juce::Colours::white); g.drawText (txt, bx + 6, by, tw - 6, 18, juce::Justification::centredLeft);
+        const int by = juce::jlimit (plot.getY() + 2, plot.getBottom() - th - 2, y - th - 4);
+        g.setColour (juce::Colours::black.withAlpha (0.75f)); g.fillRoundedRectangle (juce::Rectangle<int> (bx, by, tw, th).toFloat(), 4.0f);
+        g.setColour (juce::Colours::white); g.drawText (txt, bx + 9, by, tw - 9, th, juce::Justification::centredLeft);
     }
 
     if (! running)
     {
-        g.setColour (juce::Colours::white.withAlpha (0.55f)); g.setFont (juce::FontOptions (15.0f));
+        g.setColour (juce::Colours::white.withAlpha (0.55f)); g.setFont (juce::FontOptions (ui::fs (15.0f)));
         g.drawText ("Open Options (bottom left) to choose an input and press Start", plot.withHeight (20).withY (plot.getCentreY() - 22), juce::Justification::centred);
-        g.setColour (juce::Colours::white.withAlpha (0.35f)); g.setFont (juce::FontOptions (12.0f));
+        g.setColour (juce::Colours::white.withAlpha (0.35f)); g.setFont (juce::FontOptions (ui::fs (12.0f)));
         g.drawText ("\"Test signal\" works without an interface", plot.withHeight (16).withY (plot.getCentreY() + 2), juce::Justification::centred);
     }
 }

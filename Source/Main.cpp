@@ -1,6 +1,7 @@
 #include <JuceHeader.h>
 #include "MainComponent.h"
 #include "SettingsDialog.h"
+#include "AppLookAndFeel.h"
 
 class SpectroscopeApp : public juce::JUCEApplication
 {
@@ -18,7 +19,6 @@ public:
         o.osxLibrarySubFolder = "Application Support";
         props = std::make_unique<juce::PropertiesFile> (o);
 
-        lnf.setColourScheme (juce::LookAndFeel_V4::getDarkColourScheme());
         juce::LookAndFeel::setDefaultLookAndFeel (&lnf);
         window = std::make_unique<MainWindow> (*props);
 
@@ -39,27 +39,83 @@ public:
     void systemRequestedQuit() override { quit(); }
 
 private:
+    // Borderless window used for full screen. It is made 1 px taller than the monitor on purpose:
+    // graphics drivers (NVIDIA in particular) treat an OpenGL window that exactly covers a monitor as
+    // exclusive full screen and take it over, which switches an HDR display back to SDR. A borderless
+    // window that is slightly larger stays an ordinary desktop window, so HDR and the video signal are
+    // left alone, and it looks exactly the same.
+    struct FullscreenHost : public juce::Component
+    {
+        FullscreenHost() { setOpaque (true); }
+        void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (0xff0b0c0e)); }
+        void resized() override
+        {
+            if (auto* c = getChildComponent (0)) c->setBounds (0, 0, getWidth(), getHeight() - 1);
+        }
+    };
+
     struct MainWindow : public juce::DocumentWindow
     {
         explicit MainWindow (juce::PropertiesFile& p)
             : DocumentWindow ("Spectroscope - DigiCheck Universal", juce::Colour (0xff0b0c0e), allButtons)
         {
             setUsingNativeTitleBar (true);
-            content = new MainComponent (p);
-            setContentOwned (content, true);
+            content = std::make_unique<MainComponent> (p);
+            content->onFullscreenRequest = [this] (bool full) { setAppFullscreen (full); };
+            setContentNonOwned (content.get(), true);
             setResizable (true, true);
             setResizeLimits (640, 360, 10000, 10000);
             if (! restoreWindowStateFromString (content->getSettings().windowState)) centreWithSize (1300, 760);
             setVisible (true);
         }
-        ~MainWindow() override { content->getSettings().windowState = getWindowStateAsString(); }
+
+        ~MainWindow() override
+        {
+            setAppFullscreen (false);
+            content->getSettings().windowState = getWindowStateAsString();
+            clearContentComponent();
+        }
+
+        void setAppFullscreen (bool full)
+        {
+            if (full == (host != nullptr)) return;
+            content->suspendGpu();
+            if (full)
+            {
+                const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds());
+                if (display == nullptr) { content->resumeGpu(); return; }
+                const auto area = display->logicalBounds.getSmallestIntegerContainer();
+                clearContentComponent();                                   // content is not owned: just detached
+                host = std::make_unique<FullscreenHost>();
+                host->setName (getName());
+                host->addAndMakeVisible (content.get());
+                host->setBounds (area.withHeight (area.getHeight() + 1));  // 1 px taller: see FullscreenHost
+                host->addToDesktop (juce::ComponentPeer::windowAppearsOnTaskbar);
+                host->setVisible (true);
+                host->toFront (true);
+                setVisible (false);
+            }
+            else
+            {
+                host->removeChildComponent (content.get());
+                setContentNonOwned (content.get(), false);
+                setVisible (true);
+                toFront (true);
+                host.reset();
+            }
+            content->setFullscreenState (full);
+            content->resumeGpu();
+        }
+
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
-        MainComponent* content = nullptr;
+
+        std::unique_ptr<MainComponent> content;
+        std::unique_ptr<FullscreenHost> host;
     };
 
     void runSelfTest (juce::String path)
     {
-        auto* mc = window->content;
+        auto* mc = window->content.get();
         auto& st = mc->getSettings();
         st.grid = 1; st.showScale = false; st.showLufs = true; st.hidePanel = false;
         if (! juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_GPU", {}).isNotEmpty()) { st.gpu = false; mc->applyRendererForTest(); }
@@ -104,7 +160,7 @@ private:
     }
 
     std::unique_ptr<juce::PropertiesFile> props;
-    juce::LookAndFeel_V4 lnf;
+    AppLookAndFeel lnf;
     std::unique_ptr<MainWindow> window;
 };
 

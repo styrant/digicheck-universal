@@ -9,7 +9,8 @@ namespace
     struct SmallButtonLnf : public juce::LookAndFeel_V4
     {
         SmallButtonLnf() { setColourScheme (getDarkColourScheme()); }
-        juce::Font getTextButtonFont (juce::TextButton&, int) override { return juce::FontOptions (11.5f); }
+        juce::Font getTextButtonFont (juce::TextButton&, int) override { return juce::FontOptions (ui::fs (11.5f)); }
+        juce::Font getComboBoxFont (juce::ComboBox&) override { return juce::FontOptions (ui::fs (13.0f)); }
     };
     SmallButtonLnf& smallLnf() { static SmallButtonLnf l; return l; }
 }
@@ -51,6 +52,7 @@ BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& p
     refDown.onClick = [this] { if (onRef) onRef (-1); };
     refUp.onClick   = [this] { if (onRef) onRef (+1); };
     ref.setJustificationType (juce::Justification::centred);
+    ref.setFont (juce::FontOptions (ui::fs (15.0f)));
     ref.setColour (juce::Label::backgroundColourId, juce::Colour (0xff1e1f22));
     ref.setColour (juce::Label::outlineColourId, juce::Colour (0xff4a4c51));
     addAndMakeVisible (ref);
@@ -100,6 +102,7 @@ BottomBar::~BottomBar()
 
 void BottomBar::refresh()
 {
+    ref.setFont (juce::FontOptions (ui::fs (15.0f)));
     viewSpec.setToggleState (s.viewMode == Spectrogram, juce::dontSendNotification);
     viewAna.setToggleState  (s.viewMode == Analyzer, juce::dontSendNotification);
     lufsBtn.setToggleState  (s.showLufs, juce::dontSendNotification);
@@ -145,23 +148,26 @@ void BottomBar::resized()
     auto r = getLocalBounds().withTrimmedTop (1).reduced (8, 6);
 
     // left: Options, view switch, LUFS / Key / Tempo toggles
-    optionsBtn.setBounds (r.removeFromLeft (72)); r.removeFromLeft (10);
-    viewSpec.setBounds (r.removeFromLeft (90)); viewAna.setBounds (r.removeFromLeft (78)); r.removeFromLeft (10);
-    lufsBtn.setBounds (r.removeFromLeft (48)); r.removeFromLeft (4);
-    keyBtn.setBounds (r.removeFromLeft (40));  r.removeFromLeft (4);
-    tempoBtn.setBounds (r.removeFromLeft (56)); r.removeFromLeft (12);
+    optionsBtn.setBounds (r.removeFromLeft (ui::px (72))); r.removeFromLeft (ui::px (10));
+    viewSpec.setBounds (r.removeFromLeft (ui::px (90))); viewAna.setBounds (r.removeFromLeft (ui::px (78))); r.removeFromLeft (ui::px (10));
+    lufsBtn.setBounds (r.removeFromLeft (ui::px (48))); r.removeFromLeft (ui::px (4));
+    keyBtn.setBounds (r.removeFromLeft (ui::px (40)));  r.removeFromLeft (ui::px (4));
+    tempoBtn.setBounds (r.removeFromLeft (ui::px (56))); r.removeFromLeft (ui::px (12));
 
     // right corner: small Full screen / Auto-hide / Reset, then the loudness boxes
-    auto small = [&] (juce::TextButton& b, int w) { b.setBounds (r.removeFromRight (w).withSizeKeepingCentre (w, 20)); r.removeFromRight (4); };
-    small (full, full.getButtonText().startsWith ("Exit") ? 92 : 70);
+    auto small = [&] (juce::TextButton& b, int w) { b.setBounds (r.removeFromRight (w).withSizeKeepingCentre (w, ui::px (20))); r.removeFromRight (ui::px (4)); };
+    small (full, ui::px (full.getButtonText().startsWith ("Exit") ? 92 : 70));
     resetBtn.setVisible (s.showLufs);
     lufs.setVisible (s.showLufs);
     if (s.showLufs)
     {
-        small (resetBtn, 44);
-        r.removeFromRight (4);
-        lufs.setBounds (r.removeFromRight (juce::jmin (450, juce::jmax (330, r.getWidth() / 2))).expanded (0, 2));
-        r.removeFromRight (12);
+        small (resetBtn, ui::px (44));
+        r.removeFromRight (ui::px (4));
+        // leave the middle controls their minimum width; the loudness boxes shrink first
+        const int minGroup = spec ? ui::px (34 + 4 + 96 + 4 + 30 + 4 + 30) : ui::px (28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
+        const int lufsW = juce::jlimit (ui::px (240), ui::px (450), juce::jmin (r.getWidth() / 2, r.getWidth() - minGroup - ui::px (16)));
+        lufs.setBounds (r.removeFromRight (lufsW).expanded (0, 2));
+        r.removeFromRight (ui::px (12));
     }
 
     // centre: controls for the current view (dropping the least important ones if space is short)
@@ -173,32 +179,34 @@ void BottomBar::resized()
 
     if (spec)
     {
-        const int w = 34 + 4 + 96 + 4 + 30 + 4 + 30 + 10 + 72;
+        const bool roomForSettings = r.getWidth() >= ui::px (34 + 4 + 96 + 4 + 30 + 4 + 30 + 10 + 72);
+        specSettings.setVisible (roomForSettings);
+        const int w = juce::jmin (r.getWidth(), ui::px (34 + 4 + 96 + 4 + 30 + 4 + 30 + (roomForSettings ? 10 + 72 : 0)));
         auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
-        pause.setBounds (g.removeFromLeft (34)); g.removeFromLeft (4);
-        ref.setBounds (g.removeFromLeft (96));   g.removeFromLeft (4);
-        refUp.setBounds (g.removeFromLeft (30)); g.removeFromLeft (4);
-        refDown.setBounds (g.removeFromLeft (30)); g.removeFromLeft (10);
-        specSettings.setBounds (g.removeFromLeft (72));
+        pause.setBounds (g.removeFromLeft (ui::px (34))); g.removeFromLeft (ui::px (4));
+        ref.setBounds (g.removeFromLeft (ui::px (96)));   g.removeFromLeft (ui::px (4));
+        refUp.setBounds (g.removeFromLeft (ui::px (30))); g.removeFromLeft (ui::px (4));
+        refDown.setBounds (g.removeFromLeft (ui::px (30))); g.removeFromLeft (ui::px (10));
+        specSettings.setBounds (g.removeFromLeft (ui::px (72)));
         return;
     }
 
-    const bool roomForCombos = r.getWidth() >= 560;
+    const bool roomForCombos = r.getWidth() >= ui::px (680);
     for (auto* c : { &bpoBox, &chanBox, &gridBox }) c->setVisible (roomForCombos);
-    const int wButtons = 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72;
-    const int w = wButtons + (roomForCombos ? 64 + 4 + 122 + 4 + 84 + 10 : 0);
+    const int wButtons = ui::px (28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
+    const int w = wButtons + (roomForCombos ? ui::px (64 + 4 + 122 + 4 + 84 + 10) : 0);
     auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
     if (roomForCombos)
     {
-        bpoBox.setBounds (g.removeFromLeft (64));  g.removeFromLeft (4);
-        chanBox.setBounds (g.removeFromLeft (122)); g.removeFromLeft (4);
-        gridBox.setBounds (g.removeFromLeft (84));  g.removeFromLeft (10);
+        bpoBox.setBounds (g.removeFromLeft (ui::px (64)));  g.removeFromLeft (ui::px (4));
+        chanBox.setBounds (g.removeFromLeft (ui::px (122))); g.removeFromLeft (ui::px (4));
+        gridBox.setBounds (g.removeFromLeft (ui::px (84)));  g.removeFromLeft (ui::px (10));
     }
-    zoomOut.setBounds (g.removeFromLeft (28));   g.removeFromLeft (2);
-    zoomIn.setBounds (g.removeFromLeft (28));    g.removeFromLeft (4);
-    fullRange.setBounds (g.removeFromLeft (46)); g.removeFromLeft (4);
-    freeze.setBounds (g.removeFromLeft (62));    g.removeFromLeft (4);
-    anaSettings.setBounds (g.removeFromLeft (72));
+    zoomOut.setBounds (g.removeFromLeft (ui::px (28)));   g.removeFromLeft (ui::px (2));
+    zoomIn.setBounds (g.removeFromLeft (ui::px (28)));    g.removeFromLeft (ui::px (4));
+    fullRange.setBounds (g.removeFromLeft (ui::px (46))); g.removeFromLeft (ui::px (4));
+    freeze.setBounds (g.removeFromLeft (ui::px (62)));    g.removeFromLeft (ui::px (4));
+    anaSettings.setBounds (g.removeFromLeft (ui::px (72)));
 }
 
 void BottomBar::LufsReadout::paint (juce::Graphics& g)
@@ -234,13 +242,20 @@ void BottomBar::LufsReadout::paint (juce::Graphics& g)
         g.drawRoundedRectangle (box.reduced (0.5f), 5.0f, 1.0f);
 
         auto r = box.toNearestInt().reduced (9, 2);
-        g.setColour (kLabel.withAlpha (0.75f)); g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-        g.drawText (items[i].caption, r.removeFromTop (11), juce::Justification::centredLeft);
-        g.setColour (kLabel.withAlpha (0.7f)); g.setFont (juce::FontOptions (11.5f, juce::Font::bold));
-        g.drawText (items[i].unit, r.removeFromRight (32), juce::Justification::bottomRight);
+        g.setColour (kLabel.withAlpha (0.75f)); g.setFont (juce::FontOptions (ui::fs (10.0f), juce::Font::bold));
+        g.drawText (items[i].caption, r.removeFromTop (juce::roundToInt (ui::fs (11.0f))), juce::Justification::centredLeft);
+        // the number always fits: drop the unit, then shrink the number, when a box gets narrow
+        const float valueSize = ui::fs (21.0f);
+        const int unitW = juce::roundToInt (ui::fs (34.0f));
+        const bool showUnit = r.getWidth() - unitW >= juce::roundToInt (valueSize * 3.2f);
+        if (showUnit)
+        {
+            g.setColour (kLabel.withAlpha (0.7f)); g.setFont (juce::FontOptions (ui::fs (11.5f), juce::Font::bold));
+            g.drawText (items[i].unit, r.removeFromRight (unitW), juce::Justification::bottomRight);
+        }
         g.setColour (c);
-        g.setFont (juce::FontOptions (mono, 21.0f, juce::Font::bold));
-        g.drawText (has ? juce::String (items[i].v, 1) : juce::String ("--.-"), r.withTrimmedRight (5).translated (0, 1),
+        g.setFont (juce::FontOptions (mono, juce::jmin (valueSize, (float) r.getWidth() / 3.3f), juce::Font::bold));
+        g.drawText (has ? juce::String (items[i].v, 1) : juce::String ("--.-"), r.withTrimmedRight (showUnit ? 5 : 0).translated (0, 1),
                     juce::Justification::centredRight);
     }
 }

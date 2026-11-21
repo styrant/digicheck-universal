@@ -72,7 +72,7 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
     hint.setText ("Latency and CPU rise with FFT size and display speed. Turn reassignment off to compare with a plain FFT.",
                   juce::dontSendNotification);
     hint.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.5f));
-    hint.setFont (juce::FontOptions (12.0f));
+    hint.setFont (juce::FontOptions (ui::fs (12.0f)));
     addAndMakeVisible (hint);
 
     ok.onClick = [this] { close(); };
@@ -115,7 +115,7 @@ void SettingsDialog::combo (juce::ComboBox& b, const juce::StringArray& items, i
 void SettingsDialog::slider (juce::Slider& sl, double lo, double hi, double step, double value, std::function<void (double)> onMove)
 {
     sl.setSliderStyle (juce::Slider::LinearHorizontal);
-    sl.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 64, 22);
+    sl.setTextBoxStyle (juce::Slider::TextBoxLeft, false, ui::px (64), ui::px (22));
     sl.setRange (lo, hi, step);
     sl.setColour (juce::Slider::trackColourId, juce::Colour (0xff4c8dff));
     sl.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff3a3e46));
@@ -133,7 +133,7 @@ void SettingsDialog::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff1b1d22));
     g.setColour (juce::Colour (0xff2a2d33));
-    g.drawHorizontalLine (getHeight() - 50, 0.0f, (float) getWidth());
+    g.drawHorizontalLine (getHeight() - ui::px (50), 0.0f, (float) getWidth());
 }
 
 void SettingsDialog::resized()
@@ -141,23 +141,24 @@ void SettingsDialog::resized()
     auto r = getLocalBounds().reduced (16, 14);
     for (size_t i = 0; i < rows.size(); ++i)
     {
-        auto line = r.removeFromTop (30).reduced (0, 3);
-        labels[(int) i]->setBounds (line.removeFromLeft (200));
+        auto line = r.removeFromTop (ui::px (30)).reduced (0, 3);
+        labels[(int) i]->setFont (juce::FontOptions (ui::fs (15.0f)));
+        labels[(int) i]->setBounds (line.removeFromLeft (ui::px (200)));
         auto* c = rows[i].control;
         if (dynamic_cast<juce::Slider*> (c) != nullptr)
         {
-            if (rows[i].suffix) rows[i].suffix->setBounds (line.removeFromRight (44));
+            if (rows[i].suffix) { rows[i].suffix->setFont (juce::FontOptions (ui::fs (15.0f))); rows[i].suffix->setBounds (line.removeFromRight (ui::px (44))); }
             c->setBounds (line);
         }
-        else if (dynamic_cast<juce::ToggleButton*> (c) != nullptr) c->setBounds (line.removeFromLeft (80));
-        else c->setBounds (line.removeFromLeft (210));
+        else if (dynamic_cast<juce::ToggleButton*> (c) != nullptr) c->setBounds (line.removeFromLeft (ui::px (80)));
+        else c->setBounds (line.removeFromLeft (ui::px (210)));
     }
     r.removeFromTop (4);
-    hint.setBounds (r.removeFromTop (34));
-    auto buttons = getLocalBounds().removeFromBottom (50).reduced (16, 11);
-    cancel.setBounds (buttons.removeFromRight (90));
+    hint.setBounds (r.removeFromTop (ui::px (34)));
+    auto buttons = getLocalBounds().removeFromBottom (ui::px (50)).reduced (16, 11);
+    cancel.setBounds (buttons.removeFromRight (ui::px (90)));
     buttons.removeFromRight (8);
-    ok.setBounds (buttons.removeFromRight (90));
+    ok.setBounds (buttons.removeFromRight (ui::px (90)));
 }
 
 void SettingsDialog::close()

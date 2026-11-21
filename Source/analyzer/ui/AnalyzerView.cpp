@@ -1,5 +1,6 @@
 #include "AnalyzerView.h"
 #include "../../FrameClock.h"
+#include "../../UiScale.h"
 
 namespace
 {
@@ -59,7 +60,7 @@ namespace
         return noteName (n) + (c >= 0 ? " +" : " ") + juce::String (c) + centChar();
     }
 
-    juce::String dbText (double v)
+    [[maybe_unused]] juce::String dbText (double v)
     {
         return v <= sa::AnalyzerModel::kFloorDb + 1.0 ? "-" + infinityChar() : juce::String (v, 1);
     }
@@ -242,6 +243,9 @@ int AnalyzerView::bandAt (double f) const noexcept
 //==============================================================================
 void AnalyzerView::paint (juce::Graphics& g)
 {
+    smallFont = juce::FontOptions (ui::fs (11.0f));      // Spectroscope: follow the app's text size
+    infoFont  = juce::FontOptions (ui::fs (13.5f));
+
     const auto plot = plotArea();
     const auto view = getViewRange();
 
@@ -540,19 +544,15 @@ void AnalyzerView::drawInspector (juce::Graphics& g, juce::Rectangle<float> plot
     g.drawVerticalLine ((int) mousePos.x, plot.getY(), plot.getBottom());
     g.drawHorizontalLine ((int) mousePos.y, plot.getX(), plot.getRight());
 
-    const juce::String lines[] =
-    {
-        freqText (f) + "   " + juce::String (lv, 1) + " dB   " + noteText (f),
-        "Band " + juce::String (b + 1) + "/" + juce::String (layout->numBands) + ":  "
-            + freqText (layout->centre[(size_t) b]) + "  (" + freqLabel (layout->lower[(size_t) b]) + dashChar()
-            + freqLabel (layout->upper[(size_t) b]) + ")  " + noteText (layout->centre[(size_t) b]),
-        "Peak " + dbText (pk[b]) + "   Hold " + dbText (hd[b]) + "   Avg " + dbText (av[b]) + " dB",
-    };
+    // Spectroscope: just the frequency, level and note under the mouse
+    juce::ignoreUnused (pk, hd, av);
+    const juce::String lines[] = { freqText (f) + "   " + juce::String (lv, 1) + " dB   " + noteText (f) };
+    const float lineH = infoFont.getHeight() + 4.0f;
 
     float w = 0.0f;
     for (auto& l : lines) w = juce::jmax (w, juce::GlyphArrangement::getStringWidth (infoFont, l));
-    w += 14.0f;
-    const float h = 3 * 16.0f + 8.0f;
+    w += 16.0f;
+    const float h = lineH + 8.0f;
 
     float x = mousePos.x + 14.0f;
     if (x + w > plot.getRight()) x = mousePos.x - 14.0f - w;
@@ -569,8 +569,8 @@ void AnalyzerView::drawInspector (juce::Graphics& g, juce::Rectangle<float> plot
 
     g.setFont (infoFont);
     g.setColour (label.withAlpha (1.0f));
-    for (int i = 0; i < 3; ++i)
-        g.drawText (lines[i], box.reduced (7.0f, 4.0f).withHeight (16.0f).translated (0.0f, i * 16.0f),
+    for (int i = 0; i < (int) std::size (lines); ++i)
+        g.drawText (lines[i], box.reduced (8.0f, 4.0f).withHeight (lineH).translated (0.0f, i * lineH),
                     juce::Justification::centredLeft, false);
 }
 

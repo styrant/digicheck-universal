@@ -1,4 +1,5 @@
 #include "SettingsPanel.h"
+#include "../../UiScale.h"
 
 namespace
 {
@@ -39,7 +40,7 @@ namespace
             g.setColour (juce::Colours::white.withAlpha (0.4f));
             g.drawRect (sw, 1.0f);
             g.setColour (findColour (juce::Label::textColourId));
-            g.setFont (juce::FontOptions (13.0f));
+            g.setFont (juce::FontOptions (ui::fs (13.0f)));
             g.drawText (name, r.withTrimmedLeft (6.0f), juce::Justification::centredLeft, false);
         }
 
@@ -163,7 +164,7 @@ public:
                       "double-click axis = full range, right-click = settings.\n"
                       "Keys: R reset, F freeze, 0 full range, +/- zoom, I inspector.",
                       juce::dontSendNotification);
-        help.setFont (juce::FontOptions (12.0f));
+        help.setFont (juce::FontOptions (ui::fs (12.0f)));
         help.setJustificationType (juce::Justification::topLeft);
         help.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.6f));
         addAndMakeVisible (help);
@@ -228,7 +229,7 @@ private:
     juce::Label* makeLabel (const juce::String& text, bool isHeader = false)
     {
         auto* l = labels.add (new juce::Label ({}, text));
-        l->setFont (juce::FontOptions (isHeader ? 14.0f : 13.0f, isHeader ? juce::Font::bold : juce::Font::plain));
+        l->setFont (juce::FontOptions (ui::fs (isHeader ? 14.0f : 13.0f), isHeader ? juce::Font::bold : juce::Font::plain));
         if (isHeader) l->setColour (juce::Label::textColourId, juce::Colour (0xff8ec5ff));
         addAndMakeVisible (l);
         return l;
@@ -315,7 +316,7 @@ private:
 SettingsPanel::SettingsPanel (SpectrumAnalyzerProcessor& p) : processor (p)
 {
     title.setText ("Settings", juce::dontSendNotification);
-    title.setFont (juce::FontOptions (16.0f, juce::Font::bold));
+    title.setFont (juce::FontOptions (ui::fs (16.0f), juce::Font::bold));
     addAndMakeVisible (title);
 
     closeButton.onClick = [this] { if (onClose) onClose(); };

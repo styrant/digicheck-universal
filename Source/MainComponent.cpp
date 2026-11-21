@@ -8,23 +8,23 @@ namespace
     // "Key" window: major keys and their relative minors
     struct KeyChart : public juce::Component
     {
-        KeyChart() { setSize (300, 452); }
+        KeyChart() { setSize (ui::px (300), ui::px (452)); }
         void paint (juce::Graphics& g) override
         {
             static const char* rows[][2] = { { "C", "A" }, { "C#", "A#" }, { "D", "B" }, { "D#", "C" }, { "E", "C#" }, { "F", "D" },
                                              { "F#", "D#" }, { "G", "E" }, { "G#", "F" }, { "A", "F#" }, { "A#", "G" }, { "B", "G#" } };
             g.fillAll (juce::Colour (0xff1b1d22));
             auto r = getLocalBounds().reduced (20, 14);
-            g.setColour (juce::Colours::white.withAlpha (0.55f)); g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-            auto head = r.removeFromTop (24);
+            g.setColour (juce::Colours::white.withAlpha (0.55f)); g.setFont (juce::FontOptions (ui::fs (12.0f), juce::Font::bold));
+            auto head = r.removeFromTop (ui::px (24));
             g.drawText ("MAJOR", head.removeFromLeft (r.getWidth() / 2), juce::Justification::centredLeft);
             g.drawText ("RELATIVE MINOR", head, juce::Justification::centredLeft);
             g.setColour (juce::Colour (0xff3a3c40)); g.drawHorizontalLine (r.getY() + 2, (float) r.getX(), (float) r.getRight());
             r.removeFromTop (8);
-            g.setFont (juce::FontOptions (17.0f));
+            g.setFont (juce::FontOptions (ui::fs (17.0f)));
             for (auto& row : rows)
             {
-                auto line = r.removeFromTop (32);
+                auto line = r.removeFromTop (ui::px (32));
                 g.setColour (juce::Colours::white);
                 g.drawText (juce::String (row[0]) + " major", line.removeFromLeft (r.getWidth() / 2), juce::Justification::centredLeft);
                 g.setColour (juce::Colour (0xffb8c4ff));
@@ -42,7 +42,7 @@ namespace
         TempoChart (Settings& st, std::function<void()> changedCallback) : s (st), onChanged (std::move (changedCallback))
         {
             bpm.setSliderStyle (juce::Slider::IncDecButtons);
-            bpm.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 90, 30);
+            bpm.setTextBoxStyle (juce::Slider::TextBoxLeft, false, ui::px (90), ui::px (30));
             bpm.setRange (20.0, 400.0, 0.1);
             bpm.setIncDecButtonsMode (juce::Slider::incDecButtonsDraggable_Vertical);
             bpm.setValue (s.bpm, juce::dontSendNotification);
@@ -63,64 +63,64 @@ namespace
             resizeToFit();
         }
 
-        void resizeToFit() { setSize (250 + 112 * ((int) s.tempoTriplets + (int) s.tempoDotted), kTableTop + 9 * kRow + 44); }
+        void resizeToFit() { setSize (ui::px (250) + ui::px (kColW) * ((int) s.tempoTriplets + (int) s.tempoDotted), ui::px (kTableTop) + 9 * ui::px (kRow) + ui::px (44)); }
 
         void resized() override
         {
-            auto top = getLocalBounds().reduced (16, 14).removeFromTop (32);
-            top.removeFromLeft (44);                                   // "BPM" caption
-            bpm.setBounds (top.removeFromLeft (150));
+            auto top = getLocalBounds().reduced (16, 14).removeFromTop (ui::px (32));
+            top.removeFromLeft (ui::px (44));                          // "BPM" caption
+            bpm.setBounds (top.removeFromLeft (ui::px (150)));
             top.removeFromLeft (8);
-            tap.setBounds (top.removeFromLeft (56));
-            auto opts = getLocalBounds().reduced (16, 0).withTop (54).withHeight (24);
-            triplets.setBounds (opts.removeFromLeft (90));
-            dotted.setBounds (opts.removeFromLeft (90));
+            tap.setBounds (top.removeFromLeft (ui::px (56)));
+            auto opts = getLocalBounds().reduced (16, 0).withTop (ui::px (54)).withHeight (ui::px (24));
+            triplets.setBounds (opts.removeFromLeft (ui::px (90)));
+            dotted.setBounds (opts.removeFromLeft (ui::px (90)));
             if (auto* w = findParentComponentOfClass<juce::DocumentWindow>()) w->setContentComponentSize (getWidth(), getHeight());
         }
 
         void paint (juce::Graphics& g) override
         {
             g.fillAll (juce::Colour (0xff1b1d22));
-            g.setColour (juce::Colours::white.withAlpha (0.55f)); g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-            g.drawText ("BPM", 16, 14, 40, 32, juce::Justification::centredLeft);
+            g.setColour (juce::Colours::white.withAlpha (0.55f)); g.setFont (juce::FontOptions (ui::fs (12.0f), juce::Font::bold));
+            g.drawText ("BPM", 16, 14, ui::px (40), ui::px (32), juce::Justification::centredLeft);
 
             const auto cols = columns();
-            auto table = getLocalBounds().reduced (16, 0).withTop (kTableTop - 30);
-            auto head = table.removeFromTop (24);
-            g.drawText ("NOTE", head.removeFromLeft (kNoteW), juce::Justification::centredLeft);
-            for (auto& c : cols) g.drawText (c.name, head.removeFromLeft (kColW).withTrimmedRight (28), juce::Justification::centredRight);
-            g.setColour (juce::Colour (0xff3a3c40)); g.drawHorizontalLine (kTableTop - 4, 16.0f, (float) getWidth() - 16.0f);
+            auto table = getLocalBounds().reduced (16, 0).withTop (ui::px (kTableTop) - ui::px (30));
+            auto head = table.removeFromTop (ui::px (24));
+            g.drawText ("NOTE", head.removeFromLeft (ui::px (kNoteW)), juce::Justification::centredLeft);
+            for (auto& c : cols) g.drawText (c.name, head.removeFromLeft (ui::px (kColW)).withTrimmedRight (ui::px (28)), juce::Justification::centredRight);
+            g.setColour (juce::Colour (0xff3a3c40)); g.drawHorizontalLine (ui::px (kTableTop) - 4, 16.0f, (float) getWidth() - 16.0f);
 
             static const char* notes[] = { "2/1", "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/64", "1/128" };
             const auto mono = juce::Font::getDefaultMonospacedFontName();
             for (int i = 0; i < 9; ++i)
             {
-                auto line = juce::Rectangle<int> (16, kTableTop + i * kRow, getWidth() - 32, kRow);
+                auto line = juce::Rectangle<int> (16, ui::px (kTableTop) + i * ui::px (kRow), getWidth() - 32, ui::px (kRow));
                 if (i % 2 == 1) { g.setColour (juce::Colours::white.withAlpha (0.035f)); g.fillRect (line.expanded (6, 0)); }
                 if (i == 3) { g.setColour (juce::Colour (0xff4c8dff).withAlpha (0.12f)); g.fillRect (line.expanded (6, 0)); }  // the beat
-                g.setColour (juce::Colours::white); g.setFont (juce::FontOptions (16.0f, juce::Font::bold));
-                g.drawText (notes[i], line.removeFromLeft (kNoteW), juce::Justification::centredLeft);
+                g.setColour (juce::Colours::white); g.setFont (juce::FontOptions (ui::fs (16.0f), juce::Font::bold));
+                g.drawText (notes[i], line.removeFromLeft (ui::px (kNoteW)), juce::Justification::centredLeft);
                 for (auto& c : cols)
                 {
                     const double ms = noteMs (i) * c.factor;
-                    auto cell = line.removeFromLeft (kColW);
+                    auto cell = line.removeFromLeft (ui::px (kColW));
                     const bool copied = copiedRow == i && copiedCol == &c - cols.data();
                     g.setColour (copied ? juce::Colour (0xff3ddc84) : c.colour);
-                    g.setFont (juce::FontOptions (mono, 17.0f, juce::Font::bold));
-                    g.drawText (copied ? juce::String ("copied") : fmt (ms), cell.withTrimmedRight (28), juce::Justification::centredRight);
-                    g.setColour (juce::Colours::white.withAlpha (0.45f)); g.setFont (juce::FontOptions (12.0f));
-                    g.drawText ("ms", cell.removeFromRight (24), juce::Justification::centredRight);
+                    g.setFont (juce::FontOptions (mono, ui::fs (17.0f), juce::Font::bold));
+                    g.drawText (copied ? juce::String ("copied") : fmt (ms), cell.withTrimmedRight (ui::px (28)), juce::Justification::centredRight);
+                    g.setColour (juce::Colours::white.withAlpha (0.45f)); g.setFont (juce::FontOptions (ui::fs (12.0f)));
+                    g.drawText ("ms", cell.removeFromRight (ui::px (24)), juce::Justification::centredRight);
                 }
             }
-            g.setColour (juce::Colours::white.withAlpha (0.4f)); g.setFont (juce::FontOptions (11.5f));
-            g.drawText ("Click a value to copy it", 16, getHeight() - 30, getWidth() - 32, 20, juce::Justification::centredLeft);
+            g.setColour (juce::Colours::white.withAlpha (0.4f)); g.setFont (juce::FontOptions (ui::fs (11.5f)));
+            g.drawText ("Click a value to copy it", 16, getHeight() - ui::px (30), getWidth() - 32, ui::px (20), juce::Justification::centredLeft);
         }
 
         void mouseUp (const juce::MouseEvent& e) override
         {
-            const int row = (e.y - kTableTop) / kRow, col = (e.x - 16 - kNoteW) / kColW;
+            const int row = (e.y - ui::px (kTableTop)) / ui::px (kRow), col = (e.x - 16 - ui::px (kNoteW)) / ui::px (kColW);
             const auto cols = columns();
-            if (e.y < kTableTop || row < 0 || row > 8 || e.x < 16 + kNoteW || col < 0 || col >= (int) cols.size()) return;
+            if (e.y < ui::px (kTableTop) || row < 0 || row > 8 || e.x < 16 + ui::px (kNoteW) || col < 0 || col >= (int) cols.size()) return;
             juce::SystemClipboard::copyTextToClipboard (fmt (noteMs (row) * cols[(size_t) col].factor));
             copiedRow = row; copiedCol = col;
             repaint();
@@ -205,7 +205,8 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
 
     status.setJustificationType (juce::Justification::topLeft);
     status.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.6f));
-    status.setFont (juce::FontOptions (12.5f));
+    status.setFont (juce::FontOptions (ui::fs (12.5f)));
+    for (auto* l : { &lblL, &lblR, &lblFps, &lblText }) l->setFont (juce::FontOptions (ui::fs (15.0f)));
     source.setTooltip ("Signal source");
     for (auto* l : { &lblL, &lblR }) { l->setBorderSize ({}); l->setJustificationType (juce::Justification::centred); }
     startBtn.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff4c8dff));
@@ -228,6 +229,20 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     fpsBox.setTooltip ("Cap the frame rate, e.g. 3 below your monitor's maximum to stay in its G-Sync / FreeSync range");
     fpsBox.onChange = [this] { settings.fpsCap = fpsBox.getSelectedId() - 1; frameclock::capHz = settings.fpsCap; saveAll(); };
     frameclock::capHz = settings.fpsCap;
+
+    textBox.addItemList ({ "Small", "Medium (default)", "Large", "Custom" }, 1);
+    textBox.setSelectedItemIndex (juce::jlimit (0, 3, settings.textSize), juce::dontSendNotification);
+    textBox.onChange = [this] { settings.textSize = textBox.getSelectedItemIndex(); applyTextScale(); };
+    textSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    textSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
+    textSlider.setRange (70.0, 200.0, 5.0);
+    textSlider.setTextValueSuffix ("%");
+    textSlider.setValue (settings.textScaleCustom * 100.0, juce::dontSendNotification);
+    textSlider.onDragEnd = [this] { settings.textScaleCustom = textSlider.getValue() / 100.0; applyTextScale(); };
+    textSlider.onValueChange = [this] { if (! textSlider.isMouseButtonDown()) { settings.textScaleCustom = textSlider.getValue() / 100.0; applyTextScale(); } };
+    for (auto* c : std::initializer_list<juce::Component*> { &lblText, &textBox, &textSlider }) options.addAndMakeVisible (c);
+    ui::textScale = ui::presetScale (settings.textSize, settings.textScaleCustom);
+    textSlider.setVisible (settings.textSize == 3);
 
     startBtn.onClick    = [this] { if (engine.isRunning()) stopSource(); else startSelected(); };
     settingsBtn.onClick = [this] { if (settings.viewMode == BottomBar::Analyzer) analyzerPanel.toggleSettings(); else openSettings(); };
@@ -342,6 +357,30 @@ void MainComponent::OutsideClick::mouseDown (const juce::MouseEvent& e)
 
 void MainComponent::toggleOptions() { setOptionsVisible (! options.isVisible()); }
 
+// Text size changed: new fonts everywhere, layouts re-measured, small windows rebuilt at the new size
+void MainComponent::applyTextScale()
+{
+    ui::textScale = ui::presetScale (settings.textSize, settings.textScaleCustom);
+    textSlider.setVisible (settings.textSize == 3);
+    for (auto* l : { &lblL, &lblR, &lblFps, &lblText }) l->setFont (juce::FontOptions (ui::fs (15.0f)));
+    status.setFont (juce::FontOptions (ui::fs (12.5f)));
+    saveAll();
+    if (auto* top = getTopLevelComponent()) top->sendLookAndFeelChange();
+    view.settingsChanged (Change::Layout);       // margins changed (keeps the history)
+    bottom.refresh();
+    resized();
+    analyzerPanel.resized();
+    analyzerPanel.repaint();
+    for (auto* w : { &keyWindow, &tempoWindow })
+        if (*w != nullptr)
+        {
+            const bool wasOpen = (*w)->isVisible();
+            w->reset();
+            if (wasOpen) { if (w == &keyWindow) toggleKeyWindow(); else toggleTempoWindow(); }
+        }
+    repaint();
+}
+
 void MainComponent::setOptionsVisible (bool show)
 {
     if (show) { updateStatus(); layoutOptions(); options.toFront (false); }
@@ -452,19 +491,34 @@ void MainComponent::openSettings()
 
 void MainComponent::toggleFullscreen()
 {
-    auto& desk = juce::Desktop::getInstance();
-    auto* top = getTopLevelComponent();
-    const bool goFull = desk.getKioskModeComponent() != top;
-    desk.setKioskModeComponent (goFull ? top : nullptr, false);
-    bottom.setFullscreen (goFull);
+    // Deferred: the click that asks for this is still being handled by the window that is about
+    // to be replaced, so switching windows must wait until that event has finished.
+    juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this), want = ! fullscreen]
+    {
+        if (safe != nullptr && safe->onFullscreenRequest) safe->onFullscreenRequest (want);
+    });
+}
+
+// The window owner moves this component to another window; the GL context is detached meanwhile.
+void MainComponent::suspendGpu()
+{
+    if (glContext.isAttached()) { glContext.detach(); gpuSuspended = true; }
+}
+
+void MainComponent::resumeGpu()
+{
+    if (gpuSuspended) { gpuSuspended = false; applyRenderer(); }
+}
+
+void MainComponent::setFullscreenState (bool isFull)
+{
+    fullscreen = isFull;
+    bottom.setFullscreen (isFull);
     resized();
     grabKeyboardFocus();
 }
 
-bool MainComponent::isFullscreen() const
-{
-    return juce::Desktop::getInstance().getKioskModeComponent() == getTopLevelComponent();
-}
+bool MainComponent::isFullscreen() const { return fullscreen; }
 
 void MainComponent::toggleTempoWindow()
 {
@@ -543,7 +597,7 @@ void MainComponent::resized()
 {
     ownerW = (float) getWidth(); ownerH = (float) getHeight();
     auto r = getLocalBounds();
-    bottom.setBounds (r.removeFromBottom (BottomBar::kHeight));
+    bottom.setBounds (r.removeFromBottom (BottomBar::height()));
     view.setBounds (r);                       // no top toolbar: the analysis uses the full height
     analyzerPanel.setBounds (r);
     layoutOptions();
@@ -551,30 +605,39 @@ void MainComponent::resized()
 
 void MainComponent::layoutOptions()
 {
-    const int w = juce::jmin (460, getWidth() - 16), h = 330;
-    options.setBounds (8, getHeight() - BottomBar::kHeight - h - 6, w, h);
+    using ui::px;
+    const int w = juce::jmin (px (470), getWidth() - 16), h = px (settings.textSize == 3 ? 404 : 372);
+    options.setBounds (8, getHeight() - BottomBar::height() - h - 6, w, h);
     options.headings.clear();
     auto r = options.getLocalBounds().reduced (14, 10);
-    auto heading = [&] (const juce::String& t) { options.headings.push_back ({ r.removeFromTop (20), t }); };
+    auto heading = [&] (const juce::String& t) { options.headings.push_back ({ r.removeFromTop (px (20)), t }); };
 
     heading ("AUDIO INPUT");
-    source.setBounds (r.removeFromTop (28)); r.removeFromTop (6);
-    auto row = r.removeFromTop (28);
-    lblL.setBounds (row.removeFromLeft (18)); chL.setBounds (row.removeFromLeft ((row.getWidth() - 26) / 2)); row.removeFromLeft (8);
-    lblR.setBounds (row.removeFromLeft (18)); chR.setBounds (row);
-    r.removeFromTop (8);
-    row = r.removeFromTop (28);
-    startBtn.setBounds (row.removeFromLeft (90)); row.removeFromLeft (6);
-    rescanBtn.setBounds (row.removeFromLeft (80)); row.removeFromLeft (6);
-    settingsBtn.setBounds (row.removeFromLeft (110));
-    r.removeFromTop (6);
-    status.setBounds (r.removeFromTop (40));
-    r.removeFromTop (6);
+    source.setBounds (r.removeFromTop (px (28))); r.removeFromTop (px (6));
+    auto row = r.removeFromTop (px (28));
+    lblL.setBounds (row.removeFromLeft (px (18))); chL.setBounds (row.removeFromLeft ((row.getWidth() - px (26)) / 2)); row.removeFromLeft (px (8));
+    lblR.setBounds (row.removeFromLeft (px (18))); chR.setBounds (row);
+    r.removeFromTop (px (8));
+    row = r.removeFromTop (px (28));
+    startBtn.setBounds (row.removeFromLeft (px (90))); row.removeFromLeft (px (6));
+    rescanBtn.setBounds (row.removeFromLeft (px (80))); row.removeFromLeft (px (6));
+    settingsBtn.setBounds (row.removeFromLeft (px (110)));
+    r.removeFromTop (px (6));
+    status.setBounds (r.removeFromTop (px (40)));
+    r.removeFromTop (px (6));
 
     heading ("DISPLAY");
-    gpuToggle.setBounds (r.removeFromTop (26)); r.removeFromTop (4);
-    row = r.removeFromTop (28);
-    lblFps.setBounds (row.removeFromLeft (120)); fpsBox.setBounds (row.removeFromLeft (190));
+    gpuToggle.setBounds (r.removeFromTop (px (26))); r.removeFromTop (px (4));
+    row = r.removeFromTop (px (28));
+    lblFps.setBounds (row.removeFromLeft (px (130))); fpsBox.setBounds (row.removeFromLeft (px (190)));
+    r.removeFromTop (px (6));
+    row = r.removeFromTop (px (28));
+    lblText.setBounds (row.removeFromLeft (px (130))); textBox.setBounds (row.removeFromLeft (px (190)));
+    if (settings.textSize == 3)
+    {
+        r.removeFromTop (px (4));
+        textSlider.setBounds (r.removeFromTop (px (28)).withTrimmedLeft (px (130)).withWidth (px (260)));
+    }
 }
 
 bool MainComponent::keyPressed (const juce::KeyPress& k)
@@ -587,7 +650,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
     if (k == juce::KeyPress::escapeKey)
     {
         if (options.isVisible()) setOptionsVisible (false);
-        else if (juce::Desktop::getInstance().getKioskModeComponent() == getTopLevelComponent()) toggleFullscreen();
+        else if (fullscreen) toggleFullscreen();
         else view.clearCursor();
         return true;
     }
