@@ -21,6 +21,7 @@ struct Settings
     int    noteRef    = 440;      // 0 = off
     bool   showLufs   = true;
     bool   gpu        = true;     // OpenGL rendering
+    int    fpsCap     = 0;        // frame-rate limit, 0 = follow the monitor
     bool   autoHideBar = true;    // hide the top toolbar in full screen (reveal at the top edge)
 
     int    viewMode   = 0;        // 0 spectrogram, 1 analyzer
@@ -65,6 +66,7 @@ struct Settings
         noteRef    = p.getIntValue ("noteRef", noteRef);
         showLufs   = p.getBoolValue ("showLufs", showLufs);
         gpu        = p.getBoolValue ("gpu", gpu);
+        fpsCap     = p.getIntValue ("fpsCap", fpsCap);
         autoHideBar = p.getBoolValue ("autoHideBar", autoHideBar);
         viewMode   = p.getIntValue ("viewMode", viewMode);
         bpm        = p.getDoubleValue ("bpm", bpm);
@@ -87,7 +89,8 @@ struct Settings
         p.setValue ("shortRange", shortRange); p.setValue ("stationary", stationary);
         p.setValue ("hidePanel", hidePanel);   p.setValue ("showScale", showScale);
         p.setValue ("noteRef", noteRef);       p.setValue ("source", source);
-        p.setValue ("showLufs", showLufs);     p.setValue ("gpu", gpu);     p.setValue ("autoHideBar", autoHideBar);
+        p.setValue ("showLufs", showLufs);     p.setValue ("gpu", gpu);
+        p.setValue ("fpsCap", fpsCap);     p.setValue ("autoHideBar", autoHideBar);
         p.setValue ("chL", chL);               p.setValue ("chR", chR);
         p.setValue ("windowState", windowState);
         p.setValue ("viewMode", viewMode);     p.setValue ("analyzerState", analyzerState);

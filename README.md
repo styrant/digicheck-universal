@@ -49,10 +49,12 @@ Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**)
 - The display is synced to the monitor's refresh rate (60/120/144 Hz…). New spectrogram columns pass through a ~30 ms buffer and are released at exactly the display speed, so the scroll is even on every frame.
 - **GPU Rendering (OpenGL)** is on by default (Settings → GPU Rendering). The spectrogram history is an OpenGL texture: each frame uploads only the new columns and scrolls with sub-pixel precision. The rest of the interface, including the Analyzer, is drawn on the GPU too.
 - Turn it off to use the CPU renderer, e.g. if your graphics driver has OpenGL problems.
-- The status bar shows the renderer and the measured frame rate, e.g. `GPU 144 fps`.
+- **Frame rate limit** (in Options): caps the whole window, both views, at a chosen rate. For a G-Sync / FreeSync monitor, pick about 3 below its maximum (e.g. 141 for 144 Hz) to stay inside the variable-refresh range. Vsync stays on, so frames never exceed the monitor's refresh rate.
+- The Options panel shows the renderer and the measured frame rate, e.g. `GPU (OpenGL), 141 fps (limit 141)`.
 
 ## Toolbar and windows
-- **Full screen**: F11 or the small button at the bottom right; Esc leaves. With **Auto-hide** on (button in the bottom strip, or Settings), the top toolbar hides in full screen. Touch the top edge with the mouse to bring it back.
+- **Options** (bottom left, or O) opens a pop-up panel with the audio input (source, L/R channels, Start/Stop, Rescan), the status line and the display options (GPU rendering, frame rate limit). There is no top toolbar, so the analysis uses the full height. Click anywhere else or press Esc to close it.
+- **Full screen**: F11 or the small button at the bottom right; Esc leaves.
 - **Key** (or K) opens a small always-on-top chart of major keys and their relative minors.
 - **Tempo** (or T) opens a BPM-to-milliseconds calculator: note values from 2/1 to 1/128, with optional triplet and dotted columns and a Tap button. Click a value to copy it.
 - **LUFS** shows short-term, integrated (BS.1770 gated) and true-peak values, colour-coded. Loudness is white below −14 LUFS, green from −14 to −9, yellow from −9 to −6, and red from −6 up. True peak is white below −1 dBTP, yellow from −1 to 0, and red above 0. **Reset** restarts integrated loudness and the true-peak hold.

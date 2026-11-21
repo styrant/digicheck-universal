@@ -1,4 +1,5 @@
 #include "SpectrogramView.h"
+#include "FrameClock.h"
 
 namespace
 {
@@ -303,17 +304,18 @@ void SpectrogramView::onVBlank (double t)
         {
             commitColumn (pend.data() + (size_t) pendHead * (size_t) H, bd);
             pendHead = (pendHead + 1) % pendCap; --pendCount;
-            if (! gpu) ++tick;
         }
         // sub-pixel scroll: how far the next (already buffered) column has moved in
         glScroll = writeCol + (pendCount > 0 && ! s.stationary ? credit : 0.0);
     }
-    const bool changed = bd.has_value() || (gpu && running);
+    if (bd.has_value()) needsRepaint = true;
     bd.reset();
 
-    if (! gpu && changed) { repaint (plot); }
+    // drawing obeys the app-wide frame-rate cap (the columns above are still taken in on time)
+    if (! frameclock::clock().due (t)) return;
+    if (! gpu && needsRepaint) { needsRepaint = false; repaint (plot); }
     else if (gpu && s.stationary && running) repaint (plot);   // moving write line
-    if (++tick % 6 == 0 && cursorF) repaint (plot);             // keep the cursor's level readout current
+    if (++cursorTick % 6 == 0 && cursorF) repaint (plot);       // keep the cursor's level readout current
 }
 
 //==============================================================================
@@ -584,7 +586,7 @@ void SpectrogramView::paint (juce::Graphics& g)
     if (! running)
     {
         g.setColour (juce::Colours::white.withAlpha (0.55f)); g.setFont (juce::FontOptions (15.0f));
-        g.drawText ("Choose a source above and press Start", plot.withHeight (20).withY (plot.getCentreY() - 22), juce::Justification::centred);
+        g.drawText ("Open Options (bottom left) to choose an input and press Start", plot.withHeight (20).withY (plot.getCentreY() - 22), juce::Justification::centred);
         g.setColour (juce::Colours::white.withAlpha (0.35f)); g.setFont (juce::FontOptions (12.0f));
         g.drawText ("\"Test signal\" works without an interface", plot.withHeight (16).withY (plot.getCentreY() + 2), juce::Justification::centred);
     }

@@ -87,6 +87,8 @@ private:
     std::vector<float> pend;
     int pendCap = 0, pendHead = 0, pendCount = 0;
     double lastVBlank = 0, credit = 0;
+    bool needsRepaint = false;
+    int cursorTick = 0;
 
     // shared with the GL render thread (guarded by glLock)
     juce::CriticalSection glLock;

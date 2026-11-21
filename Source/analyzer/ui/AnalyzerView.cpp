@@ -1,4 +1,5 @@
 #include "AnalyzerView.h"
+#include "../../FrameClock.h"
 
 namespace
 {
@@ -106,6 +107,10 @@ void AnalyzerView::syncLayout()
 
 void AnalyzerView::advance (double ts)
 {
+    // Spectroscope: obey the app-wide frame-rate cap (skipping a vblank just makes the next dt longer)
+    if (! frameclock::clock().due (ts))
+        return;
+
     syncLayout();
 
     auto& ring = processor.getRing();

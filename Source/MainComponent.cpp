@@ -3,7 +3,7 @@
 
 namespace
 {
-    constexpr int kBarH = 41;
+    const int kFpsCaps[] = { 0, 30, 48, 57, 60, 72, 75, 90, 97, 100, 117, 120, 138, 141, 144, 157, 162, 165, 200, 237, 240 };
 
     // "Key" window: major keys and their relative minors
     struct KeyChart : public juce::Component
@@ -203,19 +203,31 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     engine.setAnalyzer (&analyzerProc);
     setWantsKeyboardFocus (true);
 
-    title.setFont (juce::FontOptions (14.0f, juce::Font::bold));
-    status.setJustificationType (juce::Justification::centredRight);
-    status.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.55f));
+    status.setJustificationType (juce::Justification::topLeft);
+    status.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.6f));
+    status.setFont (juce::FontOptions (12.5f));
     source.setTooltip ("Signal source");
     for (auto* l : { &lblL, &lblR }) { l->setBorderSize ({}); l->setJustificationType (juce::Justification::centred); }
     startBtn.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff4c8dff));
 
-    for (auto* c : std::initializer_list<juce::Component*> { &title, &source, &lblL, &chL, &lblR, &chR, &startBtn, &settingsBtn, &rescanBtn, &status })
-        bar.addAndMakeVisible (c);
+    for (auto* c : std::initializer_list<juce::Component*> { &source, &lblL, &chL, &lblR, &chR, &startBtn, &settingsBtn, &rescanBtn,
+                                                             &status, &gpuToggle, &lblFps, &fpsBox })
+        options.addAndMakeVisible (c);
     addAndMakeVisible (view);
     addChildComponent (analyzerPanel);
     addAndMakeVisible (bottom);
-    addAndMakeVisible (bar);
+    addChildComponent (options);
+    juce::Desktop::getInstance().addGlobalMouseListener (&outsideClick);
+
+    // display options
+    gpuToggle.setToggleState (settings.gpu, juce::dontSendNotification);
+    gpuToggle.onClick = [this] { settings.gpu = gpuToggle.getToggleState(); onChange (Change::Bar); };
+    for (int cap : kFpsCaps) fpsBox.addItem (cap == 0 ? juce::String ("Off (follow monitor)") : juce::String (cap) + " fps", cap + 1);
+    fpsBox.setSelectedId (settings.fpsCap + 1, juce::dontSendNotification);
+    if (fpsBox.getSelectedId() == 0) fpsBox.setSelectedId (1, juce::dontSendNotification);
+    fpsBox.setTooltip ("Cap the frame rate, e.g. 3 below your monitor's maximum to stay in its G-Sync / FreeSync range");
+    fpsBox.onChange = [this] { settings.fpsCap = fpsBox.getSelectedId() - 1; frameclock::capHz = settings.fpsCap; saveAll(); };
+    frameclock::capHz = settings.fpsCap;
 
     startBtn.onClick    = [this] { if (engine.isRunning()) stopSource(); else startSelected(); };
     settingsBtn.onClick = [this] { if (settings.viewMode == BottomBar::Analyzer) analyzerPanel.toggleSettings(); else openSettings(); };
@@ -237,7 +249,8 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     bottom.onToggleKey       = [this] { toggleKeyWindow(); };
     bottom.onToggleTempo     = [this] { toggleTempoWindow(); };
     bottom.onToggleFullscreen = [this] { toggleFullscreen(); };
-    bottom.onToggleAutoHide  = [this] { settings.autoHideBar = ! settings.autoHideBar; onChange (Change::Bar); };
+    bottom.onToggleOptions   = [this] { toggleOptions(); };
+    bottom.onSpectrogramSettings = [this] { openSettings(); };
     bottom.onToggleLufs      = [this] { settings.showLufs = ! settings.showLufs; onChange (Change::Bar); };
     bottom.onZoomIn          = [this] { analyzerPanel.getView().zoomBy (0.6); };
     bottom.onZoomOut         = [this] { analyzerPanel.getView().zoomBy (1.0 / 0.6); };
@@ -252,7 +265,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     // renderOpenGL(); every component (including the analyzer) is then painted on top by the GPU.
     glContext.setRenderer (this);
     glContext.setComponentPaintingEnabled (true);
-    glContext.setContinuousRepainting (true);          // render every vblank
+    glContext.setContinuousRepainting (false);         // frames are triggered by onFrame(), which obeys the frame-rate cap
     glContext.setPreferredVersion ({ 3, 2 });
     applyRenderer();
 
@@ -268,6 +281,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
 
 MainComponent::~MainComponent()
 {
+    juce::Desktop::getInstance().removeGlobalMouseListener (&outsideClick);
     glContext.detach();
     saveAll();
     engine.stop();
@@ -303,6 +317,37 @@ void MainComponent::renderOpenGL()
     using namespace juce::gl;
     juce::OpenGLHelpers::clear (juce::Colour (0xff0b0c0e));
     view.glRender (ownerW.load(), ownerH.load());
+    glFrames.fetch_add (1);
+}
+
+// One display frame (monitor vblank, thinned out to the frame-rate cap). Everything that animates
+// is updated from here or from vblank callbacks that consult the same frame clock.
+void MainComponent::onFrame (double t)
+{
+    if (! frameclock::clock().due (t)) return;
+    bottom.onFrame();
+    if (glContext.isAttached()) glContext.triggerRepaint();
+}
+
+void MainComponent::OutsideClick::mouseDown (const juce::MouseEvent& e)
+{
+    auto& o = owner;
+    auto* c = e.eventComponent;
+    if (! o.options.isVisible() || c == nullptr) return;
+    if (c->getTopLevelComponent() != o.getTopLevelComponent()) return;          // pop-up menus are separate windows
+    if (c == &o.options || o.options.isParentOf (c)) return;
+    if (c == &o.bottom.getOptionsButton()) return;                               // its own click toggles
+    o.setOptionsVisible (false);
+}
+
+void MainComponent::toggleOptions() { setOptionsVisible (! options.isVisible()); }
+
+void MainComponent::setOptionsVisible (bool show)
+{
+    if (show) { updateStatus(); layoutOptions(); options.toFront (false); }
+    options.setVisible (show);
+    bottom.setOptionsOpen (show);
+    if (! show) grabKeyboardFocus();
 }
 
 void MainComponent::setView (int v)
@@ -412,7 +457,6 @@ void MainComponent::toggleFullscreen()
     const bool goFull = desk.getKioskModeComponent() != top;
     desk.setKioskModeComponent (goFull ? top : nullptr, false);
     bottom.setFullscreen (goFull);
-    barRevealed = false;
     resized();
     grabKeyboardFocus();
 }
@@ -452,43 +496,42 @@ void MainComponent::toggleKeyWindow()
     bottom.setKeyOpen (show);
 }
 
-// Full screen with auto-hide: the toolbar is hidden and slides in when the mouse touches the top
-// edge; it stays while the mouse is over it (or a menu/dialog from it is open) and hides shortly after.
-void MainComponent::updateBarReveal()
-{
-    if (! barAutoHidden()) return;
-    const auto pos = getLocalPoint (nullptr, juce::Desktop::getMousePosition());
-    const auto now = juce::Time::getMillisecondCounter();
-    const bool menuOpen = juce::ModalComponentManager::getInstance()->getNumModalComponents() > 0;
-    const bool inside = pos.x >= 0 && pos.x < getWidth();
-    if (inside && pos.y <= 3) barRevealed = true;
-    if (barRevealed && ((inside && pos.y >= 0 && pos.y < kBarH + 12) || menuOpen)) lastInBar = now;
-    if (barRevealed && now - lastInBar > 700) barRevealed = false;
-    if (bar.isVisible() != barRevealed) { bar.setVisible (barRevealed); if (barRevealed) bar.toFront (false); }
-}
-
 void MainComponent::timerCallback()
 {
-    updateBarReveal();
     if (++tick % 10 == 0) updateStatus();
 }
 
 void MainComponent::updateStatus()
 {
-    const double fps = view.measureFps();          // measured every status update (twice a second)
-    const juce::String render = (glContext.isAttached() ? "GPU" : "CPU")
-        + (settings.viewMode == BottomBar::Spectrogram && engine.isRunning() ? " " + juce::String (juce::roundToInt (fps)) + " fps" : juce::String());
-    if (error.isNotEmpty()) { status.setText ("Could not start: " + error, juce::dontSendNotification); return; }
-    if (! engine.isRunning()) { status.setText ("Stopped", juce::dontSendNotification); return; }
-    const auto& src = engine.getCurrentSource();
-    juce::String kind = src.kind == AudioEngine::Source::Loopback ? "Loopback"
-                      : src.kind == AudioEngine::Source::Test     ? "Test"
-                      : src.typeName;
-    status.setText (kind + "  |  " + juce::String (engine.getSampleRate() / 1000.0, 1) + " kHz  |  "
-                    + juce::String (engine.getChannelNames().size()) + " ch  |  latency "
-                    + juce::String (juce::roundToInt (engine.getLatencySeconds() * 1000)) + " ms  |  DSP "
-                    + juce::String (juce::roundToInt (engine.getLoad() * 100)) + "%  |  " + render,
-                    juce::dontSendNotification);
+    const double now = juce::Time::getMillisecondCounterHiRes() * 0.001;
+    double fps = 0;
+    if (glContext.isAttached())
+    {
+        const int n = glFrames.exchange (0);
+        fps = (now - glFpsTime) > 0 && (now - glFpsTime) < 10 ? n / (now - glFpsTime) : 0;
+        view.measureFps();
+    }
+    else fps = view.measureFps();
+    glFpsTime = now;
+
+    const juce::String render = juce::String (glContext.isAttached() ? "GPU (OpenGL)" : "CPU")
+        + (glContext.isAttached() || settings.viewMode == BottomBar::Spectrogram ? ", " + juce::String (juce::roundToInt (fps)) + " fps" : juce::String())
+        + (settings.fpsCap > 0 ? " (limit " + juce::String (settings.fpsCap) + ")" : juce::String());
+    juce::String text;
+    if (error.isNotEmpty()) text = "Could not start: " + error;
+    else if (! engine.isRunning()) text = "Stopped";
+    else
+    {
+        const auto& src = engine.getCurrentSource();
+        const juce::String kind = src.kind == AudioEngine::Source::Loopback ? "Loopback"
+                                : src.kind == AudioEngine::Source::Test     ? "Test signal"
+                                : src.typeName;
+        text = kind + "  |  " + juce::String (engine.getSampleRate() / 1000.0, 1) + " kHz  |  "
+             + juce::String (engine.getChannelNames().size()) + " ch  |  latency "
+             + juce::String (juce::roundToInt (engine.getLatencySeconds() * 1000)) + " ms  |  DSP "
+             + juce::String (juce::roundToInt (engine.getLoad() * 100)) + "%";
+    }
+    status.setText (text + "\nRendering: " + render, juce::dontSendNotification);
 }
 
 void MainComponent::paint (juce::Graphics& g)
@@ -501,35 +544,37 @@ void MainComponent::resized()
     ownerW = (float) getWidth(); ownerH = (float) getHeight();
     auto r = getLocalBounds();
     bottom.setBounds (r.removeFromBottom (BottomBar::kHeight));
-    if (barAutoHidden())
-    {
-        view.setBounds (r);                                   // display uses the whole screen
-        analyzerPanel.setBounds (r);
-        bar.setBounds (r.removeFromTop (kBarH));              // toolbar overlays it when revealed
-        bar.setVisible (barRevealed);
-        if (barRevealed) bar.toFront (false);
-    }
-    else
-    {
-        bar.setBounds (r.removeFromTop (kBarH));
-        bar.setVisible (true);
-        view.setBounds (r);
-        analyzerPanel.setBounds (r);
-    }
-    layoutBar();
+    view.setBounds (r);                       // no top toolbar: the analysis uses the full height
+    analyzerPanel.setBounds (r);
+    layoutOptions();
 }
 
-void MainComponent::layoutBar()
+void MainComponent::layoutOptions()
 {
-    auto row = bar.getLocalBounds().withTrimmedBottom (1).reduced (8, 7);
-    title.setBounds (row.removeFromLeft (100));
-    source.setBounds (row.removeFromLeft (juce::jmin (380, juce::jmax (180, getWidth() / 4)))); row.removeFromLeft (8);
-    lblL.setBounds (row.removeFromLeft (18)); chL.setBounds (row.removeFromLeft (120)); row.removeFromLeft (6);
-    lblR.setBounds (row.removeFromLeft (18)); chR.setBounds (row.removeFromLeft (120)); row.removeFromLeft (8);
-    startBtn.setBounds (row.removeFromLeft (70)); row.removeFromLeft (6);
-    settingsBtn.setBounds (row.removeFromLeft (80)); row.removeFromLeft (6);
-    rescanBtn.setBounds (row.removeFromLeft (70)); row.removeFromLeft (8);
-    status.setBounds (row);
+    const int w = juce::jmin (460, getWidth() - 16), h = 330;
+    options.setBounds (8, getHeight() - BottomBar::kHeight - h - 6, w, h);
+    options.headings.clear();
+    auto r = options.getLocalBounds().reduced (14, 10);
+    auto heading = [&] (const juce::String& t) { options.headings.push_back ({ r.removeFromTop (20), t }); };
+
+    heading ("AUDIO INPUT");
+    source.setBounds (r.removeFromTop (28)); r.removeFromTop (6);
+    auto row = r.removeFromTop (28);
+    lblL.setBounds (row.removeFromLeft (18)); chL.setBounds (row.removeFromLeft ((row.getWidth() - 26) / 2)); row.removeFromLeft (8);
+    lblR.setBounds (row.removeFromLeft (18)); chR.setBounds (row);
+    r.removeFromTop (8);
+    row = r.removeFromTop (28);
+    startBtn.setBounds (row.removeFromLeft (90)); row.removeFromLeft (6);
+    rescanBtn.setBounds (row.removeFromLeft (80)); row.removeFromLeft (6);
+    settingsBtn.setBounds (row.removeFromLeft (110));
+    r.removeFromTop (6);
+    status.setBounds (r.removeFromTop (40));
+    r.removeFromTop (6);
+
+    heading ("DISPLAY");
+    gpuToggle.setBounds (r.removeFromTop (26)); r.removeFromTop (4);
+    row = r.removeFromTop (28);
+    lblFps.setBounds (row.removeFromLeft (120)); fpsBox.setBounds (row.removeFromLeft (190));
 }
 
 bool MainComponent::keyPressed (const juce::KeyPress& k)
@@ -538,9 +583,11 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
     if (k == juce::KeyPress::spaceKey)          { if (ana) analyzerPanel.getView().toggleFreeze(); else view.togglePause(); return true; }
     if (k.getTextCharacter() == 'v' || k.getTextCharacter() == 'V') { setView (ana ? BottomBar::Spectrogram : BottomBar::Analyzer); return true; }
     if (k == juce::KeyPress::F11Key)            { toggleFullscreen(); return true; }
+    if (k.getTextCharacter() == 'o' || k.getTextCharacter() == 'O') { toggleOptions(); return true; }
     if (k == juce::KeyPress::escapeKey)
     {
-        if (juce::Desktop::getInstance().getKioskModeComponent() == getTopLevelComponent()) toggleFullscreen();
+        if (options.isVisible()) setOptionsVisible (false);
+        else if (juce::Desktop::getInstance().getKioskModeComponent() == getTopLevelComponent()) toggleFullscreen();
         else view.clearCursor();
         return true;
     }

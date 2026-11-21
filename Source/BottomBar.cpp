@@ -16,13 +16,18 @@ namespace
 
 BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& proc) : s (st), engine (e)
 {
-    for (auto* b : { &viewSpec, &viewAna, &lufsBtn, &keyBtn, &tempoBtn, &pause, &refDown, &refUp,
-                     &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &autoHide, &full })
+    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &lufsBtn, &keyBtn, &tempoBtn, &pause, &refDown, &refUp, &specSettings,
+                     &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &full })
     {
         addAndMakeVisible (b);
         b->setColour (juce::TextButton::buttonColourId, kButton);
         b->setColour (juce::TextButton::buttonOnColourId, kOn);
     }
+
+    optionsBtn.setTooltip ("Audio input, rendering and frame-rate options (O)");
+    optionsBtn.onClick = [this] { if (onToggleOptions) onToggleOptions(); };
+    specSettings.setTooltip ("Spectrogram settings (S)");
+    specSettings.onClick = [this] { if (onSpectrogramSettings) onSpectrogramSettings(); };
 
     // view switch: two joined buttons
     viewSpec.setConnectedEdges (juce::Button::ConnectedOnRight);
@@ -75,15 +80,13 @@ BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& p
     anaSettings.onClick = [this] { if (onAnalyzerSettings) onAnalyzerSettings(); };
 
     addAndMakeVisible (lufs);
-    for (auto* b : { &resetBtn, &autoHide, &full }) b->setLookAndFeel (&smallLnf());
+    for (auto* b : { &resetBtn, &full }) b->setLookAndFeel (&smallLnf());
     resetBtn.setTooltip ("Restart integrated loudness and true-peak hold");
-    autoHide.setTooltip ("Hide the top toolbar in full screen; touch the top edge to show it");
     full.setTooltip ("Full screen (F11, Esc to leave)");
     resetBtn.onClick = [this] { engine.resetLoudness(); };
-    autoHide.onClick = [this] { if (onToggleAutoHide) onToggleAutoHide(); };
     full.onClick     = [this] { if (onToggleFullscreen) onToggleFullscreen(); };
 
-    for (auto* b : { &viewSpec, &viewAna, &lufsBtn, &keyBtn, &autoHide })
+    for (auto* b : { &viewSpec, &viewAna, &lufsBtn, &keyBtn })
         b->setClickingTogglesState (false);   // state comes from settings via refresh()
 
     refresh();
@@ -92,7 +95,7 @@ BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& p
 
 BottomBar::~BottomBar()
 {
-    for (auto* b : { &resetBtn, &autoHide, &full }) b->setLookAndFeel (nullptr);
+    for (auto* b : { &resetBtn, &full }) b->setLookAndFeel (nullptr);
 }
 
 void BottomBar::refresh()
@@ -100,7 +103,6 @@ void BottomBar::refresh()
     viewSpec.setToggleState (s.viewMode == Spectrogram, juce::dontSendNotification);
     viewAna.setToggleState  (s.viewMode == Analyzer, juce::dontSendNotification);
     lufsBtn.setToggleState  (s.showLufs, juce::dontSendNotification);
-    autoHide.setToggleState (s.autoHideBar, juce::dontSendNotification);
     ref.setText ("Ref: " + juce::String (s.refLevel, 0) + " dB", juce::dontSendNotification);
     resized();
     repaint();
@@ -110,6 +112,7 @@ void BottomBar::setPaused (bool p)     { pause.setButtonText (p ? ">" : "||"); }
 void BottomBar::setFullscreen (bool f) { full.setButtonText (f ? "Exit full screen" : "Full screen"); }
 void BottomBar::setKeyOpen (bool o)    { keyBtn.setToggleState (o, juce::dontSendNotification); }
 void BottomBar::setTempoOpen (bool o)  { tempoBtn.setToggleState (o, juce::dontSendNotification); }
+void BottomBar::setOptionsOpen (bool o) { optionsBtn.setToggleState (o, juce::dontSendNotification); }
 void BottomBar::setAnalyzerState (bool frozen, bool zoomed)
 {
     freeze.setToggleState (frozen, juce::dontSendNotification);
@@ -121,7 +124,12 @@ void BottomBar::timerCallback()
     if (! s.showLufs) return;
     lufs.active = engine.isRunning();
     lufs.st = engine.getShortTermLufs(); lufs.in = engine.getIntegratedLufs(); lufs.tp = engine.getTruePeakDb();
-    lufs.repaint();
+    lufsDirty = true;                 // drawn on the next display frame, so it respects the frame-rate cap
+}
+
+void BottomBar::onFrame()
+{
+    if (lufsDirty) { lufsDirty = false; lufs.repaint(); }
 }
 
 void BottomBar::paint (juce::Graphics& g)
@@ -136,7 +144,8 @@ void BottomBar::resized()
     const bool controls = ! s.hidePanel;
     auto r = getLocalBounds().withTrimmedTop (1).reduced (8, 6);
 
-    // left: view switch, LUFS and Key toggles
+    // left: Options, view switch, LUFS / Key / Tempo toggles
+    optionsBtn.setBounds (r.removeFromLeft (72)); r.removeFromLeft (10);
     viewSpec.setBounds (r.removeFromLeft (90)); viewAna.setBounds (r.removeFromLeft (78)); r.removeFromLeft (10);
     lufsBtn.setBounds (r.removeFromLeft (48)); r.removeFromLeft (4);
     keyBtn.setBounds (r.removeFromLeft (40));  r.removeFromLeft (4);
@@ -145,7 +154,6 @@ void BottomBar::resized()
     // right corner: small Full screen / Auto-hide / Reset, then the loudness boxes
     auto small = [&] (juce::TextButton& b, int w) { b.setBounds (r.removeFromRight (w).withSizeKeepingCentre (w, 20)); r.removeFromRight (4); };
     small (full, full.getButtonText().startsWith ("Exit") ? 92 : 70);
-    small (autoHide, 62);
     resetBtn.setVisible (s.showLufs);
     lufs.setVisible (s.showLufs);
     if (s.showLufs)
@@ -157,7 +165,7 @@ void BottomBar::resized()
     }
 
     // centre: controls for the current view (dropping the least important ones if space is short)
-    for (auto* c : std::initializer_list<juce::Component*> { &pause, &ref, &refDown, &refUp })
+    for (auto* c : std::initializer_list<juce::Component*> { &pause, &ref, &refDown, &refUp, &specSettings })
         c->setVisible (spec && controls);
     for (auto* c : std::initializer_list<juce::Component*> { &bpoBox, &chanBox, &gridBox, &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings })
         c->setVisible (! spec && controls);
@@ -165,12 +173,13 @@ void BottomBar::resized()
 
     if (spec)
     {
-        const int w = 34 + 4 + 96 + 4 + 30 + 4 + 30;
+        const int w = 34 + 4 + 96 + 4 + 30 + 4 + 30 + 10 + 72;
         auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
         pause.setBounds (g.removeFromLeft (34)); g.removeFromLeft (4);
         ref.setBounds (g.removeFromLeft (96));   g.removeFromLeft (4);
         refUp.setBounds (g.removeFromLeft (30)); g.removeFromLeft (4);
-        refDown.setBounds (g.removeFromLeft (30));
+        refDown.setBounds (g.removeFromLeft (30)); g.removeFromLeft (10);
+        specSettings.setBounds (g.removeFromLeft (72));
         return;
     }
 
