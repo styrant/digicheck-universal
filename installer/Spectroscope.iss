@@ -37,7 +37,7 @@ Source: "..\build\TargetBuilder_artefacts\Release\TargetBuilder.exe"; DestDir: "
 
 [Icons]
 Name: "{autoprograms}\Spectroscope"; Filename: "{app}\Spectroscope.exe"
-Name: "{autoprograms}\Spectroscope Target Builder"; Filename: "{app}\TargetBuilder.exe"; Comment: "Makes tonal balance targets from songs (drag a folder onto TargetBuilder.exe)"
+Name: "{autoprograms}\Spectroscope Target Builder"; Filename: "{app}\TargetBuilder.exe"; Comment: "Drag in songs and save them as a tonal balance target"
 Name: "{autodesktop}\Spectroscope"; Filename: "{app}\Spectroscope.exe"; Tasks: desktopicon
 
 [Run]

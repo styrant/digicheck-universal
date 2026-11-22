@@ -99,17 +99,22 @@ This is for personal use. JUCE is AGPLv3 or commercial. The ASIO SDK headers bun
 
 ## TargetBuilder (tonal balance targets from your own songs)
 
-`TargetBuilder.exe` (in the release, and installed next to the app with a Start menu entry) turns songs into
-tonal balance targets for the upcoming Balance view. Easiest use: **drag a folder onto TargetBuilder.exe**.
+**Spectroscope Target Builder** (`TargetBuilder.exe`: in the release, and installed next to the app with a Start menu
+entry) turns songs into tonal balance targets for the upcoming Balance view.
 
-- A folder of songs gives one target named after the folder.
-- A folder of genre subfolders (`Hip-hop\`, `Rock\`, ...) gives one target per subfolder.
-- Command line: `TargetBuilder <folder>` or `TargetBuilder song1.wav song2.flac --name "My refs"`;
-  options `--out DIR`, `--genres`, `--range 10 90` (percentiles for the "in range" band), `--threads N`.
-- Formats: WAV, AIFF, FLAC, OGG, MP3 (and WMA on Windows); any sample rate.
-- Output (default `Documents\DigiCheck Universal\Targets`): `<name>.json` in the same layout as Tonal Balance
-  Control target files, plus `<name> - report.txt` listing every song's band balance and how far it is from the
-  target, with outliers flagged so you can drop songs that don't fit and build again.
+1. Drag songs or folders into the window (or use Add songs / Add folder). WAV, AIFF, FLAC, OGG, MP3 (and WMA on
+   Windows), any sample rate. Each song is analysed as soon as it's added.
+2. The list shows each song's status and its distance from the combined target; songs that don't match the others
+   are marked **Outlier** (select them and press Delete to drop them). Unreadable or silent files are skipped.
+   The preview underneath shows the target curve, its "in range" band and the four band shares.
+3. Type a name, pick the range (10-90 % by default), and press **Save target**. It's written to
+   `Documents\DigiCheck Universal\Targets` as `<name>.json` (same layout as Tonal Balance Control target files)
+   plus `<name> - report.txt`.
+
+Dragging songs or a folder onto `TargetBuilder.exe` opens the window with them already added.
+For batch runs there's a command-line mode: `TargetBuilder.exe --cli <folder>` (a folder of genre subfolders gives
+one target per subfolder) or `--cli song1.wav song2.flac --name "My refs"`; options `--out DIR`, `--genres`,
+`--range 10 90`, `--threads N`.
 
 How it measures (shared with the app, `Source/balance/TonalAnalysis.*`, tested by `balance_test`):
 - Per song: mono (mean of channels), 93 ms Hann windows at the file's own sample rate, read off at the 44.1 kHz /

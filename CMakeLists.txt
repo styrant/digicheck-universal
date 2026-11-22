@@ -87,11 +87,23 @@ add_executable(analyzer_dsp_test tests/analyzer_dsp_test.cpp)   # Spectrum Analy
 add_executable(key_test tests/key_test.cpp Source/key/KeyNet.cpp Source/key/KeyCqt.cpp)   # key finder vs PyTorch / librosa
 add_executable(balance_test tests/balance_test.cpp Source/balance/TonalAnalysis.cpp)       # tonal balance measurement
 
-# TargetBuilder: command-line tool that makes tonal balance targets from songs
-juce_add_console_app(TargetBuilder PRODUCT_NAME "TargetBuilder")
+# TargetBuilder: window app (and --cli mode) that makes tonal balance targets from songs
+juce_add_gui_app(TargetBuilder
+    PRODUCT_NAME "TargetBuilder"
+    COMPANY_NAME "DigiCheck Universal"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png")
 juce_generate_juce_header(TargetBuilder)
-target_sources(TargetBuilder PRIVATE Source/tools/TargetBuilder.cpp Source/balance/TonalAnalysis.cpp)
-target_compile_definitions(TargetBuilder PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_sources(TargetBuilder PRIVATE
+    Source/tools/TargetBuilderApp.cpp
+    Source/tools/TargetBuilderCli.cpp
+    Source/tools/TargetCore.cpp
+    Source/balance/TonalAnalysis.cpp)
+target_compile_definitions(TargetBuilder PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:TargetBuilder,JUCE_PRODUCT_NAME>"
+    JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:TargetBuilder,JUCE_VERSION>")
 target_link_libraries(TargetBuilder
-    PRIVATE juce::juce_audio_formats juce::juce_events
+    PRIVATE juce::juce_audio_formats juce::juce_gui_extra
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
