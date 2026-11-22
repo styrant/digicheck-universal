@@ -26,7 +26,7 @@ private:
     Settings snapshot;
     std::function<void (Change)> notify;
 
-    juce::ComboBox chan, fft, range, colour, freq, grid, rrange, note;
+    juce::ComboBox chan, fft, range, colour, freq, fscale, grid, rrange, note;
     juce::ToggleButton reassign { "On" }, stationary { "On" }, hidePanel { "On" }, showScale { "On" }, showLufs { "On" };
     juce::Slider ref, comp, speed;
     juce::Label refUnit { {}, "dB" }, speedUnit { {}, "px/s" }, hint;

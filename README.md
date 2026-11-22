@@ -32,12 +32,23 @@ Set-up in Azure: create an Artifact Signing account (Basic plan), complete ident
 | **Windows playback (loopback)** | Analyses whatever Windows is playing to any output device (e.g. the Scarlett's outputs), with no routing needed. |
 | **Test signal** | A sweep, chord, clicks and tones, for checking the display without an interface. |
 
-**L / R** choose which two channels of the source to analyse. **Channel Select** in Settings then picks left, right, the sum or the difference.
+**L / R** choose which two channels of the source to analyse. The spectrogram then shows **Left**, **Right**, **Mid**
+((L+R)/2, what both sides share) or **Side** ((L-R)/2, the stereo difference), picked in the bottom bar or in
+Settings → Channel Select. (The Analyzer has its own channel box with the same choices plus Stereo.)
 
 ## Views
 Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**). The bottom bar stays the same in both views: Options, the LUFS readout, Key, Tempo, Reset and Full screen are always there. The controls in the middle change with the view.
 
-- **Spectrogram:** the reassigned spectrogram described below.
+- **Spectrogram:** the reassigned spectrogram described below. Bottom bar: Presets, Pause, **frequency scale**,
+  **channel** (Left / Right / Mid / Side), Ref level -/+ and Settings (on narrow windows Settings, then the Ref
+  buttons drop out; the mouse wheel and Up/Down still change Ref).
+  - Frequency scales: **Log** (every octave the same height; the default), **Linear** (every Hz the same height:
+    harmonics evenly spaced), **Ext Log** (extended log as in iZotope RX: log above ~100 Hz, compressing smoothly
+    down to 1 Hz so infrasonic rumble and sub-bass are visible), **Mel**, **Bark** and **ERB** (scales of
+    hearing). Linear / Mel / Bark / ERB start at 0 Hz. Presets store the scale.
+  - Below 20 Hz: Ext Log shows down to 1 Hz with the normal 20 Hz-20 kHz range; for the other scales pick the
+    5 Hz-20 kHz, 10 Hz-20 kHz, 2-200 Hz or 5 Hz-1 kHz range in Settings → Frequency Range. A larger FFT
+    (16384) is needed to resolve very low notes: one cycle at 5 Hz lasts 200 ms.
 - **Analyzer:** [Spectrum Analyzer 2](Source/analyzer/LICENSE), a constant-Q filter-bank analyzer (Seven Phases, MIT licence).
   - Peak bars, peak hold and RMS average, at 3–24 bands per octave.
   - Wheel zooms, drag pans, and shift+drag zooms to a selection.
@@ -99,7 +110,7 @@ Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**)
 - Settings and the last-used source are remembered.
 
 ## How it works
-- The DSP uses time-frequency reassignment (Auger, Flandrin, Chassande-Mottin), the method DigiCheck NG's manual credits. Each bin's energy is moved to its reassigned time and frequency and accumulated on a log-frequency pixel grid.
+- The DSP uses time-frequency reassignment (Auger, Flandrin, Chassande-Mottin), the method DigiCheck NG's manual credits. Each bin's energy is moved to its reassigned time and frequency and accumulated on the pixel grid of the chosen frequency scale (`Source/FreqScale.h`).
 - Signals above 48 kHz are downsampled first, so CPU use stays constant.
 - If the DSP can't keep up, the gap is drawn in white, as DigiCheck does.
 - A full-scale sine reads about 0 dBFS. `dsp_test` checks this on every build.

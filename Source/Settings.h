@@ -4,7 +4,8 @@
 // All user settings, mirroring DigiCheck NG's Spectroscope dialog, persisted between sessions.
 struct Settings
 {
-    int    channel    = 2;        // 0 left, 1 right, 2 left+right, 3 left-right
+    int    channel    = 2;        // 0 left, 1 right, 2 mid (L+R)/2, 3 side (L-R)/2
+    int    freqScale  = 0;        // freqscale::Scale: 0 log, 1 linear, 2 ext log, 3 mel, 4 bark, 5 ERB
     bool   reassign   = true;
     int    fftSize    = 4096;
     double refLevel   = -20.0;    // dBFS shown at full brightness
@@ -38,23 +39,36 @@ struct Settings
     int    chL = 0, chR = 1;
     juce::String windowState;
 
+    static const juce::StringArray& channelNames()
+    {
+        static const juce::StringArray n { "Left", "Right", "Mid (L+R)", "Side (L-R)" };
+        return n;
+    }
+    static const juce::StringArray& freqScaleNames()
+    {
+        static const juce::StringArray n { "Log", "Linear", "Ext Log", "Mel", "Bark", "ERB" };
+        return n;
+    }
+
     static const juce::StringArray& freqPresetNames()
     {
         static const juce::StringArray n { "20Hz - 20kHz", "20Hz - 10kHz", "20Hz - 5kHz", "20Hz - 2kHz", "20Hz - 1kHz",
-                                           "50Hz - 20kHz", "100Hz - 20kHz", "200Hz - 20kHz", "1kHz - 20kHz" };
+                                           "50Hz - 20kHz", "100Hz - 20kHz", "200Hz - 20kHz", "1kHz - 20kHz",
+                                           "5Hz - 20kHz", "10Hz - 20kHz", "2Hz - 200Hz", "5Hz - 1kHz" };
         return n;
     }
     std::pair<double, double> freqRange() const
     {
-        static const double lo[] = { 20, 20, 20, 20, 20, 50, 100, 200, 1000 };
-        static const double hi[] = { 20000, 10000, 5000, 2000, 1000, 20000, 20000, 20000, 20000 };
-        const int i = juce::jlimit (0, 8, freqPreset);
+        static const double lo[] = { 20, 20, 20, 20, 20, 50, 100, 200, 1000, 5, 10, 2, 5 };
+        static const double hi[] = { 20000, 10000, 5000, 2000, 1000, 20000, 20000, 20000, 20000, 20000, 20000, 200, 1000 };
+        const int i = juce::jlimit (0, 12, freqPreset);
         return { lo[i], hi[i] };
     }
 
     void load (juce::PropertiesFile& p)
     {
         channel    = p.getIntValue ("channel", channel);
+        freqScale  = juce::jlimit (0, 5, p.getIntValue ("freqScale", freqScale));
         reassign   = p.getBoolValue ("reassign", reassign);
         fftSize    = p.getIntValue ("fftSize", fftSize);
         refLevel   = p.getDoubleValue ("refLevel", refLevel);
@@ -91,7 +105,7 @@ struct Settings
 
     void save (juce::PropertiesFile& p) const
     {
-        p.setValue ("channel", channel);       p.setValue ("reassign", reassign);
+        p.setValue ("channel", channel);       p.setValue ("freqScale", freqScale);       p.setValue ("reassign", reassign);
         p.setValue ("fftSize", fftSize);       p.setValue ("refLevel", refLevel);
         p.setValue ("range", range);           p.setValue ("compExp", compExp);
         p.setValue ("colour", colour);         p.setValue ("speed", speed);

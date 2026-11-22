@@ -12,7 +12,7 @@
 //
 // LUFS colours (loudness / estimated dynamics): white below -14, green -14..-9, yellow -9..-6, red -6 and up.
 // True peak: white below -1 dBTP, yellow -1..0, red above 0.
-// Spectrogram controls: presets, pause, reference level -/+, settings.
+// Spectrogram controls: presets, pause, reference level -/+, frequency scale, channel (L / R / Mid / Side), settings.
 // Balance controls: target (its list ends with Open targets folder / Rescan / Target Builder), window
 // (3 s / 10 s / 30 s / since reset), Curve|Diff, Reset.
 // Analyzer controls: presets, bands/oct, channel, frequency grid, zoom -/+, Full, Freeze, Settings.
@@ -46,6 +46,7 @@ public:
     std::function<void (int)> onBalanceTarget, onBalanceWindow;
     std::function<void (bool difference)> onBalanceMode;
     std::function<void()> onBalanceReset;
+    std::function<void()> onSpectrogramDsp;                     // scale or channel picked in the bar
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -67,6 +68,7 @@ private:
     // spectrogram group
     juce::TextButton specPresets { "Presets" }, pause { "||" }, refDown { "-" }, refUp { "+" }, specSettings { "Settings" };
     juce::Label ref;
+    juce::ComboBox specScale, specChannel;
     // analyzer group
     juce::ComboBox bpoBox, chanBox, gridBox;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> bpoAtt, chanAtt, gridAtt;

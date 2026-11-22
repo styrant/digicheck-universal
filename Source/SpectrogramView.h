@@ -3,6 +3,7 @@
 #include "UiScale.h"
 #include "Settings.h"
 #include "AudioEngine.h"
+#include "FreqScale.h"
 #include <optional>
 
 // The Spectroscope display, laid out like DigiCheck NG: a black plot inside a grey frame with
@@ -67,6 +68,7 @@ private:
     juce::uint32 rgbaFor (float db) const noexcept;
     int lutIndex (float db) const noexcept;
     std::pair<double, double> effectiveRange() const;
+    freqscale::Axis axis() const;
     float freqToY (double f) const;
     double yToFreq (float y) const;
     void setCursorFromY (float y);

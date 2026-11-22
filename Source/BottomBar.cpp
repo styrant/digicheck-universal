@@ -58,6 +58,16 @@ BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& p
         if (onBalanceTarget) onBalanceTarget (id - 1);
     };
     balWindow.addItemList (LiveBalance::windowNames(), 1);
+
+    // spectrogram scale and channel (also in Settings)
+    specScale.addItemList (Settings::freqScaleNames(), 1);
+    specScale.setTooltip ("Frequency scale: Log (octaves equal), Linear (Hz equal), Ext Log (log down to 0 Hz), "
+                          "Mel / Bark / ERB (scales of hearing)");
+    specScale.onChange = [this] { s.freqScale = specScale.getSelectedId() - 1; if (onSpectrogramDsp) onSpectrogramDsp(); };
+    specChannel.addItemList ({ "Left", "Right", "Mid", "Side" }, 1);
+    specChannel.setTooltip ("What the spectrogram shows: Left, Right, Mid (what both sides share) or Side (the stereo difference)");
+    specChannel.onChange = [this] { s.channel = specChannel.getSelectedId() - 1; if (onSpectrogramDsp) onSpectrogramDsp(); };
+    for (auto* c : { &specScale, &specChannel }) addAndMakeVisible (c);
     balWindow.setTooltip ("How much recent audio the measurement averages. Realtime follows the music as it plays (about 0.3 s)");
     balWindow.onChange = [this] { s.balanceWindow = balWindow.getSelectedId() - 1; if (onBalanceWindow) onBalanceWindow (s.balanceWindow); };
     for (auto* c : { &balTarget, &balWindow }) addAndMakeVisible (c);
@@ -146,6 +156,8 @@ void BottomBar::refresh()
     balCurve.setToggleState (s.balanceMode == 0, juce::dontSendNotification);
     balDiff.setToggleState  (s.balanceMode == 1, juce::dontSendNotification);
     balWindow.setSelectedId (juce::jlimit (0, 5, s.balanceWindow) + 1, juce::dontSendNotification);
+    specScale.setSelectedId (juce::jlimit (0, 5, s.freqScale) + 1, juce::dontSendNotification);
+    specChannel.setSelectedId (juce::jlimit (0, 3, s.channel) + 1, juce::dontSendNotification);
     lufsBtn.setToggleState  (s.showLufs, juce::dontSendNotification);
     ref.setText ("Ref: " + juce::String (s.refLevel, 0) + " dB", juce::dontSendNotification);
     resized();
@@ -231,7 +243,7 @@ void BottomBar::resized()
     }
 
     // centre: controls for the current view (dropping the least important ones if space is short)
-    for (auto* c : std::initializer_list<juce::Component*> { &specPresets, &pause, &ref, &refDown, &refUp, &specSettings })
+    for (auto* c : std::initializer_list<juce::Component*> { &specPresets, &pause, &ref, &refDown, &refUp, &specScale, &specChannel, &specSettings })
         c->setVisible (spec && controls);
     for (auto* c : std::initializer_list<juce::Component*> { &anaPresets, &bpoBox, &chanBox, &gridBox, &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings })
         c->setVisible (s.viewMode == Analyzer && controls);
@@ -258,16 +270,27 @@ void BottomBar::resized()
 
     if (spec)
     {
-        const bool roomForSettings = r.getWidth() >= ui::px (66 + 6 + 34 + 4 + 96 + 4 + 30 + 4 + 30 + 10 + 72);
-        specSettings.setVisible (roomForSettings);
-        const int w = juce::jmin (r.getWidth(), ui::px (66 + 6 + 34 + 4 + 96 + 4 + 30 + 4 + 30 + (roomForSettings ? 10 + 72 : 0)));
+        // Order: Presets | Pause | Scale | Channel | Ref - + | Settings. When space is short, Settings goes first,
+        // then the Ref -/+ buttons (the mouse wheel and Up/Down still change it), then the Ref readout.
+        const int core = 66 + 6 + 34 + 8 + 80 + 4 + 62;
+        const int avail = r.getWidth();
+        const bool roomRef = avail >= ui::px (core + 6 + 62);
+        const bool roomRefButtons = avail >= ui::px (core + 8 + 92 + 4 + 30 + 4 + 30);
+        const bool roomSettings = avail >= ui::px (core + 8 + 92 + 4 + 30 + 4 + 30 + 10 + 72);
+        ref.setVisible (roomRef); refUp.setVisible (roomRefButtons); refDown.setVisible (roomRefButtons); specSettings.setVisible (roomSettings);
+        const int w = juce::jmin (avail, ui::px (core + (roomRef ? (roomRefButtons ? 8 + 92 : 6 + 62) : 0) + (roomRefButtons ? 4 + 30 + 4 + 30 : 0) + (roomSettings ? 10 + 72 : 0)));
         auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
         specPresets.setBounds (g.removeFromLeft (ui::px (66))); g.removeFromLeft (ui::px (6));
-        pause.setBounds (g.removeFromLeft (ui::px (34))); g.removeFromLeft (ui::px (4));
-        ref.setBounds (g.removeFromLeft (ui::px (96)));   g.removeFromLeft (ui::px (4));
-        refUp.setBounds (g.removeFromLeft (ui::px (30))); g.removeFromLeft (ui::px (4));
-        refDown.setBounds (g.removeFromLeft (ui::px (30))); g.removeFromLeft (ui::px (10));
-        specSettings.setBounds (g.removeFromLeft (ui::px (72)));
+        pause.setBounds (g.removeFromLeft (ui::px (34)));       g.removeFromLeft (ui::px (8));
+        specScale.setBounds (g.removeFromLeft (ui::px (80)));   g.removeFromLeft (ui::px (4));
+        specChannel.setBounds (g.removeFromLeft (ui::px (62)));
+        // the readout: "Ref: -20 dB" with its buttons, just "-20 dB" when space is short
+        ref.setText ((roomRefButtons ? "Ref: " : "") + juce::String (s.refLevel, 0) + " dB", juce::dontSendNotification);
+        ref.setTooltip ("Reference level (mouse wheel over the spectrogram, Up / Down)");
+        if (roomRef)        { g.removeFromLeft (ui::px (roomRefButtons ? 8 : 6)); ref.setBounds (g.removeFromLeft (ui::px (roomRefButtons ? 92 : 62))); }
+        if (roomRefButtons) { g.removeFromLeft (ui::px (4)); refUp.setBounds (g.removeFromLeft (ui::px (30)));
+                              g.removeFromLeft (ui::px (4)); refDown.setBounds (g.removeFromLeft (ui::px (30))); }
+        if (roomSettings)   { g.removeFromLeft (ui::px (10)); specSettings.setBounds (g.removeFromLeft (ui::px (72))); }
         return;
     }
 

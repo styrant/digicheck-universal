@@ -8,11 +8,12 @@
 //   k^ = k - Im(X_dh * conj X_h) / |X_h|^2 * N / 2pi   (bins)
 //
 // Every bin's energy is moved to (t^, k^) and accumulated into display pixels: one output column per hop,
-// rows on a logarithmic frequency axis. Column values are dBFS (a full-scale sine reads ~0 dB).
+// rows on the chosen frequency axis (log by default; see FreqScale.h). Column values are dBFS (a full-scale sine reads ~0 dB).
 #pragma once
 #include <cmath>
 #include <functional>
 #include <vector>
+#include "FreqScale.h"
 
 class Reassigner
 {
@@ -25,7 +26,8 @@ public:
         int    fftSize = 4096;
         double pixelsPerSecond = 300.0;
         int    rows = 512;
-        double fmin = 20.0, fmax = 20000.0;
+        double fmin = 20.0, fmax = 20000.0;    // fmin may be 0 for scales other than Log
+        int    scale = freqscale::Log;
         bool   reassign = true;
         bool   shortRange = true;          // "short" halves the reassignment latency
         int    channel = Sum;
@@ -59,7 +61,8 @@ private:
     Config cfg;
     ColumnSink sink;
     int N = 0, hop = 1, H = 1, S = 0, C = 1, dec = 1, kmin = 1, kmax = 1;
-    double srEff = 48000.0, fmaxEff = 20000.0, maxShift = 0, normB = 1, normR = 1, thrP = 0, lnMin = 0, lnSpan = 1;
+    double srEff = 48000.0, fmaxEff = 20000.0, maxShift = 0, normB = 1, normR = 1, thrP = 0;
+    freqscale::Axis axis;
     long long frame = 0;
 
     std::vector<double> win, wt, wd, re, im, re2, im2, binP, cosT, sinT;

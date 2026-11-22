@@ -572,6 +572,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     bottom.onBalanceWindow = [this] (int w) { liveBalance.setWindow (w); saveAll(); };
     bottom.onBalanceMode = [this] (bool d) { settings.balanceMode = d ? 1 : 0; balanceView.setDifferenceMode (d); bottom.refresh(); saveAll(); };
     bottom.onBalanceReset = [this] { liveBalance.reset(); };
+    bottom.onSpectrogramDsp = [this] { onChange (Change::Dsp); };
     bottom.onBalanceTargetsAction = [this] (int a) { balanceTargetsAction (a); };
     refreshBalanceTargets();
     addChildComponent (options);

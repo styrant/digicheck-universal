@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <algorithm>
 #include <cstdlib>
 #include "SpectrogramView.h"
 #include "FrameClock.h"
@@ -112,19 +113,23 @@ std::pair<double, double> SpectrogramView::effectiveRange() const
     auto [lo, hi] = s.freqRange();
     const double sr = engine.getSampleRate();
     if (sr > 0) hi = juce::jmin (hi, sr / Reassigner::decimationFor (sr) / 2 * 0.999);
-    return { lo, hi };
+    return { freqscale::bottom (s.freqScale, lo), hi };
+}
+
+freqscale::Axis SpectrogramView::axis() const
+{
+    const auto [lo, hi] = effectiveRange();
+    return { s.freqScale, lo, hi };
 }
 
 float SpectrogramView::freqToY (double f) const
 {
-    const auto [lo, hi] = effectiveRange();
-    return (float) (plot.getBottom() - std::log (f / lo) / std::log (hi / lo) * plot.getHeight());
+    return (float) (plot.getBottom() - axis().pos (f) * plot.getHeight());
 }
 
 double SpectrogramView::yToFreq (float y) const
 {
-    const auto [lo, hi] = effectiveRange();
-    return lo * std::pow (hi / lo, (plot.getBottom() - y) / (double) plot.getHeight());
+    return axis().freq ((plot.getBottom() - y) / (double) plot.getHeight());
 }
 
 void SpectrogramView::buildLut()
@@ -157,7 +162,7 @@ void SpectrogramView::rebuild()
     if (plot.getWidth() < 10 || plot.getHeight() < 10) plot.setSize (juce::jmax (10, plot.getWidth()), juce::jmax (10, plot.getHeight()));
 
     // Keep what is on screen across resizes / layout changes: carry the newest columns over and
-    // rescale them to the new number of rows (same log-frequency axis, so rows map proportionally).
+    // rescale them to the new number of rows (same frequency axis, so rows map proportionally).
     const int oldW = W, oldH = H, oldWrite = writeCol;
     std::vector<float> old;
     old.swap (hist);
@@ -198,6 +203,8 @@ void SpectrogramView::sendConfig (bool clearHistory)
     Reassigner::Config c;
     c.fftSize = s.fftSize; c.pixelsPerSecond = (effSpeed = effectiveSpeedFor (refreshHz)); c.rows = H;
     std::tie (c.fmin, c.fmax) = s.freqRange();
+    c.fmin = freqscale::bottom (s.freqScale, c.fmin);
+    c.scale = s.freqScale;
     c.reassign = s.reassign; c.shortRange = s.shortRange; c.channel = s.channel;
     c.floorDb = s.refLevel - s.range - 20;
     engine.setConfig (c);
@@ -461,7 +468,7 @@ void SpectrogramView::glRender (float ownerW, float ownerH)
 juce::String SpectrogramView::cursorText() const
 {
     if (! cursorF) return {};
-    const double f = *cursorF;
+    const double f = juce::jmax (1.0, *cursorF);
     auto hz = [] (double v) { return v >= 1000 ? juce::String (v / 1000, v >= 10000 ? 2 : 3) + " kHz" : juce::String (v, 1) + " Hz"; };
     const double rf = s.noteRef > 0 ? s.noteRef : 440.0;
     const int semis = juce::roundToInt (12 * std::log2 (f / rf)), midi = 69 + semis;
@@ -472,8 +479,7 @@ juce::String SpectrogramView::cursorText() const
     if (! paused) return t;      // the level only means something on a still picture
 
     // paused: level at the cursor in the newest column on screen
-    const auto [lo, hi] = effectiveRange();
-    const int j = (int) (std::log (f / lo) / std::log (hi / lo) * H);
+    const int j = (int) (axis().pos (f) * H);
     const int col = (writeCol - 1 + W) % W;
     float lvl = -std::numeric_limits<float>::infinity();
     for (int k = j - 1; k <= j + 1; ++k)
@@ -550,27 +556,63 @@ void SpectrogramView::paint (juce::Graphics& g)
     const auto [lo, hi] = effectiveRange();
     const bool hGrid = s.grid == 1 || s.grid == 3, vGrid = s.grid == 2 || s.grid == 3;
     g.setFont (juce::FontOptions (ui::fs (11.5f)));
-    float lastY = 1.0e9f;
-    for (double dec = 1; dec <= 100000; dec *= 10)
-        for (int m = 1; m <= 9; ++m)
+    {
+        // Candidate lines: 1-9 per decade for log-like scales; even steps (about 10 lines) on Linear, plus
+        // 0 Hz when the axis starts there. Lines closer than 4 px to the last one are skipped (the bass on
+        // Linear / Mel / Bark), labels closer than a text line.
+        std::vector<std::pair<double, bool>> lines;          // frequency, major
+        if (lo <= 0) lines.push_back ({ 0.0, true });
+        if (s.freqScale == freqscale::Linear)
         {
-            const double f = m * dec;
-            if (f < lo * 0.999 || f > hi * 1.001) continue;
+            const double raw = (hi - lo) / 10, mag = std::pow (10.0, std::floor (std::log10 (raw)));
+            const double step = raw / mag < 1.5 ? mag : (raw / mag < 3.5 ? 2 * mag : (raw / mag < 7.5 ? 5 * mag : 10 * mag));
+            for (double f = std::ceil (lo / step) * step; f <= hi * 1.001; f += step)
+                if (f > 0) lines.push_back ({ f, std::fmod (f, 2 * step) < 1e-6 || step >= 1000 });
+        }
+        else
+            for (double dec = 1; dec <= 100000; dec *= 10)
+                for (int m = 1; m <= 9; ++m) lines.push_back ({ m * dec, m == 1 || m == 2 || m == 5 });
+
+        // grid lines bottom-up, skipping any within 4 px of the last one
+        std::vector<std::pair<float, std::pair<double, bool>>> shown;     // y, (frequency, major)
+        // (majors win: a minor line is dropped when a major one is within 4 px)
+        std::vector<float> majorYs;
+        for (auto [f, major] : lines)
+            if (major && f >= lo * 0.999 - 1e-9 && f <= hi * 1.001) majorYs.push_back (freqToY (f));
+        float lastGridY = 1.0e9f, lastMajorY = 1.0e9f;
+        for (auto [f, major] : lines)
+        {
+            if (f < lo * 0.999 - 1e-9 || f > hi * 1.001) continue;
             const float y = freqToY (f);
-            const bool major = m == 1 || m == 2 || m == 5;
+            if (major ? lastMajorY - y < 4.0f
+                      : (lastGridY - y < 4.0f || std::any_of (majorYs.begin(), majorYs.end(), [y] (float m) { return std::abs (m - y) < 4.0f; })))
+                continue;
+            if (major) lastMajorY = y;
+            lastGridY = y;
+            shown.push_back ({ y, { f, major } });
             if (hGrid)
             {
                 g.setColour (juce::Colours::white.withAlpha (major ? 0.16f : 0.06f));
                 g.drawHorizontalLine (juce::roundToInt (y), (float) plot.getX(), (float) plot.getRight());
             }
-            if (lastY - y < ui::fs (12.0f)) continue;      // keep labels from overlapping
-            lastY = y;
-            const juce::String lbl = f >= 1000 ? juce::String (f / 1000) + "k" : juce::String ((int) f);
-            const int lh = juce::roundToInt (ui::fs (14.0f)), ty = juce::roundToInt (y) - lh / 2;
-            g.setColour (kLabel);
-            g.drawText (lbl, 0, ty, ui::px (kGutter) - 6, lh, juce::Justification::centredRight);
-            g.drawText (lbl, plot.getRight() + 6, ty, ui::px (kGutter) - 6, lh, juce::Justification::centredLeft);
         }
+        // labels: round values (1, 2, 5 x 10^n) first, then the others where there is room
+        std::vector<float> labelled;
+        const float gap = ui::fs (12.0f);
+        for (int pass = 0; pass < 2; ++pass)
+            for (auto& [y, fm] : shown)
+            {
+                const auto [f, major] = fm;
+                if (major != (pass == 0)) continue;
+                if (std::any_of (labelled.begin(), labelled.end(), [&, yy = y] (float o) { return std::abs (o - yy) < gap; })) continue;
+                labelled.push_back (y);
+                const juce::String lbl = f >= 1000 ? juce::String (f / 1000) + "k" : juce::String ((int) f);
+                const int lh = juce::roundToInt (ui::fs (14.0f)), ty = juce::roundToInt (y) - lh / 2;
+                g.setColour (kLabel);
+                g.drawText (lbl, 0, ty, ui::px (kGutter) - 6, lh, juce::Justification::centredRight);
+                g.drawText (lbl, plot.getRight() + 6, ty, ui::px (kGutter) - 6, lh, juce::Justification::centredLeft);
+            }
+    }
     if (vGrid && effSpeed > 0)
         for (int sec = 1; sec * effSpeed < W; ++sec)
         {

@@ -17,7 +17,7 @@ namespace
 SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
     : s (st), snapshot (st), notify (std::move (n))
 {
-    combo (chan, { "left", "right", "left + right", "left - right" }, s.channel, [this] (int i) { s.channel = i; notify (Change::Dsp); });
+    combo (chan, Settings::channelNames(), s.channel, [this] (int i) { s.channel = i; notify (Change::Dsp); });
     addRow ("Channel Select", chan);
 
     toggle (reassign, s.reassign, [this] (bool v) { s.reassign = v; notify (Change::Dsp); });
@@ -45,6 +45,9 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
 
     combo (freq, Settings::freqPresetNames(), s.freqPreset, [this] (int i) { s.freqPreset = i; notify (Change::Dsp); });
     addRow ("Frequency Range", freq);
+
+    combo (fscale, Settings::freqScaleNames(), s.freqScale, [this] (int i) { s.freqScale = i; notify (Change::Dsp); });
+    addRow ("Frequency Scale", fscale);
 
     combo (grid, { "off", "horizontal", "vertical", "horizontal + vertical" }, s.grid, [this] (int i) { s.grid = i; notify (Change::Overlay); });
     addRow ("Show Grid", grid);
@@ -78,10 +81,10 @@ SettingsDialog::SettingsDialog (Settings& st, std::function<void (Change)> n)
     ok.onClick = [this] { close(); };
     cancel.onClick = [this]
     {
-        const bool dsp = snapshot.channel != s.channel || snapshot.reassign != s.reassign || snapshot.fftSize != s.fftSize
+        const bool dsp = snapshot.channel != s.channel || snapshot.freqScale != s.freqScale || snapshot.reassign != s.reassign || snapshot.fftSize != s.fftSize
                       || std::abs (snapshot.speed - s.speed) > 1e-9 || snapshot.freqPreset != s.freqPreset || snapshot.shortRange != s.shortRange;
         const bool layout = snapshot.showScale != s.showScale;
-        s.channel = snapshot.channel; s.reassign = snapshot.reassign; s.fftSize = snapshot.fftSize;
+        s.channel = snapshot.channel; s.freqScale = snapshot.freqScale; s.reassign = snapshot.reassign; s.fftSize = snapshot.fftSize;
         s.refLevel = snapshot.refLevel; s.range = snapshot.range; s.compExp = snapshot.compExp; s.colour = snapshot.colour;
         s.speed = snapshot.speed; s.freqPreset = snapshot.freqPreset; s.grid = snapshot.grid; s.shortRange = snapshot.shortRange;
         s.stationary = snapshot.stationary; s.hidePanel = snapshot.hidePanel; s.showScale = snapshot.showScale; s.noteRef = snapshot.noteRef;

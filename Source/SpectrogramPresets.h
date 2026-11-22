@@ -21,6 +21,7 @@ namespace specpresets
         int    grid       = 1;
         bool   shortRange = true;
         juce::String hint;              // tooltip-style description (built-ins only)
+        int    freqScale  = 0;          // freqscale::Scale (built-ins: Log)
     };
 
     // colours: 0 blue-red-yellow-white, 1 green-yellow-white, 2 blue-cyan-white, 3 red-orange-white, 4 purple-pink-white, 5 grey-white
@@ -41,14 +42,14 @@ namespace specpresets
 
     inline Preset fromSettings (const Settings& s, const juce::String& name)
     {
-        return { name, s.reassign, s.fftSize, s.refLevel, s.range, s.compExp, s.colour, s.speed, s.freqPreset, s.grid, s.shortRange, {} };
+        return { name, s.reassign, s.fftSize, s.refLevel, s.range, s.compExp, s.colour, s.speed, s.freqPreset, s.grid, s.shortRange, {}, s.freqScale };
     }
 
     inline void apply (const Preset& p, Settings& s)
     {
         s.reassign = p.reassign;   s.fftSize = p.fftSize;  s.refLevel = p.refLevel; s.range = p.range;
         s.compExp = p.compExp;     s.colour = p.colour;    s.speed = p.speed;       s.freqPreset = p.freqPreset;
-        s.grid = p.grid;           s.shortRange = p.shortRange;
+        s.grid = p.grid;           s.shortRange = p.shortRange; s.freqScale = p.freqScale;
     }
 
     inline bool matches (const Preset& p, const Settings& s)
@@ -56,7 +57,7 @@ namespace specpresets
         auto eq = [] (double a, double b) { return std::abs (a - b) < 1e-6; };
         return p.reassign == s.reassign && p.fftSize == s.fftSize && eq (p.refLevel, s.refLevel) && eq (p.range, s.range)
             && eq (p.compExp, s.compExp) && p.colour == s.colour && eq (p.speed, s.speed) && p.freqPreset == s.freqPreset
-            && p.grid == s.grid && p.shortRange == s.shortRange;
+            && p.grid == s.grid && p.shortRange == s.shortRange && p.freqScale == s.freqScale;
     }
 
     // ---- user presets, stored as XML in the properties file under "spectrogramPresets"
@@ -78,6 +79,7 @@ namespace specpresets
                 p.freqPreset = e->getIntAttribute ("freqPreset", 0);
                 p.grid       = e->getIntAttribute ("grid", 1);
                 p.shortRange = e->getBoolAttribute ("shortRange", true);
+                p.freqScale  = juce::jlimit (0, 5, e->getIntAttribute ("freqScale", 0));
                 if (p.name.isNotEmpty()) out.push_back (p);
             }
         return out;
@@ -94,7 +96,7 @@ namespace specpresets
             e->setAttribute ("range", p.range);         e->setAttribute ("compExp", p.compExp);
             e->setAttribute ("colour", p.colour);       e->setAttribute ("speed", p.speed);
             e->setAttribute ("freqPreset", p.freqPreset); e->setAttribute ("grid", p.grid);
-            e->setAttribute ("shortRange", p.shortRange);
+            e->setAttribute ("shortRange", p.shortRange); e->setAttribute ("freqScale", p.freqScale);
         }
         props.setValue ("spectrogramPresets", &root);
         props.saveIfNeeded();

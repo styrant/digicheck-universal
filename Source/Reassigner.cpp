@@ -53,16 +53,17 @@ void Reassigner::configure (const Config& c)
 
     kmin = std::max (1, (int) std::floor (c.fmin * N / srEff) - 2);
     kmax = std::min (N / 2 - 1, (int) std::ceil (fmaxEff * N / srEff) + 2);
-    lnMin = std::log (c.fmin); lnSpan = std::log (fmaxEff / c.fmin);
+    axis.set (c.scale, c.fmin, fmaxEff);
+    cfg.fmin = axis.lo;
 
     rowA.assign ((size_t) H, 0); rowB.assign ((size_t) H, 0); rowF.assign ((size_t) H, 0);
     for (int j = 0; j < H; ++j)
     {
-        const double blo = c.fmin * std::exp (lnSpan * j / H) * N / srEff;
-        const double bhi = c.fmin * std::exp (lnSpan * (j + 1) / H) * N / srEff;
+        const double blo = axis.freq ((double) j / H) * N / srEff;
+        const double bhi = axis.freq ((double) (j + 1) / H) * N / srEff;
         if (bhi - blo < 1)
         {
-            const double bc = c.fmin * std::exp (lnSpan * (j + 0.5) / H) * N / srEff;
+            const double bc = axis.freq ((j + 0.5) / H) * N / srEff;
             int k0 = std::clamp ((int) std::floor (bc), kmin, kmax - 1);
             rowA[(size_t) j] = k0; rowB[(size_t) j] = -1; rowF[(size_t) j] = std::clamp (bc - k0, 0.0, 1.0);
         }
@@ -148,7 +149,7 @@ void Reassigner::processFrame (int o)
         const double fr = (k - (Bi * Ar - Br * Ai) / P * bscale) * fscale;
         if (fr <= fmin || fr >= fmaxEff) continue;
 
-        const double yp = (std::log (fr) - lnMin) / lnSpan * H - 0.5;
+        const double yp = axis.pos (fr) * H - 0.5;
         const double tc = (double) f + dt / hop;
         const long long i0 = (long long) std::floor (tc);
         const double a = tc - (double) i0;
