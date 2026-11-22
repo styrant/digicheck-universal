@@ -36,6 +36,22 @@ jobs:
       - name: Key finder test (vs PyTorch / librosa)
         run: build\Release\key_test.exe Resources\keynet.bin tests\data
 
+      - name: Tonal balance measurement test
+        run: build\Release\balance_test.exe
+
+      - name: TargetBuilder smoke test (two genre folders of generated WAVs)
+        shell: pwsh
+        run: |
+          python tools\make_test_songs.py tb_lib
+          $tb = "build\TargetBuilder_artefacts\Release\TargetBuilder.exe"
+          & $tb tb_lib --out tb_out
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          foreach ($g in "GenreA", "GenreB") { if (-not (Test-Path "tb_out\$g.json")) { Write-Error "missing $g.json"; exit 1 } }
+          $a = Get-Content tb_out\GenreA.json | ConvertFrom-Json; $b = Get-Content tb_out\GenreB.json | ConvertFrom-Json
+          if ($a.normalized_mag_dB.Count -ne 2049) { Write-Error "wrong bin count"; exit 1 }
+          if ($a.region_0_bounds[1] -le $b.region_0_bounds[1]) { Write-Error "bass-heavy genre should have more low end"; exit 1 }
+          Write-Host "GenreA low band $($a.region_0_bounds), GenreB $($b.region_0_bounds)"
+
       - name: Sign Spectroscope.exe
         if: env.SIGN == 'true'
         uses: azure/artifact-signing-action@v2
@@ -47,6 +63,21 @@ jobs:
           signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
           files: ${{ github.workspace }}\build\Spectroscope_artefacts\Release\Spectroscope.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Sign TargetBuilder.exe
+        if: env.SIGN == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\build\TargetBuilder_artefacts\Release\TargetBuilder.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
@@ -81,6 +112,7 @@ jobs:
           path: |
             dist/SpectroscopeSetup.exe
             build/Spectroscope_artefacts/Release/Spectroscope.exe
+            build/TargetBuilder_artefacts/Release/TargetBuilder.exe
 
       - name: Publish as the "latest" release
         uses: softprops/action-gh-release@v2
@@ -93,7 +125,9 @@ jobs:
             Version ${{ env.APP_VERSION }}, built from ${{ github.sha }}.
             **SpectroscopeSetup.exe** installs it with Start menu / desktop shortcuts (no admin rights needed).
             **Spectroscope.exe** is the same app as a single portable file.
+            **TargetBuilder.exe** makes tonal balance targets from songs: drag a folder onto it (also installed by the setup).
             Signed: ${{ env.SIGN }}
           files: |
             dist/SpectroscopeSetup.exe
             build/Spectroscope_artefacts/Release/Spectroscope.exe
+            build/TargetBuilder_artefacts/Release/TargetBuilder.exe

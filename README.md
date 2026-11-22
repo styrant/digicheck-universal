@@ -96,3 +96,27 @@ JUCE 9.0.6 is downloaded automatically. Run `Spectroscope.exe --test-screenshot 
 
 ## Licensing
 This is for personal use. JUCE is AGPLv3 or commercial. The ASIO SDK headers bundled with JUCE are GPLv3. Sharing builds would mean following those licences.
+
+## TargetBuilder (tonal balance targets from your own songs)
+
+`TargetBuilder.exe` (in the release, and installed next to the app with a Start menu entry) turns songs into
+tonal balance targets for the upcoming Balance view. Easiest use: **drag a folder onto TargetBuilder.exe**.
+
+- A folder of songs gives one target named after the folder.
+- A folder of genre subfolders (`Hip-hop\`, `Rock\`, ...) gives one target per subfolder.
+- Command line: `TargetBuilder <folder>` or `TargetBuilder song1.wav song2.flac --name "My refs"`;
+  options `--out DIR`, `--genres`, `--range 10 90` (percentiles for the "in range" band), `--threads N`.
+- Formats: WAV, AIFF, FLAC, OGG, MP3 (and WMA on Windows); any sample rate.
+- Output (default `Documents\DigiCheck Universal\Targets`): `<name>.json` in the same layout as Tonal Balance
+  Control target files, plus `<name> - report.txt` listing every song's band balance and how far it is from the
+  target, with outliers flagged so you can drop songs that don't fit and build again.
+
+How it measures (shared with the app, `Source/balance/TonalAnalysis.*`, tested by `balance_test`):
+- Per song: mono (mean of channels), 93 ms Hann windows at the file's own sample rate, read off at the 44.1 kHz /
+  4096-point grid (so 44.1, 48 and 96 kHz files agree within ~0.1 dB and nothing above 22 kHz aliases in).
+  Quiet passages are gated out (below -70 dBFS or 20 dB under the song's average). RMS magnitude per bin,
+  normalised so the magnitudes add up to 1 (level independent).
+- Per target: the median of the songs per bin, smoothed to 1/3 octave (power domain); the range is the 10th-90th
+  percentile of the songs' smoothed curves; the 4 bands (0-250, 250-2k, 2k-8k, 8k+) store the range of each band's
+  share of the spectrum. Fewer than 5 songs get a minimum range of +/-2 dB (+/-15 % per band).
+- 10-20+ songs per genre give a trustworthy range. Targets stay on your computer; `Targets/` is git-ignored.

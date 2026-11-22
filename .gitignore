@@ -2,3 +2,7 @@ build/
 *.user
 .vs/
 out/
+
+# Tonal balance targets are personal data (some may be third-party curves): never commit them
+Targets/
+*.target.json
