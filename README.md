@@ -55,6 +55,20 @@ Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**)
 ## Toolbar and windows
 - **Options** (bottom left, or O) opens a pop-up panel with the audio input (source, L/R channels, Start/Stop, Rescan), the status line and the display options (GPU rendering, frame rate limit). There is no top toolbar, so the analysis uses the full height. Click anywhere else or press Esc to close it.
 - **Full screen**: F11 or the small button at the bottom right; Esc leaves. This is *windowed* (borderless) full screen. The window is deliberately 1 px taller than the monitor, so graphics drivers don't promote the OpenGL window to exclusive full screen. That keeps HDR and the video signal undisturbed.
+- **Tonal Balance view** (Balance button, or 3; V cycles the three views): your input's tonal balance against a target.
+  - Left, four band meters (Low 0-250 Hz, Low-mid 250 Hz-2 kHz, High-mid 2-8 kHz, High 8 kHz+): the blue zone is the
+    target's range and the marker shows where you are: green "In range", amber just outside, red further out, with how
+    many dB above or below the range.
+  - Right, the detailed curve (20 Hz-20 kHz, 1/3-octave): **Curve** shows your audio over the target's range (red
+    where it leaves the range); **Diff** shows your audio minus the target, so 0 dB is right on target. Hover for the
+    exact difference at any frequency.
+  - Bottom bar: the target, the measurement window (3 s, 10 s, 30 s or since Reset), Curve/Diff and Reset. The target
+    list ends with Open targets folder, Rescan targets and Open Target Builder.
+  - Targets are read from `Documents\DigiCheck Universal\Targets` (nothing is built into the app): files made with
+    Target Builder and Tonal Balance Control-style target files (including the variant that wraps values as
+    `{"Type", "Value"}`). New or changed files are picked up automatically.
+  - The measurement is the same as Target Builder's (gated, level independent), so a song compared with a target built
+    from it sits on the target line. It only runs while the Balance view is shown.
 - **Key finder** (Key button or K): a window that finds the musical key of the live input or of an audio file, with the key chart beside it. Nothing is analysed until you choose:
   - **Record**: analyses the selected input until Stop (or until the window closes).
   - **Browse...** or **drag & drop** a file (WAV, AIFF, FLAC, OGG, MP3; also WMA on Windows): the whole file is analysed, as the original OpenKeyScan does, with a progress bar.

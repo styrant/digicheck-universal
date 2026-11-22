@@ -9,7 +9,6 @@ namespace tonal
 namespace
 {
     constexpr double kPi = 3.14159265358979323846;
-    constexpr double kGateAbsDb = -70.0, kGateRelDb = -20.0;
 
     void fft (std::vector<double>& re, std::vector<double>& im)
     {
@@ -54,9 +53,7 @@ namespace
 double binFrequency (int bin) noexcept { return bin * kSampleRate / kFftSize; }
 
 //==============================================================================
-SpectrumAccumulator::SpectrumAccumulator (double sampleRate)
-    : bucketPower ((size_t) kBuckets), bucketEnergy ((size_t) kBuckets, 0.0), bucketFrames ((size_t) kBuckets, 0),
-      sr (sampleRate > 1000 ? sampleRate : kSampleRate)
+FrameAnalyzer::FrameAnalyzer (double sampleRate) : sr (sampleRate > 1000 ? sampleRate : kSampleRate)
 {
     len = std::max (16, (int) std::lround (kFftSize * sr / kSampleRate));   // 93 ms, like 4096 samples at 44.1 kHz
     hop = len / 2;
@@ -64,39 +61,60 @@ SpectrumAccumulator::SpectrumAccumulator (double sampleRate)
     while (nfft < len) nfft <<= 1;
     nbins = nfft / 2 + 1;
     buf.assign ((size_t) len, 0.0f);
-    window.resize ((size_t) len); re.resize ((size_t) nfft); im.resize ((size_t) nfft);
+    window.resize ((size_t) len); re.resize ((size_t) nfft); im.resize ((size_t) nfft); grid.resize ((size_t) kBins);
     for (int i = 0; i < len; ++i) window[(size_t) i] = 0.5 - 0.5 * std::cos (2 * kPi * i / len);   // periodic Hann
 }
 
-void SpectrumAccumulator::process (const float* x, int n)
-{
-    for (int i = 0; i < n; ++i)
-    {
-        buf[(size_t) fill++] = x[i];
-        if (fill == len)
-        {
-            frame();
-            std::copy (buf.begin() + hop, buf.end(), buf.begin());
-            fill = len - hop;
-        }
-    }
-}
-
-void SpectrumAccumulator::frame()
+bool FrameAnalyzer::frame()
 {
     double ms = 0;
     for (int i = 0; i < len; ++i) ms += (double) buf[(size_t) i] * buf[(size_t) i];
-    ms /= len;
-    const double db = 10 * std::log10 (ms + 1e-30);
-    if (db < kGateAbsDb) return;
-    const int b = std::clamp ((int) ((db - kGateAbsDb) * 2.0), 0, kBuckets - 1);
+    meanSquare = ms / len;
+    if (10 * std::log10 (meanSquare + 1e-30) < kGateAbsDb) return false;
 
     std::fill (re.begin(), re.end(), 0.0); std::fill (im.begin(), im.end(), 0.0);
     for (int i = 0; i < len; ++i) re[(size_t) i] = buf[(size_t) i] * window[(size_t) i];
     fft (re, im);
+    // power at the 44.1 kHz bin frequencies (linear interpolation between this rate's bins)
+    const double perBin = nfft / sr;
+    for (int k = 0; k < kBins; ++k)
+    {
+        const double pos = std::min (binFrequency (k) * perBin, (double) (nbins - 1));
+        const int i = (int) pos;
+        const double f = pos - i;
+        auto pw = [&] (int b) { return re[(size_t) b] * re[(size_t) b] + im[(size_t) b] * im[(size_t) b]; };
+        grid[(size_t) k] = i + 1 < nbins ? pw (i) * (1 - f) + pw (i + 1) * f : pw (i);
+    }
+    return true;
+}
+
+//==============================================================================
+SpectrumAccumulator::SpectrumAccumulator (double sampleRate)
+    : frames (sampleRate), bucketPower ((size_t) kBuckets), bucketEnergy ((size_t) kBuckets, 0.0), bucketFrames ((size_t) kBuckets, 0)
+{
+}
+
+void SpectrumAccumulator::reset()
+{
+    for (auto& b : bucketPower) b.clear();
+    std::fill (bucketEnergy.begin(), bucketEnergy.end(), 0.0);
+    std::fill (bucketFrames.begin(), bucketFrames.end(), 0);
+    frames.reset();
+}
+
+void SpectrumAccumulator::process (const float* x, int n)
+{
+    frames.process (x, n, [this] (const double* p, double ms) { addFrame (p, ms); });
+}
+
+void SpectrumAccumulator::addFrame (const double* power, double ms)
+{
+    const double db = 10 * std::log10 (ms + 1e-30);
+    if (power == nullptr || db < kGateAbsDb) return;
+    const int b = std::clamp ((int) ((db - kGateAbsDb) * 2.0), 0, kBuckets - 1);
     auto& acc = bucketPower[(size_t) b];
-    if (acc.empty()) acc.assign ((size_t) nbins, 0.0);
-    for (int k = 0; k < nbins; ++k) acc[(size_t) k] += re[(size_t) k] * re[(size_t) k] + im[(size_t) k] * im[(size_t) k];
+    if (acc.empty()) acc.assign ((size_t) kBins, 0.0);
+    for (int k = 0; k < kBins; ++k) acc[(size_t) k] += power[k];
     bucketEnergy[(size_t) b] += ms;
     ++bucketFrames[(size_t) b];
 }
@@ -120,40 +138,35 @@ double SpectrumAccumulator::analysedSeconds() const
     if (first < 0) return 0;
     int n = 0;
     for (int b = first; b < kBuckets; ++b) n += bucketFrames[(size_t) b];
-    return n * (double) hop / sr;
+    return n * frames.secondsPerFrame();
 }
 
 bool SpectrumAccumulator::hasResult() const { return analysedSeconds() > 0; }
+
+std::vector<double> normalizeSummedPower (const std::vector<double>& power, int frames)
+{
+    if (frames <= 0 || power.size() != (size_t) kBins) return {};
+    std::vector<double> mag ((size_t) kBins);
+    double sum = 0;
+    for (int k = 0; k < kBins; ++k) { mag[(size_t) k] = std::sqrt (power[(size_t) k] / frames); sum += mag[(size_t) k]; }
+    std::vector<double> db ((size_t) kBins);
+    for (int k = 0; k < kBins; ++k) db[(size_t) k] = 20 * std::log10 (mag[(size_t) k] / std::max (sum, 1e-30) + 1e-30);
+    return db;
+}
 
 std::vector<double> SpectrumAccumulator::normalizedDb() const
 {
     const int first = firstBucket (bucketEnergy, bucketFrames);
     if (first < 0) return {};
-    std::vector<double> native ((size_t) nbins, 0.0);
-    int frames = 0;
+    std::vector<double> power ((size_t) kBins, 0.0);
+    int n = 0;
     for (int b = first; b < kBuckets; ++b)
         if (! bucketPower[(size_t) b].empty())
         {
-            for (int k = 0; k < nbins; ++k) native[(size_t) k] += bucketPower[(size_t) b][(size_t) k];
-            frames += bucketFrames[(size_t) b];
+            for (int k = 0; k < kBins; ++k) power[(size_t) k] += bucketPower[(size_t) b][(size_t) k];
+            n += bucketFrames[(size_t) b];
         }
-    if (frames == 0) return {};
-    // read the power spectrum off at the 44.1 kHz grid (linear interpolation between native bins)
-    std::vector<double> power ((size_t) kBins, 0.0);
-    const double perBin = nfft / sr;
-    for (int k = 0; k < kBins; ++k)
-    {
-        const double pos = std::min (binFrequency (k) * perBin, (double) (nbins - 1));
-        const int i = (int) pos;
-        const double f = pos - i;
-        power[(size_t) k] = i + 1 < nbins ? native[(size_t) i] * (1 - f) + native[(size_t) i + 1] * f : native[(size_t) i];
-    }
-    // RMS magnitude per bin, then normalised so the magnitudes add up to 1
-    double sum = 0;
-    for (auto& p : power) { p = std::sqrt (p / frames); sum += p; }
-    std::vector<double> db ((size_t) kBins);
-    for (int k = 0; k < kBins; ++k) db[(size_t) k] = 20 * std::log10 (power[(size_t) k] / std::max (sum, 1e-30) + 1e-30);
-    return db;
+    return normalizeSummedPower (power, n);
 }
 
 //==============================================================================

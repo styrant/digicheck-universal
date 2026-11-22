@@ -24,10 +24,32 @@ namespace tonal
 
     double binFrequency (int bin) noexcept;
 
-    // Long-term average spectrum of one track, at the audio's own sample rate: the analysis window
-    // has the same length in time as 4096 samples at 44.1 kHz (93 ms, so the same resolution), is
-    // zero-padded to a power of two, and the result is read off at the 44.1 kHz bin frequencies.
-    // No resampling, so nothing above 22.05 kHz can alias into the measurement. Quiet passages (below -70 dBFS, or more than 20 dB
+    // Splits audio into analysis frames at the audio's own sample rate: the window has the same
+    // length in time as 4096 samples at 44.1 kHz (93 ms, so the same resolution), is zero-padded to a
+    // power of two, and each frame's power spectrum is read off at the 44.1 kHz bin frequencies.
+    // No resampling, so nothing above 22.05 kHz can alias into the measurement.
+    class FrameAnalyzer
+    {
+    public:
+        explicit FrameAnalyzer (double sampleRate = kSampleRate);
+        // calls onFrame (const double* power[kBins], double meanSquare) for each frame; frames quieter
+        // than -70 dBFS get power == nullptr (no FFT is done for them)
+        template <typename Fn> void process (const float* mono, int n, Fn&& onFrame);
+        double getSampleRate() const noexcept { return sr; }
+        double secondsPerFrame() const noexcept { return hop / sr; }
+        void reset() { fill = 0; }
+
+    private:
+        bool frame();                                   // true if the frame passed the absolute gate
+        std::vector<float> buf;
+        std::vector<double> window, re, im, grid;
+        double sr, meanSquare = 0;
+        int len, hop, nfft, nbins, fill = 0;
+    };
+
+    constexpr double kGateAbsDb = -70.0, kGateRelDb = -20.0;
+
+    // Long-term average spectrum of one track. Quiet passages (below -70 dBFS, or more than 20 dB
     // below the track's average level, like loudness gating) are left out, so intros, outros and
     // silence don't tilt the result.
     class SpectrumAccumulator
@@ -35,22 +57,23 @@ namespace tonal
     public:
         explicit SpectrumAccumulator (double sampleRate = kSampleRate);
         void process (const float* mono, int n);         // mono samples at the given rate, any block size
+        void addFrame (const double* power, double meanSquare);   // a frame from a FrameAnalyzer
         bool hasResult() const;
         std::vector<double> normalizedDb() const;          // kBins values; empty if nothing loud enough
         double analysedSeconds() const;                     // audio that passed the gate
-        double getSampleRate() const noexcept { return sr; }
+        double getSampleRate() const noexcept { return frames.getSampleRate(); }
+        void reset();
 
     private:
-        void frame();
         static constexpr int kBuckets = 152;               // 0.5 dB steps from -70 to +6 dBFS
-        std::vector<std::vector<double>> bucketPower;       // summed power spectra per loudness bucket
+        FrameAnalyzer frames;
+        std::vector<std::vector<double>> bucketPower;       // summed power spectra (44.1 kHz grid) per loudness bucket
         std::vector<double> bucketEnergy;                   // summed frame mean-squares
         std::vector<int> bucketFrames;
-        std::vector<float> buf;
-        std::vector<double> window, re, im;
-        double sr;
-        int len, hop, nfft, nbins, fill = 0;
     };
+
+    // RMS magnitude from summed power over `frames` frames, normalised so magnitudes add up to 1 (dB)
+    std::vector<double> normalizeSummedPower (const std::vector<double>& power, int frames);
 
     // fractional-octave smoothing in the power domain (frac = 1/3 -> third-octave)
     std::vector<double> smoothDb (const std::vector<double>& db, double frac = 1.0 / 3.0);
@@ -74,4 +97,20 @@ namespace tonal
     double deviationDb (const std::vector<double>& trackDb, const Target& t);
 
     std::string toJson (const Target& t, const std::string& name, const std::vector<std::string>& trackNames);
+
+    //==============================================================================
+    template <typename Fn>
+    void FrameAnalyzer::process (const float* x, int n, Fn&& onFrame)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            buf[(size_t) fill++] = x[i];
+            if (fill == len)
+            {
+                onFrame (frame() ? grid.data() : nullptr, meanSquare);
+                std::copy (buf.begin() + hop, buf.end(), buf.begin());
+                fill = len - hop;
+            }
+        }
+    }
 }

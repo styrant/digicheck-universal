@@ -39,6 +39,9 @@ jobs:
       - name: Tonal balance measurement test
         run: build\Release\balance_test.exe
 
+      - name: Target loader test
+        run: build\target_loader_test_artefacts\Release\target_loader_test.exe
+
       - name: TargetBuilder smoke test (two genre folders of generated WAVs)
         shell: pwsh
         run: |

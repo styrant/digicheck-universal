@@ -8,6 +8,7 @@
 #include "AnalyzerPanel.h"
 #include "FrameClock.h"
 #include "SpectrogramPresets.h"
+#include "balance/BalanceView.h"
 
 class MainComponent : public juce::Component, private juce::Timer, private juce::OpenGLRenderer
 {
@@ -94,9 +95,15 @@ private:
     Settings settings;
     SpectrumAnalyzerProcessor analyzerProc;   // declared before the engine: it must outlive the DSP thread
     KeyFinder keyFinder;                      // likewise fed from the DSP thread
+    LiveBalance liveBalance;                  // likewise
+    TargetLibrary targetLibrary;
     AudioEngine engine;
     SpectrogramView view;
     AnalyzerPanel analyzerPanel { analyzerProc };
+    BalanceView balanceView { liveBalance, targetLibrary };
+    void refreshBalanceTargets();
+    void balanceTargetsAction (int action);
+    static juce::File targetBuilderExe();
     BottomBar bottom { settings, engine, analyzerProc };
 
     juce::Label status;

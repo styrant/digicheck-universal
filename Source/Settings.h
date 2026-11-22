@@ -26,7 +26,10 @@ struct Settings
     double textScaleCustom = 1.0;
     bool   autoHideBar = true;    // hide the top toolbar in full screen (reveal at the top edge)
 
-    int    viewMode   = 0;        // 0 spectrogram, 1 analyzer
+    int    viewMode   = 0;        // 0 spectrogram, 1 analyzer, 2 balance
+    juce::String balanceTarget;   // name of the tonal balance target
+    int    balanceWindow = 1;     // 0: 3 s, 1: 10 s, 2: 30 s, 3: since reset
+    int    balanceMode   = 0;     // 0 curve, 1 difference
     double bpm        = 120.0;    // tempo calculator
     bool   tempoTriplets = false, tempoDotted = false;
     juce::String analyzerState;   // Spectrum Analyzer settings (XML)
@@ -73,6 +76,9 @@ struct Settings
         textScaleCustom = p.getDoubleValue ("textScaleCustom", textScaleCustom);
         autoHideBar = p.getBoolValue ("autoHideBar", autoHideBar);
         viewMode   = p.getIntValue ("viewMode", viewMode);
+        balanceTarget = p.getValue ("balanceTarget", balanceTarget);
+        balanceWindow = p.getIntValue ("balanceWindow", balanceWindow);
+        balanceMode   = p.getIntValue ("balanceMode", balanceMode);
         bpm        = p.getDoubleValue ("bpm", bpm);
         tempoTriplets = p.getBoolValue ("tempoTriplets", tempoTriplets);
         tempoDotted   = p.getBoolValue ("tempoDotted", tempoDotted);
@@ -99,6 +105,7 @@ struct Settings
         p.setValue ("chL", chL);               p.setValue ("chR", chR);
         p.setValue ("windowState", windowState);
         p.setValue ("viewMode", viewMode);     p.setValue ("analyzerState", analyzerState);
+        p.setValue ("balanceTarget", balanceTarget); p.setValue ("balanceWindow", balanceWindow); p.setValue ("balanceMode", balanceMode);
         p.setValue ("bpm", bpm);               p.setValue ("tempoTriplets", tempoTriplets);
         p.setValue ("tempoDotted", tempoDotted);
         p.saveIfNeeded();

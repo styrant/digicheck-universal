@@ -536,6 +536,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     if (settings.analyzerState.isNotEmpty()) analyzerProc.restoreStateXml (settings.analyzerState);
     engine.setAnalyzer (&analyzerProc);
     engine.setKeyFinder (&keyFinder);
+    engine.setBalance (&liveBalance);
     setWantsKeyboardFocus (true);
 
     status.setJustificationType (juce::Justification::topLeft);
@@ -551,7 +552,28 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
         options.addAndMakeVisible (c);
     addAndMakeVisible (view);
     addChildComponent (analyzerPanel);
+    addChildComponent (balanceView);
     addAndMakeVisible (bottom);
+
+    // tonal balance: targets from the targets folder, measurement on its own thread
+    targetLibrary.rescan();
+    liveBalance.setWindow (settings.balanceWindow);
+    balanceView.setDifferenceMode (settings.balanceMode == 1);
+    balanceView.builderAvailable = targetBuilderExe().existsAsFile();
+    balanceView.onOpenFolder = [] { auto d = TargetLibrary::folder(); d.createDirectory(); d.startAsProcess(); };
+    balanceView.onOpenBuilder = [] { targetBuilderExe().startAsProcess(); };
+    balanceView.onTargetsChanged = [this] { refreshBalanceTargets(); };
+    bottom.onBalanceTarget = [this] (int i)
+    {
+        if (i >= 0 && i < (int) targetLibrary.entries().size()) settings.balanceTarget = targetLibrary.entries()[(size_t) i].name;
+        balanceView.setTargetIndex (i);
+        saveAll();
+    };
+    bottom.onBalanceWindow = [this] (int w) { liveBalance.setWindow (w); saveAll(); };
+    bottom.onBalanceMode = [this] (bool d) { settings.balanceMode = d ? 1 : 0; balanceView.setDifferenceMode (d); bottom.refresh(); saveAll(); };
+    bottom.onBalanceReset = [this] { liveBalance.reset(); };
+    bottom.onBalanceTargetsAction = [this] (int a) { balanceTargetsAction (a); };
+    refreshBalanceTargets();
     addChildComponent (options);
     juce::Desktop::getInstance().addGlobalMouseListener (&outsideClick);
 
@@ -708,6 +730,8 @@ void MainComponent::applyTextScale()
     resized();
     analyzerPanel.resized();
     analyzerPanel.repaint();
+    balanceView.resized();
+    balanceView.repaint();
     for (auto* w : { &keyWindow, &tempoWindow })
         if (*w != nullptr)
         {
@@ -728,12 +752,17 @@ void MainComponent::setOptionsVisible (bool show)
 
 void MainComponent::setView (int v)
 {
-    settings.viewMode = juce::jlimit (0, 1, v);
-    const bool ana = settings.viewMode == BottomBar::Analyzer;
-    view.setVisible (! ana);
+    settings.viewMode = juce::jlimit (0, 2, v);
+    const bool spec = settings.viewMode == BottomBar::Spectrogram, ana = settings.viewMode == BottomBar::Analyzer,
+               bal = settings.viewMode == BottomBar::Balance;
+    view.setVisible (spec);
     analyzerPanel.setVisible (ana);
     analyzerPanel.setActive (ana);
-    engine.setSpectrogramActive (! ana);
+    balanceView.setVisible (bal);
+    balanceView.setActive (bal);
+    liveBalance.setActive (bal);
+    engine.setSpectrogramActive (spec);
+    if (bal) { refreshBalanceTargets(); grabKeyboardFocus(); }
     if (ana) analyzerPanel.getView().grabKeyboardFocus();
     bottom.refresh();
     saveAll();
@@ -890,6 +919,7 @@ void MainComponent::toggleKeyWindow()
 
 void MainComponent::timerCallback()
 {
+    balanceView.setInputRunning (engine.isRunning());
     if (++tick % 10 == 0) updateStatus();
 }
 
@@ -938,6 +968,7 @@ void MainComponent::resized()
     bottom.setBounds (r.removeFromBottom (BottomBar::height()));
     view.setBounds (r);                       // no top toolbar: the analysis uses the full height
     analyzerPanel.setBounds (r);
+    balanceView.setBounds (r);
     layoutOptions();
 }
 
@@ -980,9 +1011,10 @@ void MainComponent::layoutOptions()
 
 bool MainComponent::keyPressed (const juce::KeyPress& k)
 {
-    const bool ana = settings.viewMode == BottomBar::Analyzer;
-    if (k == juce::KeyPress::spaceKey)          { if (ana) analyzerPanel.getView().toggleFreeze(); else view.togglePause(); return true; }
-    if (k.getTextCharacter() == 'v' || k.getTextCharacter() == 'V') { setView (ana ? BottomBar::Spectrogram : BottomBar::Analyzer); return true; }
+    const bool ana = settings.viewMode == BottomBar::Analyzer, bal = settings.viewMode == BottomBar::Balance;
+    if (k == juce::KeyPress::spaceKey)          { if (ana) analyzerPanel.getView().toggleFreeze(); else if (! bal) view.togglePause(); return true; }
+    if (k.getTextCharacter() == 'v' || k.getTextCharacter() == 'V') { setView ((settings.viewMode + 1) % 3); return true; }
+    if (k.getTextCharacter() >= '1' && k.getTextCharacter() <= '3') { setView ((int) (k.getTextCharacter() - '1')); return true; }
     if (k == juce::KeyPress::F11Key)            { toggleFullscreen(); return true; }
     if (k.getTextCharacter() == 'o' || k.getTextCharacter() == 'O') { toggleOptions(); return true; }
     if (k == juce::KeyPress::escapeKey)
@@ -996,11 +1028,11 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
     if (k.getTextCharacter() == 't' || k.getTextCharacter() == 'T') { toggleTempoWindow(); return true; }
     if (k.getTextCharacter() == 'p' || k.getTextCharacter() == 'P')
     {
-        if (! settings.hidePanel) bottom.clickPresets (ana);
+        if (! settings.hidePanel && ! bal) bottom.clickPresets (ana);
         return true;
     }
-    if (k.getTextCharacter() == 's' || k.getTextCharacter() == 'S') { if (ana) analyzerPanel.toggleSettings(); else openSettings(); return true; }
-    if (ana) return false;
+    if (k.getTextCharacter() == 's' || k.getTextCharacter() == 'S') { if (ana) analyzerPanel.toggleSettings(); else if (! bal) openSettings(); return true; }
+    if (ana || bal) return false;
     if (k == juce::KeyPress::upKey)             { settings.refLevel = juce::jmin (0.0, settings.refLevel + 1);   onChange (Change::Visual); return true; }
     if (k == juce::KeyPress::downKey)           { settings.refLevel = juce::jmax (-80.0, settings.refLevel - 1); onChange (Change::Visual); return true; }
     return false;
@@ -1181,4 +1213,54 @@ void MainComponent::showAnalyzerPresets (juce::Component& anchor)
         self->analyzerPanel.refreshSettings();
         self->saveAll();
     });
+}
+
+//==============================================================================
+// Tonal balance targets
+
+juce::File MainComponent::targetBuilderExe()
+{
+    const auto dir = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory();
+   #if JUCE_WINDOWS
+    return dir.getChildFile ("TargetBuilder.exe");
+   #else
+    return dir.getChildFile ("TargetBuilder");
+   #endif
+}
+
+void MainComponent::refreshBalanceTargets()
+{
+    targetLibrary.rescanIfChanged();
+    juce::StringArray names;
+    for (auto& e : targetLibrary.entries()) names.add (e.name);
+    int sel = targetLibrary.indexOf (settings.balanceTarget);
+    if (sel < 0 && ! names.isEmpty())                         // first time: a sensible default
+    {
+        for (auto pref : { "Modern", "Pop" })
+            if ((sel = targetLibrary.indexOf (pref)) >= 0) break;
+        if (sel < 0) sel = 0;
+        settings.balanceTarget = names[sel];
+    }
+    bottom.setBalanceTargets (names, sel);
+    balanceView.setTargetIndex (sel);
+}
+
+void MainComponent::balanceTargetsAction (int action)
+{
+    if (action == 1) { auto d = TargetLibrary::folder(); d.createDirectory(); d.startAsProcess(); }
+    if (action == 3)
+    {
+        if (targetBuilderExe().existsAsFile()) targetBuilderExe().startAsProcess();
+        else juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Target Builder",
+                 "TargetBuilder.exe isn't next to Spectroscope.exe. It comes with the installer, or download it from the release page.");
+    }
+    if (action == 2)
+    {
+        targetLibrary.rescan();
+        refreshBalanceTargets();
+        const auto problems = targetLibrary.skipped();
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Targets",
+            juce::String ((int) targetLibrary.entries().size()) + " target(s) in " + TargetLibrary::folder().getFullPathName()
+            + (problems.isEmpty() ? juce::String() : "\n\nThese files couldn't be read:\n" + problems.joinIntoString ("\n")));
+    }
 }

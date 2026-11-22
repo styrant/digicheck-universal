@@ -43,7 +43,11 @@ target_sources(Spectroscope PRIVATE
     Source/analyzer/ui/SettingsPanel.cpp
     Source/key/KeyNet.cpp
     Source/key/KeyCqt.cpp
-    Source/key/KeyFinder.cpp)
+    Source/key/KeyFinder.cpp
+    Source/balance/TonalAnalysis.cpp
+    Source/balance/LiveBalance.cpp
+    Source/balance/TargetLibrary.cpp
+    Source/balance/BalanceView.cpp)
 
 # Key finder model (OpenKeyScan KeyNet, MIT; exported by tools/export_keynet.py)
 juce_add_binary_data(SpectroscopeData SOURCES Resources/keynet.bin)
@@ -86,6 +90,11 @@ add_executable(loudness_test tests/loudness_test.cpp Source/LoudnessMeter.cpp)
 add_executable(analyzer_dsp_test tests/analyzer_dsp_test.cpp)   # Spectrum Analyzer 2's own DSP tests
 add_executable(key_test tests/key_test.cpp Source/key/KeyNet.cpp Source/key/KeyCqt.cpp)   # key finder vs PyTorch / librosa
 add_executable(balance_test tests/balance_test.cpp Source/balance/TonalAnalysis.cpp)       # tonal balance measurement
+juce_add_console_app(target_loader_test)                                                    # reading target files
+juce_generate_juce_header(target_loader_test)
+target_sources(target_loader_test PRIVATE tests/target_loader_test.cpp Source/balance/TargetLibrary.cpp Source/balance/TonalAnalysis.cpp)
+target_compile_definitions(target_loader_test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(target_loader_test PRIVATE juce::juce_core PUBLIC juce::juce_recommended_config_flags)
 
 # TargetBuilder: window app (and --cli mode) that makes tonal balance targets from songs
 juce_add_gui_app(TargetBuilder

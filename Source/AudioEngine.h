@@ -5,6 +5,7 @@
 #include "LoudnessMeter.h"
 #include "analyzer/PluginProcessor.h"
 #include "key/KeyFinder.h"
+#include "balance/LiveBalance.h"
 #include <atomic>
 #include <thread>
 
@@ -44,6 +45,7 @@ public:
     void resetLoudness()                          { loudReset = true; }
     void setAnalyzer (SpectrumAnalyzerProcessor* p) { analyzer = p; }   // fed from the DSP thread
     void setKeyFinder (KeyFinder* k)              { keyFinder = k; }  // fed from the DSP thread (while active)
+    void setBalance (LiveBalance* b)              { balance = b; }    // fed from the DSP thread (while active)
     // The spectrogram's (expensive) analysis only runs while its view is showing
     void setSpectrogramActive (bool a)            { if (a && ! specActive.load()) specResume = true; specActive = a; }
     double getShortTermLufs() const noexcept      { return lufsS.load(); }
@@ -106,6 +108,7 @@ private:
 
     SpectrumAnalyzerProcessor* analyzer = nullptr;
     KeyFinder* keyFinder = nullptr;
+    LiveBalance* balance = nullptr;
     std::atomic<bool> specActive { true }, specResume { false };
     LoudnessMeter loud;
     std::atomic<bool> loudReset { true };

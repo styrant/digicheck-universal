@@ -17,7 +17,7 @@ namespace
 
 BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& proc) : s (st), engine (e)
 {
-    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &lufsBtn, &keyBtn, &tempoBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
+    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &viewBal, &balCurve, &balDiff, &balReset, &lufsBtn, &keyBtn, &tempoBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
                      &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &full })
     {
         addAndMakeVisible (b);
@@ -32,11 +32,44 @@ BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& p
 
     // view switch: two joined buttons
     viewSpec.setConnectedEdges (juce::Button::ConnectedOnRight);
-    viewAna.setConnectedEdges (juce::Button::ConnectedOnLeft);
-    viewSpec.setTooltip ("Reassigned spectrogram (V)");
-    viewAna.setTooltip ("Filter-bank spectrum analyzer (V)");
+    viewAna.setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
+    viewBal.setConnectedEdges (juce::Button::ConnectedOnLeft);
+    viewSpec.setTooltip ("Reassigned spectrogram (1, V cycles)");
+    viewAna.setTooltip ("Filter-bank spectrum analyzer (2, V cycles)");
+    viewBal.setTooltip ("Tonal balance against a target (3, V cycles)");
     viewSpec.onClick = [this] { if (onViewChange) onViewChange (Spectrogram); };
     viewAna.onClick  = [this] { if (onViewChange) onViewChange (Analyzer); };
+    viewBal.onClick  = [this] { if (onViewChange) onViewChange (Balance); };
+
+    // balance controls
+    balTarget.setTooltip ("Target to compare with (files in the targets folder)");
+    balTarget.setTextWhenNoChoicesAvailable ("No targets");
+    balTarget.setTextWhenNothingSelected ("Choose a target");
+    balTarget.onChange = [this]
+    {
+        const int id = balTarget.getSelectedId();
+        if (id > 1000)                                    // an action at the end of the list
+        {
+            balTarget.setSelectedId (balSelected, juce::dontSendNotification);
+            if (onBalanceTargetsAction) onBalanceTargetsAction (id - 1000);
+            return;
+        }
+        balSelected = id;
+        if (onBalanceTarget) onBalanceTarget (id - 1);
+    };
+    balWindow.addItemList ({ "3 s", "10 s", "30 s", "Since reset" }, 1);
+    balWindow.setTooltip ("How much recent audio the measurement averages");
+    balWindow.onChange = [this] { s.balanceWindow = balWindow.getSelectedId() - 1; if (onBalanceWindow) onBalanceWindow (s.balanceWindow); };
+    for (auto* c : { &balTarget, &balWindow }) addAndMakeVisible (c);
+    balCurve.setConnectedEdges (juce::Button::ConnectedOnRight);
+    balDiff.setConnectedEdges (juce::Button::ConnectedOnLeft);
+    balCurve.setTooltip ("Your audio over the target's range");
+    balDiff.setTooltip ("Difference: your audio minus the target (0 dB = on target)");
+    balCurve.onClick = [this] { if (onBalanceMode) onBalanceMode (false); };
+    balDiff.onClick  = [this] { if (onBalanceMode) onBalanceMode (true); };
+    balReset.setTooltip ("Start the measurement again");
+    balReset.onClick = [this] { if (onBalanceReset) onBalanceReset(); };
+
 
     lufsBtn.setTooltip ("Show or hide the loudness meter");
     keyBtn.setTooltip ("Major keys and their relative minors (K)");
@@ -92,7 +125,7 @@ BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& p
     resetBtn.onClick = [this] { engine.resetLoudness(); };
     full.onClick     = [this] { if (onToggleFullscreen) onToggleFullscreen(); };
 
-    for (auto* b : { &viewSpec, &viewAna, &lufsBtn, &keyBtn })
+    for (auto* b : { &viewSpec, &viewAna, &viewBal, &balCurve, &balDiff, &lufsBtn, &keyBtn })
         b->setClickingTogglesState (false);   // state comes from settings via refresh()
 
     refresh();
@@ -109,10 +142,26 @@ void BottomBar::refresh()
     ref.setFont (juce::FontOptions (ui::fs (15.0f)));
     viewSpec.setToggleState (s.viewMode == Spectrogram, juce::dontSendNotification);
     viewAna.setToggleState  (s.viewMode == Analyzer, juce::dontSendNotification);
+    viewBal.setToggleState  (s.viewMode == Balance, juce::dontSendNotification);
+    balCurve.setToggleState (s.balanceMode == 0, juce::dontSendNotification);
+    balDiff.setToggleState  (s.balanceMode == 1, juce::dontSendNotification);
+    balWindow.setSelectedId (juce::jlimit (0, 3, s.balanceWindow) + 1, juce::dontSendNotification);
     lufsBtn.setToggleState  (s.showLufs, juce::dontSendNotification);
     ref.setText ("Ref: " + juce::String (s.refLevel, 0) + " dB", juce::dontSendNotification);
     resized();
     repaint();
+}
+
+void BottomBar::setBalanceTargets (const juce::StringArray& names, int selected)
+{
+    balTarget.clear (juce::dontSendNotification);
+    balTarget.addItemList (names, 1);
+    if (! names.isEmpty()) balTarget.addSeparator();
+    balTarget.addItem ("Open targets folder...", 1001);
+    balTarget.addItem ("Rescan targets", 1002);
+    balTarget.addItem ("Open Target Builder...", 1003);
+    balSelected = (selected >= 0 && selected < names.size()) ? selected + 1 : 0;
+    balTarget.setSelectedId (balSelected, juce::dontSendNotification);
 }
 
 void BottomBar::setPaused (bool p)     { pause.setButtonText (p ? ">" : "||"); }
@@ -147,13 +196,14 @@ void BottomBar::paint (juce::Graphics& g)
 
 void BottomBar::resized()
 {
-    const bool spec = s.viewMode == Spectrogram;
+    const bool spec = s.viewMode == Spectrogram, bal = s.viewMode == Balance;
     const bool controls = ! s.hidePanel;
     auto r = getLocalBounds().withTrimmedTop (1).reduced (8, 6);
 
     // left: Options, view switch, LUFS / Key / Tempo toggles
     optionsBtn.setBounds (r.removeFromLeft (ui::px (72))); r.removeFromLeft (ui::px (10));
-    viewSpec.setBounds (r.removeFromLeft (ui::px (90))); viewAna.setBounds (r.removeFromLeft (ui::px (78))); r.removeFromLeft (ui::px (10));
+    viewSpec.setBounds (r.removeFromLeft (ui::px (90))); viewAna.setBounds (r.removeFromLeft (ui::px (74)));
+    viewBal.setBounds (r.removeFromLeft (ui::px (70))); r.removeFromLeft (ui::px (10));
     lufsBtn.setBounds (r.removeFromLeft (ui::px (48))); r.removeFromLeft (ui::px (4));
     keyBtn.setBounds (r.removeFromLeft (ui::px (40)));  r.removeFromLeft (ui::px (4));
     tempoBtn.setBounds (r.removeFromLeft (ui::px (56))); r.removeFromLeft (ui::px (12));
@@ -169,10 +219,12 @@ void BottomBar::resized()
         r.removeFromRight (ui::px (4));
         // leave the middle controls their minimum width; the loudness boxes shrink first
         // the analyzer's combo boxes get room only if the loudness boxes can stay comfortably wide
-        const int compact = spec ? ui::px (66 + 6 + 34 + 4 + 96 + 4 + 30 + 4 + 30) : ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
+        const int compact = spec ? ui::px (66 + 6 + 34 + 4 + 96 + 4 + 30 + 4 + 30)
+                          : bal ? ui::px (110 + 4 + 80 + 6 + 52 + 44 + 6 + 48)
+                                : ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
         const int withCombos = compact + ui::px (64 + 4 + 122 + 4 + 84 + 10);
         auto lufsFor = [&] (int group) { return juce::jmin (ui::px (450), juce::jmin (r.getWidth() / 2, r.getWidth() - group - ui::px (16))); };
-        const int minGroup = (! spec && lufsFor (withCombos) >= ui::px (330)) ? withCombos : compact;
+        const int minGroup = (! spec && ! bal && lufsFor (withCombos) >= ui::px (330)) ? withCombos : compact;
         const int lufsW = juce::jmax (ui::px (240), lufsFor (minGroup));
         lufs.setBounds (r.removeFromRight (lufsW).expanded (0, 2));
         r.removeFromRight (ui::px (12));
@@ -182,8 +234,27 @@ void BottomBar::resized()
     for (auto* c : std::initializer_list<juce::Component*> { &specPresets, &pause, &ref, &refDown, &refUp, &specSettings })
         c->setVisible (spec && controls);
     for (auto* c : std::initializer_list<juce::Component*> { &anaPresets, &bpoBox, &chanBox, &gridBox, &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings })
-        c->setVisible (! spec && controls);
+        c->setVisible (s.viewMode == Analyzer && controls);
+    for (auto* c : std::initializer_list<juce::Component*> { &balTarget, &balWindow, &balCurve, &balDiff, &balReset })
+        c->setVisible (bal && controls);
     if (! controls) return;
+
+    if (bal)
+    {
+        // the target box takes whatever is left (110..220 px); the window box goes first if space is short
+        const int rest = ui::px (4 + 80 + 6 + 52 + 44 + 6 + 48);
+        const int tw = juce::jlimit (ui::px (110), ui::px (220), r.getWidth() - rest);
+        const int w = juce::jmin (r.getWidth(), tw + rest);
+        auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
+        balTarget.setBounds (g.removeFromLeft (tw)); g.removeFromLeft (ui::px (4));
+        const bool roomForWindow = g.getWidth() >= ui::px (80 + 6 + 52 + 44 + 6 + 48);
+        balWindow.setVisible (roomForWindow);
+        if (roomForWindow) { balWindow.setBounds (g.removeFromLeft (ui::px (80))); g.removeFromLeft (ui::px (6)); }
+        balCurve.setBounds (g.removeFromLeft (ui::px (52)));
+        balDiff.setBounds (g.removeFromLeft (ui::px (44))); g.removeFromLeft (ui::px (6));
+        balReset.setBounds (g.removeFromLeft (ui::px (48)));
+        return;
+    }
 
     if (spec)
     {

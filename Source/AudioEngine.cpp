@@ -236,6 +236,7 @@ void AudioEngine::run()
         if (spec) dsp.process (L.data(), R.data(), total);
         loud.process (L.data(), R.data(), total);
         if (keyFinder != nullptr) keyFinder->push (L.data(), R.data(), total, sr);
+        if (balance != nullptr) balance->push (L.data(), R.data(), total, sr);
         if (analyzer != nullptr)
         {
             // Feed the analyzer in ~10 ms slices so it publishes one update per 10 ms of audio, evenly,

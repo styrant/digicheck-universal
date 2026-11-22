@@ -132,6 +132,11 @@ private:
             {
             if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_analyzer.png")); s.openedOk())
             { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
+            mc->setView (2);   // Balance view
+            juce::Timer::callAfterDelay (3500, [this, out, mc]
+            {
+            if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_balance.png")); s.openedOk())
+            { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
             mc->setView (0);
             mc->getSettings().bpm = 150.0; mc->getSettings().tempoTriplets = true; mc->getSettings().tempoDotted = false;
             mc->toggleTempoWindow();
@@ -160,6 +165,7 @@ private:
                             dw->exitModalState (0);
                         }
                 quit();
+            });
             });
             });
         });
