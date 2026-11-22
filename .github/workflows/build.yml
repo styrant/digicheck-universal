@@ -66,13 +66,19 @@ jobs:
       - name: Configure
         shell: pwsh
         run: |
+          # Visual Studio's own clang-cl matches its standard library (VS 2026's STL needs Clang 22+, newer than
+          # the runner's separate LLVM); fall back to that LLVM only if VS has no Clang component
+          $llvm = Join-Path $env:VCINSTALLDIR "Tools\Llvm\x64\bin"
+          if (-not (Test-Path "$llvm\clang-cl.exe")) { $llvm = "C:\Program Files\LLVM\bin" }
+          $cc = ("$llvm\clang-cl.exe" -replace '\\', '/')
+          & "$llvm\clang-cl.exe" --version
           # CC / CXX in the environment also reach ggml's nested vulkan-shaders-gen build
-          "CC=clang-cl" | Out-File -Append $env:GITHUB_ENV
-          "CXX=clang-cl" | Out-File -Append $env:GITHUB_ENV
-          $env:CC = "clang-cl"; $env:CXX = "clang-cl"
+          "CC=$cc" | Out-File -Append $env:GITHUB_ENV
+          "CXX=$cc" | Out-File -Append $env:GITHUB_ENV
+          $env:CC = $cc; $env:CXX = $cc
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
-            -DCMAKE_LINKER=lld-link -DCMAKE_AR=llvm-lib `
+            "-DCMAKE_C_COMPILER=$cc" "-DCMAKE_CXX_COMPILER=$cc" `
+            "-DCMAKE_LINKER=$llvm/lld-link.exe" "-DCMAKE_AR=$llvm/llvm-lib.exe" `
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
             -DMUSCRIPTOR_VULKAN=ON
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
