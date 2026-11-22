@@ -61,7 +61,7 @@ namespace specpresets
     }
 
     // ---- user presets, stored as XML in the properties file under "spectrogramPresets"
-    inline std::vector<Preset> loadUser (juce::PropertiesFile& props)
+    inline std::vector<Preset> loadUser (const juce::PropertySet& props)
     {
         std::vector<Preset> out;
         if (auto xml = props.getXmlValue ("spectrogramPresets"))
@@ -85,7 +85,7 @@ namespace specpresets
         return out;
     }
 
-    inline void saveUser (juce::PropertiesFile& props, const std::vector<Preset>& list)
+    inline void saveUser (juce::PropertySet& props, const std::vector<Preset>& list)
     {
         juce::XmlElement root ("Presets");
         for (auto& p : list)
@@ -99,6 +99,6 @@ namespace specpresets
             e->setAttribute ("shortRange", p.shortRange); e->setAttribute ("freqScale", p.freqScale);
         }
         props.setValue ("spectrogramPresets", &root);
-        props.saveIfNeeded();
+        if (auto* file = dynamic_cast<juce::PropertiesFile*> (&props)) file->saveIfNeeded();
     }
 }

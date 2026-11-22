@@ -9,6 +9,7 @@
 #include "FrameClock.h"
 #include "SpectrogramPresets.h"
 #include "balance/BalanceView.h"
+#include "key/KeyPage.h"
 
 class MainComponent : public juce::Component, private juce::Timer, private juce::OpenGLRenderer
 {
@@ -27,12 +28,12 @@ public:
     void suspendGpu();                               // around moving to another window
     void resumeGpu();
     std::function<void (bool wantFullscreen)> onFullscreenRequest;
-    void toggleKeyWindow();
     void toggleTempoWindow();
     void setCursorForTest (double hz) { view.setCursorFrequency (hz); }
     void setView (int viewMode);
     void applyRendererForTest() { applyRenderer(); }
     Settings& getSettings() { return settings; }
+    KeyPage& getKeyPage() { return keyPage; }
 
 private:
     void timerCallback() override;
@@ -78,7 +79,7 @@ private:
     } outsideClick { *this };
 
     int tick = 0;
-    std::unique_ptr<juce::DocumentWindow> keyWindow, tempoWindow;
+    std::unique_ptr<juce::DocumentWindow> tempoWindow;
     std::atomic<int> glFrames { 0 };
     double glFpsTime = 0;
 
@@ -94,13 +95,18 @@ private:
     juce::PropertiesFile& props;
     Settings settings;
     SpectrumAnalyzerProcessor analyzerProc;   // declared before the engine: it must outlive the DSP thread
-    KeyFinder keyFinder;                      // likewise fed from the DSP thread
-    LiveBalance liveBalance;                  // likewise
+    // analysis taps fed from the DSP thread: declared before the engine so they outlive it
+    KeyFinder keyFinder;
+    LiveBalance liveBalance;
+    LiveRecorder recorder;
+    TranscriptionSession transcription;
+    ModelStore modelStore;
     TargetLibrary targetLibrary;
     AudioEngine engine;
     SpectrogramView view;
     AnalyzerPanel analyzerPanel { analyzerProc };
     BalanceView balanceView { liveBalance, targetLibrary };
+    KeyPage keyPage { keyFinder, transcription, recorder, modelStore, settings, [this] { saveAll(); } };
     void refreshBalanceTargets();
     void balanceTargetsAction (int action);
     static juce::File targetBuilderExe();

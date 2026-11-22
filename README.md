@@ -37,7 +37,7 @@ Set-up in Azure: create an Artifact Signing account (Basic plan), complete ident
 Settings → Channel Select. (The Analyzer has its own channel box with the same choices plus Stereo.)
 
 ## Views
-Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**). The bottom bar stays the same in both views: Options, the LUFS readout, Key, Tempo, Reset and Full screen are always there. The controls in the middle change with the view.
+Switch with the **Spectrogram | Analyzer | Balance | Key** buttons at the bottom left (keys **1-4**, **V** cycles, **K** goes to Key). The bottom bar stays the same in every view: Options, the LUFS readout, Tempo, Reset and Full screen are always there. The controls in the middle change with the view.
 
 - **Spectrogram:** the reassigned spectrogram described below. Bottom bar: Presets, Pause, **frequency scale**,
   **channel** (Left / Right / Mid / Side), Ref level -/+ and Settings (on narrow windows Settings, then the Ref
@@ -86,20 +86,39 @@ Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**)
     `{"Type", "Value"}`). New or changed files are picked up automatically.
   - The measurement is the same as Target Builder's (gated, level independent), so a song compared with a target built
     from it sits on the target line. It only runs while the Balance view is shown.
-- **Key finder** (Key button or K): a window that finds the musical key of the live input or of an audio file, with the key chart beside it. Nothing is analysed until you choose:
-  - **Record**: analyses the selected input until Stop (or until the window closes).
-  - **Browse...** or **drag & drop** a file (WAV, AIFF, FLAC, OGG, MP3; also WMA on Windows): the whole file is analysed, as the original OpenKeyScan does, with a progress bar.
-  - *Now*: the key of the last 20 s, refreshed every 3 s, with the two next most likely keys.
-  - *Session*: the average over everything heard since Record or Reset (silence is ignored); also lists the Camelot-compatible keys.
-  - Keys are shown as names, Camelot (8A) and Open Key (1m). The chart marks the current key (filled) and the session key (outlined).
-  - Recording uses about 7% of one CPU core; a 3-minute file takes a few seconds.
-  - The model is OpenKeyScan's KeyNet (Korzeniowski & Widmer 2018, trained on GiantSteps), from styrant/openkeyscan-analyzer (MIT, see licenses/). It runs natively in C++: a constant-Q front end matching librosa's and the 9-layer CNN; tests/key_test checks both against librosa and PyTorch. tools/export_keynet.py regenerates Resources/keynet.bin from a checkpoint.
+- **Key** (Key view, 4 or K): every key-related tool on one page, sharing one audio source.
+  - **Source:** **Record** (the selected input; **R**), **Browse...**, or **drag & drop** a song anywhere on the page
+    (WAV, AIFF, FLAC, OGG, MP3). Nothing is analysed until you choose.
+  - **Key (left):** the key finder. For a file, the whole file's key with the two runners-up, Camelot (8A), Open Key
+    (1m) and the keys that mix well. While recording, *Now* (the last 20 s, every 3 s) and *Session* (everything
+    heard). The key chart below marks the key (filled) and the session key (outlined). The model is OpenKeyScan's
+    KeyNet (Korzeniowski & Widmer 2018) from styrant/openkeyscan-analyzer (MIT), in native C++; `tests/key_test`
+    checks it against librosa and PyTorch.
+  - **Chords & melody (right):** the song is transcribed to notes by NeuralNote v2's engine (muscriptor.cpp with the
+    MuScriptor model by Kyutai / Mirelo; from styrant/NeuralNote), then:
+    - **Chords:** a chord lane with names spelled for the key (Bb, not A#, in F major), slash chords when the bass
+      holds another chord tone, and Roman numerals (I, vi, V7, bVII...). Triads, sus, 6th and 7th chords (the
+      *7th chords* box turns the 6ths and 7ths off).
+    - **Melody:** the top line of the pitched, non-bass instruments, highlighted in orange in the piano roll; taken
+      from the vocal part when there is one.
+    - **Piano roll** with the waveform: every transcribed note coloured by instrument (*All notes* hides them). Wheel
+      scrolls, Ctrl+wheel zooms, drag pans, double-click fits; hover for note, instrument and chord.
+    - **Copy chords** (text with times), **Save MIDI...** or **Drag MIDI** straight into a DAW: one track per
+      instrument plus Melody and Chords tracks, at 120 BPM with the key signature.
+    - The key for chord names and numerals comes from the key finder, or from the notes when there's no key yet.
+  - **Model:** downloaded once inside the app, not part of the install: Small 210 MB (about real time on a CPU),
+    Medium 620 MB or Large 2.7 GB (a GPU recommended). They're stored in `%APPDATA%\DigiCheck Universal\Models`;
+    models that NeuralNote has already downloaded (`%APPDATA%\NeuralNote\models`) are used in place. Each
+    download is checked against NeuralNote's pinned SHA-256. The weights are CC BY-NC 4.0 (non-commercial).
+  - **Device:** Auto picks the best GPU (Vulkan) or the CPU; or choose one. **Instruments:** restrict what the model
+    listens for (helps when you know them). **Auto** transcribes as soon as a song is loaded or a recording stops.
+  - Transcription runs in the background, chunk by chunk (notes appear as they're found); Stop keeps what's done.
+    Files up to 20 minutes, recordings up to 15.
 - **Presets** (bottom bar, left of the view's controls, or P):
   - Spectrogram: built-in views (Default, Bass focus, High contrast). They change only the display and analysis settings, never the input. You can save the current view under your own name, and delete your presets.
   - Analyzer: the factory presets, your own saved presets (settings and colours), and import of Spectrum Analyzer v1.x .fxp/.fxb files.
 - **Smooth scrolling**: the spectrogram moves a whole number of pixels per monitor frame, so thin lines don't shimmer. The scroll speed is snapped to the nearest whole number of pixels per frame when that is within 20% of the chosen speed (e.g. 250 px/s plays at 240 px/s on 60 Hz); the time grid follows the actual speed.
 - **Text size** (in Options): Small, Medium (default), Large, or Custom (70–200%). It applies to all text in the app; with larger sizes the bars and panels grow to fit.
-- **Key** (or K) opens a small always-on-top chart of major keys and their relative minors.
 - **Tempo** (or T) opens a BPM-to-milliseconds calculator: note values from 2/1 to 1/128, with optional triplet and dotted columns and a Tap button. Click a value to copy it.
 - **LUFS** shows short-term, integrated (BS.1770 gated) and true-peak values, colour-coded. Loudness is white below −14 LUFS, green from −14 to −9, yellow from −9 to −6, and red from −6 up. True peak is white below −1 dBTP, yellow from −1 to 0, and red above 0. **Reset** restarts integrated loudness and the true-peak hold.
 
@@ -115,18 +134,30 @@ Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**)
 - If the DSP can't keep up, the gap is drawn in white, as DigiCheck does.
 - A full-scale sine reads about 0 dBFS. `dsp_test` checks this on every build.
 
-Code layout: `Source/Reassigner.*` (DSP, no dependencies), `AudioEngine.*` (sources, threads, lock-free queues), `LoopbackCapture.*` (WASAPI loopback), `SpectrogramView.*` (display), `SettingsDialog.*`.
+Code layout: `Source/Reassigner.*` (DSP, no dependencies), `AnalysisEngine.*` (sample ring, DSP thread, column queue, analysis taps; no audio device), `AudioEngine.*` (the standalone app's inputs: devices, loopback, test signal), `LoopbackCapture.*` (WASAPI loopback), `SpectrogramView.*` (display), `SettingsDialog.*`, `key/` (key finder, Key page), `transcribe/` (engine wrapper, chords / melody, models, MIDI), `balance/` (tonal balance). The code is kept ready for a VST3 version: see [docs/VST3.md](docs/VST3.md).
 
 ## Building locally
-Requires CMake 3.22+ and Visual Studio 2022 or newer (Desktop C++ workload):
+Requires CMake 3.24+, Visual Studio 2022 or newer (Desktop C++ workload) with its Clang tools (clang-cl), Ninja, and
+for GPU transcription the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home). From a "x64 Native Tools" prompt:
 ```
-cmake -B build -A x64
-cmake --build build --config Release
+set CC=clang-cl
+set CXX=clang-cl
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_LINKER=lld-link -DCMAKE_AR=llvm-lib
+cmake --build build
 ```
-JUCE 9.0.6 is downloaded automatically. Run `Spectroscope.exe --test-screenshot out.png` to self-test.
+JUCE 9.0.6 and the transcription engine (muscriptor.cpp, which fetches ggml) are downloaded automatically. Without
+the Vulkan SDK the engine builds CPU-only. The version is `VERSION` (major.minor) plus the CI build number.
+
+Self-test: `Spectroscope.exe --test-screenshot out.png` writes a screenshot of every view. With
+`SPECTROSCOPE_TEST_KEYFILE=song.wav` the Key page loads a song, with `SPECTROSCOPE_TEST_MODEL=model.gguf` it uses that
+model, `SPECTROSCOPE_TEST_RECORD=10` records 10 s of the input instead, and `SPECTROSCOPE_TEST_KEYWAIT=ms` sets how
+long to wait (it also writes `out_key.mid`). `python tools/make_tiny_model.py tiny.gguf` makes a 3 MB random model
+that runs through the whole engine, for tests (CI runs `transcribe_test tiny.gguf`).
 
 ## Licensing
 This is for personal use. JUCE is AGPLv3 or commercial. The ASIO SDK headers bundled with JUCE are GPLv3. Sharing builds would mean following those licences.
+The chord and melody finder uses NeuralNote's engine code (Apache-2.0) and muscriptor.cpp (MIT), see `licenses/`. The
+MuScriptor model weights are CC BY-NC 4.0 (non-commercial only); they are downloaded by the app, never bundled.
 
 ## TargetBuilder (tonal balance targets from your own songs)
 

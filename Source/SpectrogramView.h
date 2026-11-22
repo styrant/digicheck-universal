@@ -2,7 +2,7 @@
 #include <JuceHeader.h>
 #include "UiScale.h"
 #include "Settings.h"
-#include "AudioEngine.h"
+#include "AnalysisEngine.h"
 #include "FreqScale.h"
 #include <optional>
 
@@ -23,7 +23,7 @@
 class SpectrogramView : public juce::Component
 {
 public:
-    SpectrogramView (Settings& s, AudioEngine& e, std::function<void (Change)> notify);
+    SpectrogramView (Settings& s, AnalysisEngine& e, std::function<void (Change)> notify);
 
     void settingsChanged (Change c);        // called after any settings change
     void sourceStarted();
@@ -75,7 +75,7 @@ private:
     juce::String cursorText() const;
 
     Settings& s;
-    AudioEngine& engine;
+    AnalysisEngine& engine;
     std::function<void (Change)> notify;
 
     juce::Rectangle<int> plot;

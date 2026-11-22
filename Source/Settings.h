@@ -27,10 +27,17 @@ struct Settings
     double textScaleCustom = 1.0;
     bool   autoHideBar = true;    // hide the top toolbar in full screen (reveal at the top edge)
 
-    int    viewMode   = 0;        // 0 spectrogram, 1 analyzer, 2 balance
+    int    viewMode   = 0;        // 0 spectrogram, 1 analyzer, 2 balance, 3 key
     juce::String balanceTarget;   // name of the tonal balance target
     int    balanceWindow = 3;     // 0: realtime, 1: 1 s, 2: 3 s, 3: 10 s, 4: 30 s, 5: since reset
     int    balanceMode   = 0;     // 0 curve, 1 difference
+    // Key page: chords & melody (transcription)
+    int    keyModel      = 0;     // ModelStore::Size: 0 small, 1 medium, 2 large
+    juce::String keyDevice;       // device name; empty = Auto
+    juce::String keyInstruments;  // comma-separated instrument group ids; empty = all (the model decides)
+    bool   keyAuto       = true;  // transcribe as soon as a file is loaded (when the model is installed)
+    bool   keySevenths   = true;  // 7th and 6th chords (off: triads and sus only)
+    bool   keyShowNotes  = true;  // all transcribed notes in the piano roll (melody is always shown)
     double bpm        = 120.0;    // tempo calculator
     bool   tempoTriplets = false, tempoDotted = false;
     juce::String analyzerState;   // Spectrum Analyzer settings (XML)
@@ -65,7 +72,9 @@ struct Settings
         return { lo[i], hi[i] };
     }
 
-    void load (juce::PropertiesFile& p)
+    // Any PropertySet: the app's settings file (juce::PropertiesFile), or in a plugin a PropertySet that
+    // goes into the host's project via getStateInformation (PropertySet::createXml / restoreFromXml).
+    void load (const juce::PropertySet& p)
     {
         channel    = p.getIntValue ("channel", channel);
         freqScale  = juce::jlimit (0, 5, p.getIntValue ("freqScale", freqScale));
@@ -93,6 +102,12 @@ struct Settings
         balanceTarget = p.getValue ("balanceTarget", balanceTarget);
         balanceWindow = p.getIntValue ("balanceWindow2", p.containsKey ("balanceWindow") ? juce::jlimit (2, 5, p.getIntValue ("balanceWindow") + 2) : balanceWindow);   // old list had no Realtime / 1 s
         balanceMode   = p.getIntValue ("balanceMode", balanceMode);
+        keyModel      = juce::jlimit (0, 2, p.getIntValue ("keyModel", keyModel));
+        keyDevice     = p.getValue ("keyDevice", keyDevice);
+        keyInstruments = p.getValue ("keyInstruments", keyInstruments);
+        keyAuto       = p.getBoolValue ("keyAuto", keyAuto);
+        keySevenths   = p.getBoolValue ("keySevenths", keySevenths);
+        keyShowNotes  = p.getBoolValue ("keyShowNotes", keyShowNotes);
         bpm        = p.getDoubleValue ("bpm", bpm);
         tempoTriplets = p.getBoolValue ("tempoTriplets", tempoTriplets);
         tempoDotted   = p.getBoolValue ("tempoDotted", tempoDotted);
@@ -103,7 +118,7 @@ struct Settings
         windowState = p.getValue ("windowState", windowState);
     }
 
-    void save (juce::PropertiesFile& p) const
+    void save (juce::PropertySet& p) const
     {
         p.setValue ("channel", channel);       p.setValue ("freqScale", freqScale);       p.setValue ("reassign", reassign);
         p.setValue ("fftSize", fftSize);       p.setValue ("refLevel", refLevel);
@@ -120,9 +135,11 @@ struct Settings
         p.setValue ("windowState", windowState);
         p.setValue ("viewMode", viewMode);     p.setValue ("analyzerState", analyzerState);
         p.setValue ("balanceTarget", balanceTarget); p.setValue ("balanceWindow2", balanceWindow); p.setValue ("balanceMode", balanceMode);
+        p.setValue ("keyModel", keyModel); p.setValue ("keyDevice", keyDevice); p.setValue ("keyInstruments", keyInstruments);
+        p.setValue ("keyAuto", keyAuto); p.setValue ("keySevenths", keySevenths); p.setValue ("keyShowNotes", keyShowNotes);
         p.setValue ("bpm", bpm);               p.setValue ("tempoTriplets", tempoTriplets);
         p.setValue ("tempoDotted", tempoDotted);
-        p.saveIfNeeded();
+        if (auto* file = dynamic_cast<juce::PropertiesFile*> (&p)) file->saveIfNeeded();     // the app writes its file at once
     }
 };
 

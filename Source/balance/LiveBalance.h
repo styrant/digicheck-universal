@@ -4,11 +4,12 @@
 #pragma once
 #include <JuceHeader.h>
 #include "TonalAnalysis.h"
+#include "../AudioTap.h"
 #include <array>
 #include <atomic>
 #include <deque>
 
-class LiveBalance : private juce::Thread
+class LiveBalance : public AudioTap, private juce::Thread
 {
 public:
     LiveBalance();
@@ -23,7 +24,7 @@ public:
     static bool isFast (int index) { return index <= 1; }
 
     // DSP thread
-    void push (const float* left, const float* right, int n, double sampleRate) noexcept;
+    void push (const float* left, const float* right, int n, double sampleRate) noexcept override;
 
     struct Snapshot
     {

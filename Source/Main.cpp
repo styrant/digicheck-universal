@@ -137,23 +137,34 @@ private:
             {
             if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_balance.png")); s.openedOk())
             { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
+            // Key page; optionally with a song (SPECTROSCOPE_TEST_KEYFILE=/path/song.wav) and, for the chords and
+            // melody, a model (SPECTROSCOPE_TEST_MODEL=/path/model.gguf); SPECTROSCOPE_TEST_KEYWAIT=ms to wait for it
+            mc->setView (3);
+            const auto keyFile = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_KEYFILE", {});
+            if (keyFile.isNotEmpty()) mc->getKeyPage().loadSource (juce::File (keyFile));
+            // or record the (test signal) input for SPECTROSCOPE_TEST_RECORD seconds, then stop: transcribes the take
+            const int recordSeconds = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_RECORD", "0").getIntValue();
+            if (recordSeconds > 0)
+            {
+                mc->getKeyPage().toggleRecording();
+                juce::Timer::callAfterDelay (recordSeconds * 1000, [mc] { mc->getKeyPage().toggleRecording(); });
+            }
+            const int keyWait = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_KEYWAIT", keyFile.isNotEmpty() ? "15000" : "1500").getIntValue();
+            juce::Timer::callAfterDelay (keyWait, [this, out, mc]
+            {
+            if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_key.png")); s.openedOk())
+            { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
+            mc->getKeyPage().writeMidi (out.getSiblingFile (out.getFileNameWithoutExtension() + "_key.mid"));
             mc->setView (0);
             mc->getSettings().bpm = 150.0; mc->getSettings().tempoTriplets = true; mc->getSettings().tempoDotted = false;
             mc->toggleTempoWindow();
-            mc->toggleKeyWindow();
             mc->openSettings();
-            // optional: drop an audio file on the key finder (SPECTROSCOPE_TEST_KEYFILE=/path/song.wav)
-            const auto keyFile = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_KEYFILE", {});
-            for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows() && keyFile.isNotEmpty(); ++i)
-                if (auto* w = dynamic_cast<juce::DocumentWindow*> (juce::TopLevelWindow::getTopLevelWindow (i)))
-                    if (auto* t = dynamic_cast<juce::FileDragAndDropTarget*> (w->getContentComponent()))
-                        t->filesDropped (juce::StringArray (keyFile), 10, 10);
-            juce::Timer::callAfterDelay (keyFile.isNotEmpty() ? 12000 : 800, [this, out]
+            juce::Timer::callAfterDelay (800, [this, out]
             {
                 for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
                     if (auto* w = dynamic_cast<juce::DocumentWindow*> (juce::TopLevelWindow::getTopLevelWindow (i)))
-                        if ((w->getName() == "Key finder" || w->getName() == "Tempo") && w->getContentComponent() != nullptr)
-                            if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + (w->getName() == "Tempo" ? "_tempo" : "_keys") + ".png")); s.openedOk())
+                        if (w->getName() == "Tempo" && w->getContentComponent() != nullptr)
+                            if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_tempo.png")); s.openedOk())
                             { s.setPosition (0); s.truncate(); auto* c = w->getContentComponent(); juce::PNGImageFormat().writeImageToStream (c->createComponentSnapshot (c->getLocalBounds()), s); }
                 for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
                     if (auto* dw = dynamic_cast<juce::DialogWindow*> (juce::TopLevelWindow::getTopLevelWindow (i)))
@@ -165,6 +176,7 @@ private:
                             dw->exitModalState (0);
                         }
                 quit();
+            });
             });
             });
             });

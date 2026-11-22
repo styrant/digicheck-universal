@@ -48,7 +48,7 @@ juce::Colour SpectrogramView::colourAt (int map, double x)
 }
 
 //==============================================================================
-SpectrogramView::SpectrogramView (Settings& st, AudioEngine& e, std::function<void (Change)> n)
+SpectrogramView::SpectrogramView (Settings& st, AnalysisEngine& e, std::function<void (Change)> n)
     : s (st), engine (e), notify (std::move (n))
 {
     setOpaque (true);
@@ -169,7 +169,7 @@ void SpectrogramView::rebuild()
 
     const float scale = juce::Component::getApproximateScaleFactorForComponent (this);
     W = plot.getWidth();
-    H = juce::jlimit (1, AudioEngine::kMaxRows, juce::roundToInt (plot.getHeight() * scale));
+    H = juce::jlimit (1, AnalysisEngine::kMaxRows, juce::roundToInt (plot.getHeight() * scale));
     img = juce::Image (juce::Image::ARGB, W, H, true, juce::SoftwareImageType());
     hist.assign ((size_t) W * (size_t) H, -std::numeric_limits<float>::infinity());
     pendCap = 512; pendHead = pendCount = 0;

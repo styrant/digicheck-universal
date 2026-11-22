@@ -8,11 +8,12 @@
 #include <JuceHeader.h>
 #include "KeyNet.h"
 #include "KeyCqt.h"
+#include "../AudioTap.h"
 #include <array>
 #include <atomic>
 #include <deque>
 
-class KeyFinder : private juce::Thread
+class KeyFinder : public AudioTap, private juce::Thread
 {
 public:
     KeyFinder();
@@ -25,7 +26,7 @@ public:
     void clearFile();
 
     // DSP thread
-    void push (const float* left, const float* right, int n, double sampleRate) noexcept;
+    void push (const float* left, const float* right, int n, double sampleRate) noexcept override;
 
     struct Result
     {

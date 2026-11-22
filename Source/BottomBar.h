@@ -2,13 +2,13 @@
 #include <JuceHeader.h>
 #include "UiScale.h"
 #include "Settings.h"
-#include "AudioEngine.h"
+#include "AnalysisEngine.h"
 #include "analyzer/PluginProcessor.h"
 #include "balance/LiveBalance.h"
 
 // The bottom control strip shared by both views (it stays put when you switch views):
 //
-//   [Options] [Spectrogram|Analyzer|Balance] [LUFS] [Key] [Tempo]   <controls for the current view>   [LUFS boxes] [Reset] [Full screen]
+//   [Options] [Spectrogram|Analyzer|Balance|Key] [LUFS] [Tempo]   <controls for the current view>   [LUFS boxes] [Reset] [Full screen]
 //
 // LUFS colours (loudness / estimated dynamics): white below -14, green -14..-9, yellow -9..-6, red -6 and up.
 // True peak: white below -1 dBTP, yellow -1..0, red above 0.
@@ -19,16 +19,15 @@
 class BottomBar : public juce::Component, private juce::Timer
 {
 public:
-    enum View { Spectrogram = 0, Analyzer = 1, Balance = 2 };
+    enum View { Spectrogram = 0, Analyzer = 1, Balance = 2, Key = 3 };
     static int height() { return ui::px (42); }
 
-    BottomBar (Settings&, AudioEngine&, SpectrumAnalyzerProcessor&);
+    BottomBar (Settings&, AnalysisEngine&, SpectrumAnalyzerProcessor&);
     ~BottomBar() override;
 
     void refresh();                          // re-read settings (view, toggles, ref level)
     void setPaused (bool);
     void setFullscreen (bool);
-    void setKeyOpen (bool);
     void setTempoOpen (bool);
     void setOptionsOpen (bool);
     void onFrame();                          // called on each (capped) display frame
@@ -38,7 +37,7 @@ public:
     void setBalanceTargets (const juce::StringArray& names, int selected);   // selected -1: none
 
     std::function<void (int view)> onViewChange;
-    std::function<void()> onPause, onToggleKey, onToggleTempo, onToggleFullscreen, onToggleLufs, onToggleOptions, onSpectrogramSettings;
+    std::function<void()> onPause, onToggleTempo, onToggleFullscreen, onToggleLufs, onToggleOptions, onSpectrogramSettings;
     std::function<void (int deltaDb)> onRef;
     std::function<void()> onZoomIn, onZoomOut, onFullRange, onFreeze, onAnalyzerSettings;
     std::function<void (juce::Component& anchor)> onSpectrogramPresets, onAnalyzerPresets;
@@ -62,9 +61,10 @@ private:
     };
 
     Settings& s;
-    AudioEngine& engine;
+    AnalysisEngine& engine;
+    std::unique_ptr<juce::LookAndFeel> smallLnf;     // smaller text for the corner buttons (declared before them)
 
-    juce::TextButton optionsBtn { "Options" }, viewSpec { "Spectrogram" }, viewAna { "Analyzer" }, viewBal { "Balance" }, lufsBtn { "LUFS" }, keyBtn { "Key" }, tempoBtn { "Tempo" };
+    juce::TextButton optionsBtn { "Options" }, viewSpec { "Spectrogram" }, viewAna { "Analyzer" }, viewBal { "Balance" }, viewKey { "Key" }, lufsBtn { "LUFS" }, tempoBtn { "Tempo" };
     // spectrogram group
     juce::TextButton specPresets { "Presets" }, pause { "||" }, refDown { "-" }, refUp { "+" }, specSettings { "Settings" };
     juce::Label ref;

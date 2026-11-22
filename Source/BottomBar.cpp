@@ -12,12 +12,12 @@ namespace
         juce::Font getTextButtonFont (juce::TextButton&, int) override { return juce::FontOptions (ui::fs (11.5f)); }
         juce::Font getComboBoxFont (juce::ComboBox&) override { return juce::FontOptions (ui::fs (13.0f)); }
     };
-    SmallButtonLnf& smallLnf() { static SmallButtonLnf l; return l; }
 }
 
-BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& proc) : s (st), engine (e)
+BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor& proc) : s (st), engine (e)
 {
-    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &viewBal, &balCurve, &balDiff, &balReset, &lufsBtn, &keyBtn, &tempoBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
+    smallLnf = std::make_unique<SmallButtonLnf>();          // per instance: no static look-and-feel outliving the UI
+    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &viewBal, &viewKey, &balCurve, &balDiff, &balReset, &lufsBtn, &tempoBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
                      &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &full })
     {
         addAndMakeVisible (b);
@@ -33,13 +33,16 @@ BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& p
     // view switch: two joined buttons
     viewSpec.setConnectedEdges (juce::Button::ConnectedOnRight);
     viewAna.setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
-    viewBal.setConnectedEdges (juce::Button::ConnectedOnLeft);
+    viewBal.setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
+    viewKey.setConnectedEdges (juce::Button::ConnectedOnLeft);
     viewSpec.setTooltip ("Reassigned spectrogram (1, V cycles)");
     viewAna.setTooltip ("Filter-bank spectrum analyzer (2, V cycles)");
     viewBal.setTooltip ("Tonal balance against a target (3, V cycles)");
+    viewKey.setTooltip ("Key finder, chords and melody (4 or K, V cycles)");
     viewSpec.onClick = [this] { if (onViewChange) onViewChange (Spectrogram); };
     viewAna.onClick  = [this] { if (onViewChange) onViewChange (Analyzer); };
     viewBal.onClick  = [this] { if (onViewChange) onViewChange (Balance); };
+    viewKey.onClick  = [this] { if (onViewChange) onViewChange (Key); };
 
     // balance controls
     balTarget.setTooltip ("Target to compare with (files in the targets folder)");
@@ -82,9 +85,7 @@ BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& p
 
 
     lufsBtn.setTooltip ("Show or hide the loudness meter");
-    keyBtn.setTooltip ("Major keys and their relative minors (K)");
     lufsBtn.onClick = [this] { if (onToggleLufs) onToggleLufs(); };
-    keyBtn.onClick  = [this] { if (onToggleKey) onToggleKey(); };
     tempoBtn.setTooltip ("BPM to milliseconds calculator (T)");
     tempoBtn.onClick = [this] { if (onToggleTempo) onToggleTempo(); };
 
@@ -129,13 +130,13 @@ BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& p
     anaSettings.onClick = [this] { if (onAnalyzerSettings) onAnalyzerSettings(); };
 
     addAndMakeVisible (lufs);
-    for (auto* b : { &resetBtn, &full }) b->setLookAndFeel (&smallLnf());
+    for (auto* b : { &resetBtn, &full }) b->setLookAndFeel (smallLnf.get());
     resetBtn.setTooltip ("Restart integrated loudness and true-peak hold");
     full.setTooltip ("Full screen (F11, Esc to leave)");
     resetBtn.onClick = [this] { engine.resetLoudness(); };
     full.onClick     = [this] { if (onToggleFullscreen) onToggleFullscreen(); };
 
-    for (auto* b : { &viewSpec, &viewAna, &viewBal, &balCurve, &balDiff, &lufsBtn, &keyBtn })
+    for (auto* b : { &viewSpec, &viewAna, &viewBal, &viewKey, &balCurve, &balDiff, &lufsBtn })
         b->setClickingTogglesState (false);   // state comes from settings via refresh()
 
     refresh();
@@ -153,6 +154,7 @@ void BottomBar::refresh()
     viewSpec.setToggleState (s.viewMode == Spectrogram, juce::dontSendNotification);
     viewAna.setToggleState  (s.viewMode == Analyzer, juce::dontSendNotification);
     viewBal.setToggleState  (s.viewMode == Balance, juce::dontSendNotification);
+    viewKey.setToggleState  (s.viewMode == Key, juce::dontSendNotification);
     balCurve.setToggleState (s.balanceMode == 0, juce::dontSendNotification);
     balDiff.setToggleState  (s.balanceMode == 1, juce::dontSendNotification);
     balWindow.setSelectedId (juce::jlimit (0, 5, s.balanceWindow) + 1, juce::dontSendNotification);
@@ -178,7 +180,6 @@ void BottomBar::setBalanceTargets (const juce::StringArray& names, int selected)
 
 void BottomBar::setPaused (bool p)     { pause.setButtonText (p ? ">" : "||"); }
 void BottomBar::setFullscreen (bool f) { full.setButtonText (f ? "Exit full screen" : "Full screen"); }
-void BottomBar::setKeyOpen (bool o)    { keyBtn.setToggleState (o, juce::dontSendNotification); }
 void BottomBar::setTempoOpen (bool o)  { tempoBtn.setToggleState (o, juce::dontSendNotification); }
 void BottomBar::setOptionsOpen (bool o) { optionsBtn.setToggleState (o, juce::dontSendNotification); }
 void BottomBar::setAnalyzerState (bool frozen, bool zoomed)
@@ -190,7 +191,7 @@ void BottomBar::setAnalyzerState (bool frozen, bool zoomed)
 void BottomBar::timerCallback()
 {
     if (! s.showLufs) return;
-    lufs.active = engine.isRunning();
+    lufs.active = engine.isAnalysing();
     lufs.st = engine.getShortTermLufs(); lufs.in = engine.getIntegratedLufs(); lufs.tp = engine.getTruePeakDb();
     lufsDirty = true;                 // drawn on the next display frame, so it respects the frame-rate cap
 }
@@ -215,9 +216,9 @@ void BottomBar::resized()
     // left: Options, view switch, LUFS / Key / Tempo toggles
     optionsBtn.setBounds (r.removeFromLeft (ui::px (72))); r.removeFromLeft (ui::px (10));
     viewSpec.setBounds (r.removeFromLeft (ui::px (90))); viewAna.setBounds (r.removeFromLeft (ui::px (74)));
-    viewBal.setBounds (r.removeFromLeft (ui::px (70))); r.removeFromLeft (ui::px (10));
+    viewBal.setBounds (r.removeFromLeft (ui::px (70)));
+    viewKey.setBounds (r.removeFromLeft (ui::px (46))); r.removeFromLeft (ui::px (10));
     lufsBtn.setBounds (r.removeFromLeft (ui::px (48))); r.removeFromLeft (ui::px (4));
-    keyBtn.setBounds (r.removeFromLeft (ui::px (40)));  r.removeFromLeft (ui::px (4));
     tempoBtn.setBounds (r.removeFromLeft (ui::px (56))); r.removeFromLeft (ui::px (12));
 
     // right corner: small Full screen / Auto-hide / Reset, then the loudness boxes
@@ -231,12 +232,13 @@ void BottomBar::resized()
         r.removeFromRight (ui::px (4));
         // leave the middle controls their minimum width; the loudness boxes shrink first
         // the analyzer's combo boxes get room only if the loudness boxes can stay comfortably wide
-        const int compact = spec ? ui::px (66 + 6 + 34 + 4 + 96 + 4 + 30 + 4 + 30)
+        const int compact = spec ? ui::px (66 + 6 + 34 + 8 + 80 + 4 + 62)
                           : bal ? ui::px (110 + 4 + 80 + 6 + 52 + 44 + 6 + 48)
+                          : s.viewMode == Key ? 0
                                 : ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
         const int withCombos = compact + ui::px (64 + 4 + 122 + 4 + 84 + 10);
         auto lufsFor = [&] (int group) { return juce::jmin (ui::px (450), juce::jmin (r.getWidth() / 2, r.getWidth() - group - ui::px (16))); };
-        const int minGroup = (! spec && ! bal && lufsFor (withCombos) >= ui::px (330)) ? withCombos : compact;
+        const int minGroup = (s.viewMode == Analyzer && lufsFor (withCombos) >= ui::px (330)) ? withCombos : compact;
         const int lufsW = juce::jmax (ui::px (240), lufsFor (minGroup));
         lufs.setBounds (r.removeFromRight (lufsW).expanded (0, 2));
         r.removeFromRight (ui::px (12));

@@ -1,20 +1,14 @@
 #include "AudioEngine.h"
 #include <chrono>
 
-AudioEngine::AudioEngine() : juce::Thread ("Spectroscope DSP")
+AudioEngine::AudioEngine()
 {
-    colData.assign ((size_t) kSlots * kMaxRows, 0.0f);
-    colGen.assign ((size_t) kSlots, -1);
-    colRows.assign ((size_t) kSlots, 0);
-    dsp.setSink ([this] (const float* c, int rows) { pushColumn (c, rows); });
     deviceManager.getAvailableDeviceTypes();       // creates WASAPI / ASIO / ALSA ... types
-    startThread (juce::Thread::Priority::high);
 }
 
 AudioEngine::~AudioEngine()
 {
     stop();
-    stopThread (2000);
 }
 
 std::vector<AudioEngine::Source> AudioEngine::scanSources()
@@ -57,8 +51,8 @@ std::vector<AudioEngine::Source> AudioEngine::scanSources()
 bool AudioEngine::start (const Source& s, juce::String& error)
 {
     stop();
-    dropped = 0;   // the DSP thread flushes the ring itself when it reconfigures
     channelNames.clear();
+    double rate = 0;
 
     if (s.kind == Source::Device)
     {
@@ -82,7 +76,8 @@ bool AudioEngine::start (const Source& s, juce::String& error)
         const auto active = dev->getActiveInputChannels();
         for (int i = 0; i < names.size(); ++i) if (active[i]) channelNames.add (names[i]);
         if (channelNames.isEmpty()) { error = s.deviceName + " has no active inputs"; deviceManager.closeAudioDevice(); return false; }
-        sampleRate = dev->getCurrentSampleRate();
+        rate = dev->getCurrentSampleRate();
+        prepare (rate);
         deviceManager.addAudioCallback (this);
     }
     else if (s.kind == Source::Loopback)
@@ -93,27 +88,22 @@ bool AudioEngine::start (const Source& s, juce::String& error)
             error = err;
             return false;
         }
-        sampleRate = loopback.getSampleRate();
+        rate = loopback.getSampleRate();
         const int n = loopback.getNumChannels();
         for (int i = 0; i < n; ++i)
             channelNames.add (n == 2 ? (i == 0 ? "Left" : "Right") : "Channel " + juce::String (i + 1));
     }
     else
     {
-        sampleRate = 48000.0;
+        rate = 48000.0;
         channelNames.add ("Left"); channelNames.add ("Right");
+        prepare (rate);
         startTestThread();
     }
 
+    if (s.kind == Source::Loopback) prepare (rate);
     current = s;
-    if (analyzer != nullptr) analyzer->prepareToPlay (sampleRate.load(), 512);
-    loudReset = true;
     running = true;
-    {
-        const juce::ScopedLock sl (cfgLock);
-        pendingGen = ++generation;
-    }
-    cfgDirty = true;               // reconfigure the DSP for the new sample rate
     return true;
 }
 
@@ -126,31 +116,7 @@ void AudioEngine::stop()
     testQuit = true;
     if (testThread.joinable()) testThread.join();
     running = false;
-    sampleRate = 0;
-}
-
-void AudioEngine::setConfig (const Reassigner::Config& c)
-{
-    {
-        const juce::ScopedLock sl (cfgLock);
-        pendingCfg = c;
-        pendingGen = ++generation;
-    }
-    pendingFloor = c.floorDb;
-    cfgDirty = true;
-}
-
-void AudioEngine::push (const float* const* ch, int nch, int n) noexcept
-{
-    if (nch <= 0 || n <= 0) return;
-    if (fifo.getFreeSpace() < n) { dropped += n; return; }        // DSP fell behind: shown as a white gap
-    const float* L = ch[juce::jlimit (0, nch - 1, chL.load())];
-    const float* R = ch[juce::jlimit (0, nch - 1, chR.load())];
-    int s1, n1, s2, n2;
-    fifo.prepareToWrite (n, s1, n1, s2, n2);
-    if (n1 > 0) { ring.copyFrom (0, s1, L, n1); ring.copyFrom (1, s1, R, n1); }
-    if (n2 > 0) { ring.copyFrom (0, s2, L + n1, n2); ring.copyFrom (1, s2, R + n1, n2); }
-    fifo.finishedWrite (n1 + n2);
+    release();
 }
 
 void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* in, int numIn, float* const* out, int numOut,
@@ -158,99 +124,6 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* in, int 
 {
     for (int i = 0; i < numOut; ++i) if (out[i] != nullptr) juce::FloatVectorOperations::clear (out[i], numSamples);
     push (in, numIn, numSamples);
-}
-
-void AudioEngine::pushColumn (const float* col, int rows) noexcept
-{
-    int s1, n1, s2, n2;
-    colFifo.prepareToWrite (1, s1, n1, s2, n2);
-    const int idx = n1 > 0 ? s1 : (n2 > 0 ? s2 : -1);
-    if (idx < 0) return;                                              // UI is not keeping up: drop
-    const int r = juce::jmin (rows, kMaxRows);
-    std::copy (col, col + r, colData.data() + (size_t) idx * kMaxRows);
-    colGen[(size_t) idx] = dspGen;
-    colRows[(size_t) idx] = r;
-    colFifo.finishedWrite (1);
-}
-
-void AudioEngine::run()
-{
-    bool configured = false;
-    double busyMs = 0, audioMs = 0, loudSr = 0;
-    std::vector<float> L (2048), R (2048);
-
-    while (! threadShouldExit())
-    {
-        if (cfgDirty.exchange (false))
-        {
-            Reassigner::Config c; int g;
-            { const juce::ScopedLock sl (cfgLock); c = pendingCfg; g = pendingGen; }
-            c.sampleRate = sampleRate.load();
-            configured = c.sampleRate > 0 && c.rows > 0;
-            if (configured)
-            {
-                c.rows = juce::jmin (c.rows, kMaxRows);
-                dsp.configure (c);
-                latency = dsp.getLatencySeconds();
-            }
-            dspGen = g;
-            fifo.finishedRead (fifo.getNumReady());
-            dropped = 0;
-        }
-        if (floorDirty.exchange (false) && configured) dsp.setFloorDb (pendingFloor.load());
-
-        if (! configured || ! running) { wait (10); continue; }
-
-        // Loudness keeps running across display-setting changes; it restarts only on a new
-        // source, sample rate or channel pair, or when the user presses Reset.
-        if (loudReset.exchange (false) || std::abs (sampleRate.load() - loudSr) > 0.5)
-        {
-            loudSr = sampleRate.load();
-            loud.configure (loudSr, chL.load() == chR.load() ? 1 : 2);
-            lufsS = lufsI = truePeak = LoudnessMeter::kNone;
-        }
-
-        const bool spec = specActive.load();
-        if (spec && specResume.exchange (false)) dsp.resetStream();
-        if (const int d = dropped.exchange (0); d > 0 && spec) dsp.emitGap (d);
-
-        const int ready = fifo.getNumReady();
-        const double sr = sampleRate.load();
-        if (ready > (int) (sr * 0.5))                                 // more than 0.5 s behind: skip ahead
-        {
-            fifo.finishedRead (ready);
-            if (spec) dsp.emitGap (ready);
-            continue;
-        }
-        if (ready < 256) { wait (3); continue; }
-
-        const int n = juce::jmin (ready, (int) L.size());
-        int s1, n1, s2, n2;
-        fifo.prepareToRead (n, s1, n1, s2, n2);
-        if (n1 > 0) { std::copy_n (ring.getReadPointer (0, s1), n1, L.data()); std::copy_n (ring.getReadPointer (1, s1), n1, R.data()); }
-        if (n2 > 0) { std::copy_n (ring.getReadPointer (0, s2), n2, L.data() + n1); std::copy_n (ring.getReadPointer (1, s2), n2, R.data() + n1); }
-        fifo.finishedRead (n1 + n2);
-
-        const auto t0 = std::chrono::steady_clock::now();
-        const int total = n1 + n2;
-        if (spec) dsp.process (L.data(), R.data(), total);
-        loud.process (L.data(), R.data(), total);
-        if (keyFinder != nullptr) keyFinder->push (L.data(), R.data(), total, sr);
-        if (balance != nullptr) balance->push (L.data(), R.data(), total, sr);
-        if (analyzer != nullptr)
-        {
-            // Feed the analyzer in ~10 ms slices so it publishes one update per 10 ms of audio, evenly,
-            // however large this chunk is (a single big chunk used to give one update per chunk, so
-            // the bars moved in uneven bursts).
-            const int slice = juce::jmax (64, (int) (sr / 100.0));
-            for (int off = 0; off < total; off += slice)
-                analyzer->processStereo (L.data() + off, R.data() + off, juce::jmin (slice, total - off));
-        }
-        lufsS = loud.getShortTerm(); lufsI = loud.getIntegrated(); truePeak = loud.getTruePeak();
-        busyMs += std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - t0).count();
-        audioMs += (n1 + n2) / sr * 1000.0;
-        if (audioMs >= 500) { load = (float) (busyMs / audioMs); busyMs = audioMs = 0; }
-    }
 }
 
 void AudioEngine::startTestThread()

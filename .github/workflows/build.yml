@@ -11,33 +11,100 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 150
     env:
-      APP_VERSION: 1.3.${{ github.run_number }}
+      # Same Vulkan SDK as NeuralNote's Windows build (its digest from NeuralNote's workflow)
+      VULKAN_SDK_VERSION: 1.4.363.0
+      VULKAN_SDK_SHA256: 94A82D378F7A5E3E54C9DB7D2FB7016AF136E14AC0A18DBF0F2F67A36352D141
       # Code signing turns on automatically once the Azure Artifact Signing secrets exist (see README).
       SIGN: ${{ secrets.AZURE_CLIENT_SECRET != '' }}
     steps:
       - uses: actions/checkout@v4
 
+      # One version for everything: major.minor from the VERSION file, the patch from the build number
+      # (CMake reads the same file and GITHUB_RUN_NUMBER)
+      - name: Version
+        shell: pwsh
+        run: |
+          $v = "$((Get-Content VERSION -TotalCount 1).Trim()).$env:GITHUB_RUN_NUMBER"
+          "APP_VERSION=$v" | Out-File -Append $env:GITHUB_ENV
+          Write-Host "Version $v"
+
+      # The transcription engine (muscriptor.cpp / ggml) is built with clang-cl like NeuralNote's own Windows
+      # build, and with the Vulkan SDK for GPU support. The SDK is cached between runs.
+      - name: Restore Vulkan SDK
+        uses: actions/cache@v4
+        with:
+          path: C:\VulkanSDK\${{ env.VULKAN_SDK_VERSION }}
+          key: vulkan-sdk-${{ env.VULKAN_SDK_VERSION }}
+
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          $root = "C:\VulkanSDK\$env:VULKAN_SDK_VERSION"
+          if (-not (Test-Path "$root\Bin\glslc.exe")) {
+            $exe = "$env:RUNNER_TEMP\vulkansdk.exe"
+            Invoke-WebRequest -UserAgent "DigiCheckUniversal-CI" -Uri "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_SDK_VERSION.exe" -OutFile $exe
+            if ((Get-FileHash $exe -Algorithm SHA256).Hash -ne $env:VULKAN_SDK_SHA256) { Write-Error "Vulkan SDK checksum mismatch"; exit 1 }
+            & $exe --root $root --accept-licenses --default-answer --confirm-command install
+            if (-not (Test-Path "$root\Bin\glslc.exe")) { Write-Error "glslc missing after the Vulkan SDK install"; exit 1 }
+          }
+          "VULKAN_SDK=$root" | Out-File -Append $env:GITHUB_ENV
+          "$root\Bin" | Out-File -Append $env:GITHUB_PATH
+
+      - name: Visual Studio environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: windows-clang-cl
+          max-size: 2G
+
       - name: Configure
-        run: cmake -B build -A x64
+        shell: pwsh
+        run: |
+          # CC / CXX in the environment also reach ggml's nested vulkan-shaders-gen build
+          "CC=clang-cl" | Out-File -Append $env:GITHUB_ENV
+          "CXX=clang-cl" | Out-File -Append $env:GITHUB_ENV
+          $env:CC = "clang-cl"; $env:CXX = "clang-cl"
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
+            -DCMAKE_LINKER=lld-link -DCMAKE_AR=llvm-lib `
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
+            -DMUSCRIPTOR_VULKAN=ON
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --parallel
 
       - name: DSP calibration test
-        run: build\Release\dsp_test.exe
+        run: build\dsp_test.exe
 
       - name: Loudness (BS.1770) test
-        run: build\Release\loudness_test.exe
+        run: build\loudness_test.exe
 
       - name: Spectrum analyzer DSP test
-        run: build\Release\analyzer_dsp_test.exe
+        run: build\analyzer_dsp_test.exe
 
       - name: Key finder test (vs PyTorch / librosa)
-        run: build\Release\key_test.exe Resources\keynet.bin tests\data
+        run: build\key_test.exe Resources\keynet.bin tests\data
 
       - name: Tonal balance measurement test
-        run: build\Release\balance_test.exe
+        run: build\balance_test.exe
+
+      - name: Chords, melody, key and resampling test
+        run: build\harmony_test.exe
+
+      - name: Transcription engine test (tiny random model, CPU and GPU builds)
+        shell: pwsh
+        run: |
+          python -m pip install --quiet gguf numpy
+          python tools\make_tiny_model.py tiny.gguf
+          build\transcribe_test.exe tiny.gguf
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Target loader test
         run: build\target_loader_test_artefacts\Release\target_loader_test.exe

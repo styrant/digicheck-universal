@@ -34,6 +34,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "..\build\Spectroscope_artefacts\Release\Spectroscope.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\TargetBuilder_artefacts\Release\TargetBuilder.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Spectroscope"; Filename: "{app}\Spectroscope.exe"
