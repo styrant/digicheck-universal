@@ -57,8 +57,8 @@ BottomBar::BottomBar (Settings& st, AudioEngine& e, SpectrumAnalyzerProcessor& p
         balSelected = id;
         if (onBalanceTarget) onBalanceTarget (id - 1);
     };
-    balWindow.addItemList ({ "3 s", "10 s", "30 s", "Since reset" }, 1);
-    balWindow.setTooltip ("How much recent audio the measurement averages");
+    balWindow.addItemList (LiveBalance::windowNames(), 1);
+    balWindow.setTooltip ("How much recent audio the measurement averages. Realtime follows the music as it plays (about 0.3 s)");
     balWindow.onChange = [this] { s.balanceWindow = balWindow.getSelectedId() - 1; if (onBalanceWindow) onBalanceWindow (s.balanceWindow); };
     for (auto* c : { &balTarget, &balWindow }) addAndMakeVisible (c);
     balCurve.setConnectedEdges (juce::Button::ConnectedOnRight);
@@ -145,7 +145,7 @@ void BottomBar::refresh()
     viewBal.setToggleState  (s.viewMode == Balance, juce::dontSendNotification);
     balCurve.setToggleState (s.balanceMode == 0, juce::dontSendNotification);
     balDiff.setToggleState  (s.balanceMode == 1, juce::dontSendNotification);
-    balWindow.setSelectedId (juce::jlimit (0, 3, s.balanceWindow) + 1, juce::dontSendNotification);
+    balWindow.setSelectedId (juce::jlimit (0, 5, s.balanceWindow) + 1, juce::dontSendNotification);
     lufsBtn.setToggleState  (s.showLufs, juce::dontSendNotification);
     ref.setText ("Ref: " + juce::String (s.refLevel, 0) + " dB", juce::dontSendNotification);
     resized();
@@ -242,14 +242,14 @@ void BottomBar::resized()
     if (bal)
     {
         // the target box takes whatever is left (110..220 px); the window box goes first if space is short
-        const int rest = ui::px (4 + 80 + 6 + 52 + 44 + 6 + 48);
+        const int rest = ui::px (4 + 96 + 6 + 52 + 44 + 6 + 48);
         const int tw = juce::jlimit (ui::px (110), ui::px (220), r.getWidth() - rest);
         const int w = juce::jmin (r.getWidth(), tw + rest);
         auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
         balTarget.setBounds (g.removeFromLeft (tw)); g.removeFromLeft (ui::px (4));
-        const bool roomForWindow = g.getWidth() >= ui::px (80 + 6 + 52 + 44 + 6 + 48);
+        const bool roomForWindow = g.getWidth() >= ui::px (96 + 6 + 52 + 44 + 6 + 48);
         balWindow.setVisible (roomForWindow);
-        if (roomForWindow) { balWindow.setBounds (g.removeFromLeft (ui::px (80))); g.removeFromLeft (ui::px (6)); }
+        if (roomForWindow) { balWindow.setBounds (g.removeFromLeft (ui::px (96))); g.removeFromLeft (ui::px (6)); }
         balCurve.setBounds (g.removeFromLeft (ui::px (52)));
         balDiff.setBounds (g.removeFromLeft (ui::px (44))); g.removeFromLeft (ui::px (6));
         balReset.setBounds (g.removeFromLeft (ui::px (48)));

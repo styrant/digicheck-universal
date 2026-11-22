@@ -121,11 +121,13 @@ namespace
             name.setIndents (8, 0);
 
             addAndMakeVisible (rangeBox);
-            rangeBox.addItem ("Range 10-90 % (default)", 1);
-            rangeBox.addItem ("Range 5-95 % (wider)", 2);
-            rangeBox.addItem ("Range 20-80 % (tighter)", 3);
+            rangeBox.addItem ("Range: wide, like Tonal Balance Control", 1);
+            rangeBox.addItem ("Range: songs 5-95 %", 2);
+            rangeBox.addItem ("Range: songs 10-90 %", 3);
+            rangeBox.addItem ("Range: songs 20-80 % (tight)", 4);
             rangeBox.setSelectedId (1, juce::dontSendNotification);
-            rangeBox.setTooltip ("How much of the songs' spread the \"in range\" band covers");
+            rangeBox.setTooltip ("Wide (default): the songs' spread, but never narrower than Tonal Balance Control's typical ranges "
+                                 "(about 11-17 dB). The others use only how much your songs differ, which is narrower.");
             rangeBox.onChange = [this] { dirty = true; };
 
             table.setModel (this);
@@ -212,7 +214,7 @@ namespace
             nameLabel.setBounds (bottom.removeFromLeft (86));
             openFolder.setBounds (bottom.removeFromRight (150)); bottom.removeFromRight (8);
             saveBtn.setBounds (bottom.removeFromRight (130)); bottom.removeFromRight (8);
-            rangeBox.setBounds (bottom.removeFromRight (190)); bottom.removeFromRight (8);
+            rangeBox.setBounds (bottom.removeFromRight (290)); bottom.removeFromRight (8);
             name.setBounds (bottom);
             r.removeFromBottom (6);
             status.setBounds (r.removeFromBottom (22));
@@ -296,8 +298,9 @@ namespace
     private:
         std::pair<double, double> range() const
         {
-            switch (rangeBox.getSelectedId()) { case 2: return { 5, 95 }; case 3: return { 20, 80 }; default: return { 10, 90 }; }
+            switch (rangeBox.getSelectedId()) { case 2: return { 5, 95 }; case 4: return { 20, 80 }; default: return { 10, 90 }; }
         }
+        bool wide() const { return rangeBox.getSelectedId() == 1; }
 
         int countState (int s) const { return (int) std::count_if (items.begin(), items.end(), [s] (auto& it) { return it->state.load() == s; }); }
         int countOk() const
@@ -328,7 +331,7 @@ namespace
             for (auto& it : items) { it->deviation = -1; it->outlier = false; }
             if (spectra.empty()) { preview.setTarget (nullptr); return; }
             const auto [lo, hi] = range();
-            auto t = std::make_shared<tonal::Target> (tonal::combine (spectra, lo, hi));
+            auto t = std::make_shared<tonal::Target> (tonal::combine (spectra, lo, hi, wide()));
             const auto d = targets::deviations (spectra, *t);
             for (size_t i = 0; i < used.size(); ++i) { used[i]->deviation = d.db[i]; used[i]->outlier = d.outlier[i]; }
             preview.setTarget (t);
@@ -431,7 +434,7 @@ namespace
                 for (auto& it : items) if (it->state.load() == 2) tracks.push_back (&it->result);
             }
             const auto [lo, hi] = range();
-            const auto w = targets::write (n, tracks, targets::defaultFolder(), lo, hi);
+            const auto w = targets::write (n, tracks, targets::defaultFolder(), lo, hi, wide());
             lastMessage = {};
             if (w.error.isNotEmpty())
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save", w.error);

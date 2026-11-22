@@ -4,6 +4,7 @@
 #include "Settings.h"
 #include "AudioEngine.h"
 #include "analyzer/PluginProcessor.h"
+#include "balance/LiveBalance.h"
 
 // The bottom control strip shared by both views (it stays put when you switch views):
 //

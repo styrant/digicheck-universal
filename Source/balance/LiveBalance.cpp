@@ -16,7 +16,7 @@ void LiveBalance::setActive (bool a)
 
 void LiveBalance::setWindow (int index)
 {
-    windowIndex = juce::jlimit (0, 3, index);
+    windowIndex = juce::jlimit (0, 5, index);
     republish = true;                                      // a new result right away
 }
 
@@ -41,7 +41,8 @@ void LiveBalance::publish()
 {
     Snapshot s;
     const int w = windowIndex.load();
-    if (w == 3)
+    s.window = w;
+    if (w == 5)
     {
         if (sinceReset != nullptr && sinceReset->hasResult())
         {
@@ -52,7 +53,8 @@ void LiveBalance::publish()
     else
     {
         // the window's frames, gated like a whole song: drop frames more than 20 dB under the average
-        const double seconds = w == 0 ? 3.0 : (w == 1 ? 10.0 : 30.0);
+        static constexpr double kSeconds[5] = { 0.3, 1.0, 3.0, 10.0, 30.0 };
+        const double seconds = kSeconds[juce::jlimit (0, 4, w)];
         const size_t want = (size_t) std::ceil (seconds / frameSeconds);
         const size_t first = recent.size() > want ? recent.size() - want : 0;
         double e = 0;
@@ -80,6 +82,8 @@ void LiveBalance::publish()
         s.smooth = tonal::smoothDb (s.raw);
         s.shares = tonal::bandShares (s.raw);
     }
+    else if (isFast (w) && snap.valid && snap.window == w)
+        return;                                    // a short gap in fast modes: keep showing the last sound
     const juce::SpinLock::ScopedLockType sl (lock);
     s.serial = snap.serial + 1;
     snap = std::move (s);
@@ -87,7 +91,7 @@ void LiveBalance::publish()
 
 void LiveBalance::run()
 {
-    std::vector<float> chunk (8192);
+    std::vector<float> chunk (2048);                       // small chunks, so fast modes publish every frame
     while (! threadShouldExit())
     {
         if (! active.load()) { wait (100); continue; }
@@ -96,7 +100,7 @@ void LiveBalance::run()
 
         if (resetRequest.exchange (false) || frames == nullptr || std::abs (frames->getSampleRate() - rate) > 0.5)
         {
-            frames = std::make_unique<tonal::FrameAnalyzer> (rate);
+            frames = std::make_unique<tonal::FrameAnalyzer> (rate, 4);          // a frame every 23 ms
             sinceReset = std::make_unique<tonal::SpectrumAccumulator> (rate);
             frameSeconds = frames->secondsPerFrame();
             recent.clear();
@@ -105,7 +109,7 @@ void LiveBalance::run()
         }
 
         const int ready = fifo.getNumReady();
-        if (ready < 512)
+        if (ready < 256)
         {
             if (republish.exchange (false)) publish();
             wait (20);
@@ -134,7 +138,8 @@ void LiveBalance::run()
             recent.push_back (std::move (f));
             ++framesSincePublish;
         });
-        // a new result about 8 times a second
-        if (republish.exchange (false) || framesSincePublish * frameSeconds >= 0.12) { framesSincePublish = 0; publish(); }
+        // a new result with every frame in the fast modes, about 10 times a second otherwise
+        const double every = isFast (windowIndex.load()) ? 0.0 : 0.1;
+        if (republish.exchange (false) || (framesSincePublish > 0 && framesSincePublish * frameSeconds >= every)) { framesSincePublish = 0; publish(); }
     }
 }

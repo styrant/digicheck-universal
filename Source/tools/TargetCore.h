@@ -27,6 +27,7 @@ namespace targets
 
     struct Written { juce::File json, report; int songs = 0, outliers = 0; juce::String error; };
     // writes <name>.json and "<name> - report.txt" into outDir from the usable tracks
+    // wide: the range is never narrower than Tonal Balance Control's typical range (see tonal::combine)
     Written write (const juce::String& name, const std::vector<const TrackResult*>& tracks,
-                   const juce::File& outDir, double pLo = 10, double pHi = 90);
+                   const juce::File& outDir, double pLo = 10, double pHi = 90, bool wide = true);
 }

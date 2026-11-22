@@ -62,8 +62,14 @@ Switch with the **Spectrogram | Analyzer** buttons at the bottom left (or **V**)
   - Right, the detailed curve (20 Hz-20 kHz, 1/3-octave): **Curve** shows your audio over the target's range (red
     where it leaves the range); **Diff** shows your audio minus the target, so 0 dB is right on target. Hover for the
     exact difference at any frequency.
-  - Bottom bar: the target, the measurement window (3 s, 10 s, 30 s or since Reset), Curve/Diff and Reset. The target
-    list ends with Open targets folder, Rescan targets and Open Target Builder.
+  - Bottom bar: the target, the measurement window (Realtime, 1 s, 3 s, 10 s, 30 s or since Reset), Curve/Diff and
+    Reset. Realtime follows the music as it plays (about the last 0.3 s, a new measurement every 23 ms); the longer
+    windows show the overall balance. The target list ends with Open targets folder, Rescan targets and Open Target
+    Builder.
+  - Drawing runs on the display's frame clock (vblank, obeying the frame-rate cap) and is composited by OpenGL when
+    the GPU renderer is on. The curve and meters glide between measurements, so they move smoothly at the display's
+    refresh rate; the grid, labels and target range are drawn once and cached. Set `SPECTROSCOPE_PAINT_LOG=1` to
+    print the view's average paint time (about 2 ms at 1300x760 on a software renderer).
   - Targets are read from `Documents\DigiCheck Universal\Targets` (nothing is built into the app): files made with
     Target Builder and Tonal Balance Control-style target files (including the variant that wraps values as
     `{"Type", "Value"}`). New or changed files are picked up automatically.
@@ -121,14 +127,16 @@ entry) turns songs into tonal balance targets for the upcoming Balance view.
 2. The list shows each song's status and its distance from the combined target; songs that don't match the others
    are marked **Outlier** (select them and press Delete to drop them). Unreadable or silent files are skipped.
    The preview underneath shows the target curve, its "in range" band and the four band shares.
-3. Type a name, pick the range (10-90 % by default), and press **Save target**. It's written to
+3. Type a name, pick the range, and press **Save target**. The default, **wide, like Tonal Balance Control**, gives
+   ranges as wide as iZotope's own targets (about 11-17 dB from top to bottom, widest in the low end); the songs
+   5-95 %, 10-90 % and 20-80 % options use only the spread of your songs, which is much tighter. It's written to
    `Documents\DigiCheck Universal\Targets` as `<name>.json` (same layout as Tonal Balance Control target files)
    plus `<name> - report.txt`.
 
 Dragging songs or a folder onto `TargetBuilder.exe` opens the window with them already added.
 For batch runs there's a command-line mode: `TargetBuilder.exe --cli <folder>` (a folder of genre subfolders gives
 one target per subfolder) or `--cli song1.wav song2.flac --name "My refs"`; options `--out DIR`, `--genres`,
-`--range 10 90`, `--threads N`.
+`--range 10 90`, `--tight` (only the songs' spread, no widening), `--threads N`.
 
 How it measures (shared with the app, `Source/balance/TonalAnalysis.*`, tested by `balance_test`):
 - Per song: mono (mean of channels), 93 ms Hann windows at the file's own sample rate, read off at the 44.1 kHz /
@@ -138,4 +146,7 @@ How it measures (shared with the app, `Source/balance/TonalAnalysis.*`, tested b
 - Per target: the median of the songs per bin, smoothed to 1/3 octave (power domain); the range is the 10th-90th
   percentile of the songs' smoothed curves; the 4 bands (0-250, 250-2k, 2k-8k, 8k+) store the range of each band's
   share of the spectrum. Fewer than 5 songs get a minimum range of +/-2 dB (+/-15 % per band).
+- Wide (default): the range is then widened to at least the typical width of Tonal Balance Control's targets at
+  each frequency (the median over 12 of its genre targets: about +7/-10 dB around the curve at 20 Hz, +5/-6 dB in
+  the mids, +6/-8 dB at the top), and the band ranges likewise. It never gets narrower than the songs' own range.
 - 10-20+ songs per genre give a trustworthy range. Targets stay on your computer; `Targets/` is git-ignored.

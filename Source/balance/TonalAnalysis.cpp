@@ -53,10 +53,10 @@ namespace
 double binFrequency (int bin) noexcept { return bin * kSampleRate / kFftSize; }
 
 //==============================================================================
-FrameAnalyzer::FrameAnalyzer (double sampleRate) : sr (sampleRate > 1000 ? sampleRate : kSampleRate)
+FrameAnalyzer::FrameAnalyzer (double sampleRate, int hopDivisor) : sr (sampleRate > 1000 ? sampleRate : kSampleRate)
 {
     len = std::max (16, (int) std::lround (kFftSize * sr / kSampleRate));   // 93 ms, like 4096 samples at 44.1 kHz
-    hop = len / 2;
+    hop = std::max (1, len / std::max (1, hopDivisor));
     nfft = 1;
     while (nfft < len) nfft <<= 1;
     nbins = nfft / 2 + 1;
@@ -205,7 +205,27 @@ std::array<double, 4> bandShares (const std::vector<double>& db)
     return s;
 }
 
-Target combine (const std::vector<std::vector<double>>& tracks, double pLo, double pHi)
+// Typical range of Tonal Balance Control-style targets around their curve: the median, over 12 genre
+// targets, of (high - curve) and (curve - low), averaged in third-octave bands from 20 Hz (held above 16 kHz).
+namespace
+{
+    constexpr double kWideUp[31]   = { 7.09, 7.09, 7.13, 7.12, 6.92, 6.68, 6.37, 6.09, 5.84, 5.68, 5.61, 5.76, 5.87, 5.86, 5.64, 5.39,
+                                       5.25, 5.07, 4.88, 4.80, 4.79, 4.65, 4.45, 4.34, 4.38, 4.47, 4.62, 5.09, 5.49, 5.77, 5.77 };
+    constexpr double kWideDown[31] = { 10.13, 10.13, 10.28, 10.53, 10.37, 9.86, 9.48, 8.62, 7.78, 7.23, 6.85, 6.68, 6.64, 6.62, 6.48, 6.33,
+                                       6.04, 5.88, 5.86, 5.85, 6.11, 6.30, 6.36, 6.41, 6.73, 6.89, 7.05, 7.94, 8.72, 7.56, 7.56 };
+    double wideAt (const double* table, double hz)          // third-octave table from 20 Hz, interpolated in log frequency
+    {
+        const double pos = std::clamp (3.0 * std::log2 (std::max (hz, 1.0) / 20.0), 0.0, 30.0);
+        const int i = std::min (29, (int) pos);
+        const double f = pos - i;
+        return table[i] * (1 - f) + table[i + 1] * f;
+    }
+}
+const double kWideBandBelowDb[4] = { 4.56, 3.05, 4.62, 6.68 }, kWideBandAboveDb[4] = { 4.43, 2.72, 2.82, 3.77 };
+double wideUpDb (double hz)   { return wideAt (kWideUp, hz); }
+double wideDownDb (double hz) { return wideAt (kWideDown, hz); }
+
+Target combine (const std::vector<std::vector<double>>& tracks, double pLo, double pHi, bool wide)
 {
     Target t;
     t.tracks = (int) tracks.size();
@@ -228,8 +248,8 @@ Target combine (const std::vector<std::vector<double>>& tracks, double pLo, doub
     {
         for (size_t i = 0; i < tracks.size(); ++i) col[i] = smooth[i][(size_t) k];
         const double m = t.mean[(size_t) k];
-        t.low[(size_t) k]  = std::min (percentile (col, pLo), m - minHalf);
-        t.high[(size_t) k] = std::max (percentile (col, pHi), m + minHalf);
+        t.low[(size_t) k]  = std::min (percentile (col, pLo), m - (wide ? std::max (minHalf, wideDownDb (binFrequency (k))) : minHalf));
+        t.high[(size_t) k] = std::max (percentile (col, pHi), m + (wide ? std::max (minHalf, wideUpDb (binFrequency (k))) : minHalf));
     }
 
     std::vector<std::array<double, 4>> shares;
@@ -241,6 +261,11 @@ Target combine (const std::vector<std::vector<double>>& tracks, double pLo, doub
         for (auto& s : shares) v.push_back (s[(size_t) b]);
         double lo = percentile (v, pLo), hi = percentile (v, pHi);
         if (tracks.size() < 5) { lo = std::min (lo, mid[(size_t) b] * 0.85); hi = std::max (hi, mid[(size_t) b] * 1.15); }
+        if (wide)
+        {
+            lo = std::min (lo, mid[(size_t) b] * std::pow (10.0, -kWideBandBelowDb[b] / 20.0));
+            hi = std::max (hi, mid[(size_t) b] * std::pow (10.0, kWideBandAboveDb[b] / 20.0));
+        }
         t.regions[(size_t) b] = { std::min (lo, mid[(size_t) b]), std::max (hi, mid[(size_t) b]) };
     }
     return t;

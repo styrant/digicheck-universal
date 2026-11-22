@@ -67,7 +67,7 @@ Deviations deviations (const std::vector<std::vector<double>>& spectra, const to
     return d;
 }
 
-Written write (const juce::String& name, const std::vector<const TrackResult*>& tracks, const juce::File& outDir, double pLo, double pHi)
+Written write (const juce::String& name, const std::vector<const TrackResult*>& tracks, const juce::File& outDir, double pLo, double pHi, bool wide)
 {
     Written w;
     std::vector<std::vector<double>> spectra;
@@ -78,7 +78,7 @@ Written write (const juce::String& name, const std::vector<const TrackResult*>& 
     if (spectra.empty()) { w.error = "no usable songs"; return w; }
     if (! outDir.createDirectory()) { w.error = "can't create " + outDir.getFullPathName(); return w; }
 
-    const auto target = tonal::combine (spectra, pLo, pHi);
+    const auto target = tonal::combine (spectra, pLo, pHi, wide);
     const auto base = safeName (name);
     w.json = outDir.getChildFile (base + ".json");
     w.report = outDir.getChildFile (base + " - report.txt");
@@ -86,7 +86,8 @@ Written write (const juce::String& name, const std::vector<const TrackResult*>& 
 
     juce::StringArray rep;
     rep.add ("Tonal balance target \"" + name + "\" - " + juce::String ((int) spectra.size()) + " song(s), range "
-             + juce::String (pLo, 0) + "-" + juce::String (pHi, 0) + " percentile");
+             + juce::String (pLo, 0) + "-" + juce::String (pHi, 0) + " percentile of the songs"
+             + (wide ? ", widened to at least the typical Tonal Balance Control range" : juce::String()));
     rep.add ("Created " + juce::Time::getCurrentTime().toString (true, true));
     rep.add ("");
     rep.add ("Band ranges (share of spectrum):  Low 0-250 Hz | Low-mid 250-2k | High-mid 2k-8k | High 8k+");

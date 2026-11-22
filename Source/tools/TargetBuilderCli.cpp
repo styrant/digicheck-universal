@@ -3,7 +3,8 @@
 //   --cli <folder>                      one target from all songs in the folder (named after it); a folder of
 //                                       genre subfolders gives one target per subfolder
 //   --cli <song> <song> ... --name X    one target from the listed songs
-//   options: --name NAME  --out DIR  --genres  --range LO HI  --threads N
+//   options: --name NAME  --out DIR  --genres  --range LO HI  --tight  --threads N
+//   (ranges are "wide" by default: at least as wide as Tonal Balance Control's; --tight uses only the songs' spread)
 #include "TargetCore.h"
 #include <atomic>
 #include <cstdio>
@@ -18,7 +19,7 @@ namespace
         juce::Array<juce::File> inputs;
         juce::String name;
         juce::File out = targets::defaultFolder();
-        bool genres = false;
+        bool genres = false, wide = true;
         double pLo = 10, pHi = 90;
         int threads = juce::jmax (1, juce::SystemStats::getNumCpus());
     };
@@ -50,7 +51,7 @@ namespace
         }
         std::vector<const targets::TrackResult*> ptrs;
         for (auto& r : results) ptrs.push_back (&r);
-        const auto w = targets::write (name, ptrs, opt.out, opt.pLo, opt.pHi);
+        const auto w = targets::write (name, ptrs, opt.out, opt.pLo, opt.pHi, opt.wide);
         if (w.error.isNotEmpty()) { say ("   " + w.error + ", target not written"); return false; }
         say ("   wrote " + w.json.getFullPathName());
         say ("   " + juce::String (w.songs) + " song(s) used" + (w.outliers ? ", " + juce::String (w.outliers) + " outlier(s) - see the report" : juce::String()));
@@ -68,13 +69,14 @@ int runTargetBuilderCli (const juce::StringArray& args)
         if (a == "--name" && i + 1 < args.size())            opt.name = args[++i];
         else if (a == "--out" && i + 1 < args.size())        opt.out = juce::File::getCurrentWorkingDirectory().getChildFile (args[++i]);
         else if (a == "--genres")                            opt.genres = true;
+        else if (a == "--tight")                             opt.wide = false;
         else if (a == "--range" && i + 2 < args.size())      { opt.pLo = args[++i].getDoubleValue(); opt.pHi = args[++i].getDoubleValue(); }
         else if (a == "--threads" && i + 1 < args.size())    opt.threads = juce::jmax (1, args[++i].getIntValue());
         else opt.inputs.add (juce::File::getCurrentWorkingDirectory().getChildFile (a.unquoted()));
     }
     if (opt.inputs.isEmpty())
     {
-        say ("TargetBuilder --cli <folder> | <song> ... [--name NAME] [--out DIR] [--genres] [--range LO HI] [--threads N]");
+        say ("TargetBuilder --cli <folder> | <song> ... [--name NAME] [--out DIR] [--genres] [--range LO HI] [--tight] [--threads N]");
         return 1;
     }
     if (opt.pLo < 0 || opt.pHi > 100 || opt.pLo >= opt.pHi) { say ("--range must be two percentiles, low < high"); return 1; }

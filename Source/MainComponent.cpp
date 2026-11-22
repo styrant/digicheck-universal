@@ -700,6 +700,7 @@ void MainComponent::onFrame (double t)
 {
     if (! frameclock::clock().due (t)) return;
     bottom.onFrame();
+    balanceView.onFrame (t);
     if (glContext.isAttached()) glContext.triggerRepaint();
 }
 

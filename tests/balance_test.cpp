@@ -99,6 +99,23 @@ int main()
     std::printf ("      range width at 100 Hz %.1f dB, at 5 kHz %.1f dB\n", w100, w5k);
     check (w100 > w5k, "range is wider where the songs differ (the low end)");
 
+    // 5b. wide ranges: never narrower than the typical Tonal Balance Control range (11-17 dB in total)
+    const auto wideT = tonal::combine (songs, 10, 90, true);
+    double minTotal = 1e9, maxTotal = 0;
+    bool containsTight = true;
+    for (int k = 0; k < tonal::kBins; ++k)
+    {
+        const double f = tonal::binFrequency (k);
+        if (f < 20 || f > 20000) continue;
+        const double w = wideT.high[(size_t) k] - wideT.low[(size_t) k];
+        minTotal = std::min (minTotal, w); maxTotal = std::max (maxTotal, w);
+        containsTight &= wideT.low[(size_t) k] <= t.low[(size_t) k] + 1e-9 && wideT.high[(size_t) k] >= t.high[(size_t) k] - 1e-9;
+    }
+    std::printf ("      wide range: %.1f to %.1f dB in total\n", minTotal, maxTotal);
+    check (minTotal > 9.0 && maxTotal < 25.0 && containsTight, "wide range is at least the typical target width and contains the songs' range");
+    check (wideT.regions[1][1] / wideT.regions[1][0] > std::pow (10.0, (tonal::kWideBandBelowDb[1] + tonal::kWideBandAboveDb[1] - 0.01) / 20.0),
+           "wide band ranges");
+
     // 6. one song: still a usable target with a minimum range
     const auto one = tonal::combine ({ loud });
     check (one.tracks == 1 && one.high[500] - one.low[500] >= 4.0 - 1e-9, "single-song target gets a +/-2 dB range");

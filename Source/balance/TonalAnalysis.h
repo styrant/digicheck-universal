@@ -31,7 +31,8 @@ namespace tonal
     class FrameAnalyzer
     {
     public:
-        explicit FrameAnalyzer (double sampleRate = kSampleRate);
+        // hopDivisor: frames start every window/hopDivisor (2 = 46 ms, as for targets; 4 = 23 ms for live views)
+        explicit FrameAnalyzer (double sampleRate = kSampleRate, int hopDivisor = 2);
         // calls onFrame (const double* power[kBins], double meanSquare) for each frame; frames quieter
         // than -70 dBFS get power == nullptr (no FFT is done for them)
         template <typename Fn> void process (const float* mono, int n, Fn&& onFrame);
@@ -91,7 +92,15 @@ namespace tonal
     // Combines the tracks' normalised spectra: median curve, and the pLo..pHi percentile range
     // across tracks (of their smoothed curves). With fewer than 5 tracks the range is widened to at
     // least +/-2 dB and the band ranges to +/-15 % so a target from 1-4 songs is still usable.
-    Target combine (const std::vector<std::vector<double>>& tracks, double pLo = 10.0, double pHi = 90.0);
+    // wide: the range is also never narrower than Tonal Balance Control's typical range around its
+    // curve (kWideUp / kWideDown: about 11-17 dB in total, with more room below the curve than above).
+    Target combine (const std::vector<std::vector<double>>& tracks, double pLo = 10.0, double pHi = 90.0, bool wide = false);
+
+    // the "wide" range around a target curve at frequency f (dB above / below the curve), and the
+    // band ranges (dB below / above each band's share)
+    double wideUpDb (double hz);
+    double wideDownDb (double hz);
+    extern const double kWideBandBelowDb[4], kWideBandAboveDb[4];
 
     // distance of one track from a target: RMS dB difference of the smoothed curves, 40 Hz - 16 kHz
     double deviationDb (const std::vector<double>& trackDb, const Target& t);
