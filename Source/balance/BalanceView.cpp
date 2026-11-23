@@ -6,7 +6,8 @@
 namespace
 {
     const juce::Colour kBg { 0xff111214 }, kPanel { 0xff17191d }, kGrid { 0xff2a2c31 }, kText { 0xffe8e8e8 }, kMuted { 0xffb0b6c0 },
-                       kRange { 0xff4c8dff }, kGreen { 0xff3ddc84 }, kAmber { 0xfff0b429 }, kRed { 0xffff5252 }, kTrack { 0xff202227 };
+                       kRange { 0xff4c8dff }, kTrack { 0xff202227 };
+    const ui::Sem kGreen { 0xff3ddc84, 0xffffffff }, kAmber { 0xfff0b429, ui::kSafeWarn }, kRed { 0xffff5252, ui::kSafeBad };   // in range: white over the blue zone
     const char* kBandNames[4] = { "Low", "Low-mid", "High-mid", "High" };
     const char* kBandFreqs[4] = { "0 - 250 Hz", "250 Hz - 2 kHz", "2 - 8 kHz", "8 kHz +" };
     constexpr double kBandSpanDb = 12.0;                  // the band meters show +/-12 dB around the range centre
@@ -158,15 +159,25 @@ void BalanceView::onFrame (double t)
 void BalanceView::resized()
 {
     auto r = getLocalBounds().reduced (ui::px (12), ui::px (10));
-    const int bw = juce::jlimit (ui::px (260), ui::px (420), r.getWidth() / 3);
-    bandArea = r.removeFromLeft (bw);
-    r.removeFromLeft (ui::px (12));
+    // side by side when wide; in a narrow pane (Custom page) the band meters go on top, or away when it's small too
+    if (r.getWidth() >= ui::px (760))
+    {
+        const int bw = juce::jlimit (ui::px (260), ui::px (420), r.getWidth() / 3);
+        bandArea = r.removeFromLeft (bw);
+        r.removeFromLeft (ui::px (12));
+    }
+    else if (r.getHeight() >= ui::px (520))
+    {
+        bandArea = r.removeFromTop (juce::jlimit (ui::px (230), ui::px (320), r.getHeight() * 2 / 5));
+        r.removeFromTop (ui::px (10));
+    }
+    else bandArea = {};
     curveArea = r;
 
     auto c = r.reduced (ui::px (14), ui::px (10));
     c.removeFromTop (ui::px (24));
     plot = c.withTrimmedLeft (ui::px (34)).withTrimmedBottom (ui::px (16));
-    snapBtn.setBounds (curveArea.reduced (ui::px (14), ui::px (8)).removeFromTop (ui::px (22)).withSizeKeepingCentre (ui::px (snapRaw.empty() ? 90 : 120), ui::px (22)));
+    snapBtn.setBounds (curveArea.reduced (ui::px (14), ui::px (8)).removeFromTop (ui::px (22)).removeFromRight (ui::px (snapRaw.empty() ? 90 : 124)));
 
     // one curve point every 2 px: the nearest spectrum bin to each column's frequency
     columns.clear();
@@ -222,11 +233,12 @@ void BalanceView::paintStatic (juce::Graphics& g)
 {
     g.fillAll (kBg);
     g.setColour (kPanel);
-    g.fillRoundedRectangle (bandArea.toFloat(), 6.0f);
+    if (! bandArea.isEmpty()) g.fillRoundedRectangle (bandArea.toFloat(), 6.0f);
     g.fillRoundedRectangle (curveArea.toFloat(), 6.0f);
     const auto* t = target();
 
     // ---- band meters: tracks, labels and the target's zones
+    if (! bandArea.isEmpty())
     {
         auto r = bandArea.reduced (ui::px (14), ui::px (10));
         g.setColour (kMuted); g.setFont (juce::FontOptions (ui::fs (12.0f), juce::Font::bold));
@@ -280,18 +292,23 @@ void BalanceView::paintStatic (juce::Graphics& g)
         span = 60;
     }
 
-    auto head = curveArea.reduced (ui::px (14), ui::px (10)).removeFromTop (ui::px (18));
+    auto head = curveArea.reduced (ui::px (14), ui::px (10)).removeFromTop (ui::px (18)).withRight (snapBtn.getX() - ui::px (8));
     g.setColour (kMuted); g.setFont (juce::FontOptions (ui::fs (12.0f), juce::Font::bold));
     const auto name = targetIndex >= 0 ? library.entries()[(size_t) targetIndex].name : juce::String ("no target selected");
     g.drawText ((difference ? "DIFFERENCE FROM " : "CURVE VS ") + name.toUpperCase(), head, juce::Justification::centredLeft);
 
     g.setFont (juce::FontOptions (ui::fs (11.0f)));
+    float lastLabelEnd = -1e9f;
     for (double f : { 30.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0 })
     {
         const float x = xOf (f);
         g.setColour (kGrid); g.drawVerticalLine ((int) x, (float) plot.getY(), (float) plot.getBottom());
+        const auto lab = f >= 1000 ? juce::String (f / 1000, 0) + "k" : juce::String ((int) f);
+        const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), lab);
+        if (x - tw * 0.5f < lastLabelEnd + 6) continue;                 // narrow: skip labels that would touch
+        lastLabelEnd = x + tw * 0.5f;
         g.setColour (kMuted);
-        g.drawText (f >= 1000 ? juce::String (f / 1000, 0) + "k" : juce::String ((int) f), (int) x - 20, plot.getBottom() + 2, 40, ui::px (14), juce::Justification::centred);
+        g.drawText (lab, (int) x - 20, plot.getBottom() + 2, 40, ui::px (14), juce::Justification::centred);
     }
     for (double d = top; d >= top - span - 1e-9; d -= (difference ? 3 : 10))
     {
@@ -351,7 +368,7 @@ void BalanceView::paint (juce::Graphics& g)
 void BalanceView::paintBandsLive (juce::Graphics& g)
 {
     const auto* t = target();
-    if (t == nullptr || ! shownValid) return;
+    if (t == nullptr || ! shownValid || bandArea.isEmpty()) return;
     auto r = bandArea.reduced (ui::px (14), ui::px (10));
     r.removeFromTop (ui::px (24));
     r.removeFromBottom (ui::px (44));
@@ -377,9 +394,9 @@ void BalanceView::paintBandsLive (juce::Graphics& g)
 void BalanceView::paintCurveLive (juce::Graphics& g)
 {
     const auto* t = target();
-    auto head = curveArea.reduced (ui::px (14), ui::px (10)).removeFromTop (ui::px (18));
+    auto head = curveArea.reduced (ui::px (14), ui::px (10)).removeFromTop (ui::px (18)).withRight (snapBtn.getX() - ui::px (10));
     g.setColour (kMuted); g.setFont (juce::FontOptions (ui::fs (11.5f)));
-    if (shownValid)
+    if (shownValid && head.getWidth() > ui::px (430))
         g.drawText (latest.window == 0 ? juce::String ("realtime")
                                        : "measured over " + (shownSeconds < 2 ? juce::String (shownSeconds, 1) : juce::String (juce::roundToInt (shownSeconds))) + " s of audio",
                     head, juce::Justification::centredRight);
@@ -417,8 +434,8 @@ void BalanceView::paintCurveLive (juce::Graphics& g)
     else
     {
         g.setColour (kMuted); g.setFont (juce::FontOptions (ui::fs (15.0f)));
-        g.drawText (running ? "Waiting for audio..." : "No input. Open Options (bottom left), choose an input and press Start.",
-                    plot.withTrimmedBottom (plot.getHeight() / 3), juce::Justification::centred);
+        g.drawFittedText (running ? "Waiting for audio..." : "No input. Open Options (bottom left), choose an input and press Start.",
+                          plot.withTrimmedBottom (plot.getHeight() / 3).reduced (ui::px (10), 0), juce::Justification::centred, 3);
     }
 
     if (plot.contains (hover.toInt()) && (shownValid || t != nullptr))

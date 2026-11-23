@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: read        # the layout check downloads the previous build's layout
 
 jobs:
   windows:
@@ -134,6 +135,35 @@ jobs:
         run: |
           build\plugin_host_test_artefacts\Release\plugin_host_test.exe "build\DigiCheckUniversal_artefacts\Release\VST3\DigiCheck Universal.vst3" ph_out
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Every page at three window sizes: overlapping controls are flagged as errors (the build goes on),
+      # cut-off text as warnings; screenshots and a list of what moved since the previous build are kept
+      - name: Layout check (screenshots, overlaps, changes since the previous build)
+        shell: pwsh
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $p = Start-Process -FilePath "build\Spectroscope_artefacts\Release\Spectroscope.exe" -ArgumentList "--layout-check", "layout" -Wait -PassThru
+          Get-Content layout\layout_report.txt
+          $prev = gh run list --workflow build.yml --branch main --status success --limit 1 --json databaseId --jq ".[0].databaseId"
+          if ($prev) { gh run download $prev -n layout-check -D prev_layout 2>$null }
+          "## Layout check" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          '```' | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          Get-Content layout\layout_report.txt | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          '```' | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          python tools\layout_diff.py prev_layout\layout.json layout\layout.json | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          Select-String -Path layout\layout_report.txt -Pattern " overlaps " | ForEach-Object { Write-Host "::error title=Layout overlap::$($_.Line)" }
+          Select-String -Path layout\layout_report.txt -Pattern "text needs" | ForEach-Object { Write-Host "::warning title=Text cut off::$($_.Line)" }
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: Keep the layout check (screenshots of every page)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout-check
+          path: layout/
+          if-no-files-found: ignore
 
       - name: pluginval (Tracktion's plugin validator, strictness 5, no GUI)
         shell: pwsh

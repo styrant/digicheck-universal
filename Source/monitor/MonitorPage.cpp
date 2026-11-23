@@ -7,7 +7,8 @@ namespace
 {
     const juce::Colour kBg (0xff0b0c0e), kPanel (0xff15171b), kPanelLine (0xff2a2d33), kHeaderText (0xffe6e8eb),
                        kDim (0xffc3c8d0), kFaint (0xff9aa0aa), kGrid (0xff24272d), kButton (0xff3a3c41), kOn (0xff4c8dff);
-    const juce::Colour kGood (0xff4cd07d), kWarn (0xffffd23f), kBad (0xffff4d6a), kQuiet (0xffbfc5cf), kTeal (0xff3ec7c7),
+    const ui::Sem kGood { 0xff4cd07d, ui::kSafeGood }, kWarn { 0xffffd23f, ui::kSafeWarn }, kBad { 0xffff4d6a, ui::kSafeBad };
+    const juce::Colour kQuiet (0xffbfc5cf), kTeal (0xff3ec7c7),
                        kScaleText (0xffe2e5ea);              // scale numbers: near white, so they read at a glance
 
     // loudness targets: the common streaming ones, then Insight 2's broadcast list (public standards)
@@ -115,13 +116,13 @@ namespace
     juce::String plain (double v, int dec = 1) { return v <= -199 || ! std::isfinite (v) ? juce::String ("-inf") : juce::String (v, dec); }
 
     // PSR zones: how squashed the loud parts are
-    struct Zone { double from; const char* name; juce::Colour c; };
-    const Zone kZones[] = { { 0, "Crushed", juce::Colour (0xffff4d4f) }, { 6, "Dense", juce::Colour (0xffff9f40) },
-                            { 8, "Punchy", juce::Colour (0xff4cd07d) }, { 12, "Dynamic", juce::Colour (0xff3ec7c7) },
-                            { 16, "Open", juce::Colour (0xff4c8dff) } };
+    struct Zone { double from; const char* name; ui::Sem c; };
+    const Zone kZones[] = { { 0, "Crushed", { 0xffff4d4f, ui::kSafeBad } }, { 6, "Dense", { 0xffff9f40, ui::kSafeOrange } },
+                            { 8, "Punchy", { 0xff4cd07d, ui::kSafeWarn } }, { 12, "Dynamic", { 0xff3ec7c7, ui::kSafeGood } },
+                            { 16, "Open", { 0xff4c8dff, ui::kSafeBlue } } };
     const Zone& zoneOf (double psr) { int z = 0; for (int i = 0; i < 5; ++i) if (psr >= kZones[i].from) z = i; return kZones[z]; }
 
-    juce::Colour corrColour (double c) { return c < 0 ? kBad : (c < 0.3 ? kWarn : kGood); }
+    juce::Colour corrColour (double c) { return c < 0 ? kBad.get() : (c < 0.3 ? kWarn.get() : kGood.get()); }
 
     // text size of the module being painted: 15 % above the app's text size by default, times the
     // module's own Text size (its gear menu). Set by Module::paint.
@@ -1396,7 +1397,17 @@ MonitorPage::MonitorPage (FifoTap& t, Settings& st, std::function<void()> settin
     layoutBtn.setTooltip ("Columns, which modules are shown, and resetting the layout");
     layoutBtn.onClick = [this] { showLayoutMenu(); };
     resetBtn.setTooltip ("Restart the integrated loudness, LRA, PLR, maxima and history (the bottom bar's too)");
-    resetBtn.onClick = [this] { resetMeasurements(); };
+    resetBtn.onClick = [this] { if (fileModel != nullptr) backToLive(); else resetMeasurements(); };
+    for (auto* b : { &fileBtn, &reportBtn })
+    {
+        b->setColour (juce::TextButton::buttonColourId, kButton);
+        addAndMakeVisible (b);
+    }
+    fileBtn.setTooltip ("Measure a whole file (WAV, AIFF, FLAC, MP3...) faster than real time: integrated loudness, LRA, true peak, PLR and the rest. "
+                        "You can also drop a file onto this page. The live input keeps being measured meanwhile");
+    fileBtn.onClick = [this] { if (fileModel != nullptr || measuring != nullptr) backToLive(); else chooseFileToMeasure(); };
+    reportBtn.setTooltip ("Save the results (the live take, or the measured file): a picture of the page plus a text report, or a CSV with the loudness history");
+    reportBtn.onClick = [this] { exportReport(); };
     updateChips();
 }
 
@@ -1429,7 +1440,9 @@ void MonitorPage::onFrame (double t)
     lastFrame = t;
     // the history clock: one entry per 100 ms, advanced smoothly each frame and kept ~150 ms behind the
     // newest entry (entries arrive in bursts with the audio); jumps after a reset or a stall
-    if (! held && ! paused)
+    if (measuring != nullptr) repaint (toolbar);                     // progress
+    if (fileModel != nullptr) histPos = (double) fileModel->historyCount() - 1.0;
+    else if (! held && ! paused)
     {
         histPos += dt * 10.0;
         const double err = ((double) engine.historyCount() - 1.5) - histPos;
@@ -1438,7 +1451,7 @@ void MonitorPage::onFrame (double t)
     }
     if (! active || ! isShowing()) return;
     for (auto& m : modules)
-        if (m->isVisible()) { if (! held && ! paused) m->advance (dt); m->repaint(); }
+        if (m->isVisible()) { if (! held && ! paused && fileModel == nullptr) m->advance (dt); m->repaint(); }
 }
 
 void MonitorPage::resetMeasurements()
@@ -1456,10 +1469,33 @@ void MonitorPage::applySettings()
     repaint();
 }
 
+void MonitorPage::paintOverChildren (juce::Graphics& g)
+{
+    if (dropHover)
+    {
+        g.setColour (kOn.withAlpha (0.12f)); g.fillRect (getLocalBounds());
+        g.setColour (kOn); g.drawRect (getLocalBounds(), 3);
+        text (g, "Drop to measure the whole file", getLocalBounds().toFloat(), ui::fs (20), kHeaderText);
+    }
+}
+
 void MonitorPage::paint (juce::Graphics& g)
 {
     g.fillAll (kBg);
     text (g, "Monitor", titleArea.toFloat(), ui::fs (20), kHeaderText, juce::Justification::centredLeft, true);
+    // a file's results, or the measurement in progress: a line under the toolbar
+    if (fileModel != nullptr || measuring != nullptr)
+    {
+        auto line = juce::Rectangle<int> (toolbar.getX(), toolbar.getBottom() + 2, toolbar.getWidth(), ui::px (fileLineH)).toFloat();
+        g.setColour (kOn.withAlpha (0.18f)); g.fillRoundedRectangle (line, 4);
+        juce::String t;
+        if (measuring != nullptr) t = "Measuring " + fileName + "...  " + juce::String (juce::roundToInt (measureProgress() * 100)) + " %";
+        else t = "File: " + fileName + "  (" + juce::String ((int) fileSeconds / 60) + ":" + juce::String ((int) fileSeconds % 60).paddedLeft ('0', 2)
+                 + ", whole file)    Back to live: the Live button or Reset";
+        if (measuring != nullptr) { g.setColour (kOn.withAlpha (0.45f)); g.fillRoundedRectangle (line.withWidth (line.getWidth() * (float) measureProgress()), 4); }
+        g.setColour (kHeaderText); g.setFont (juce::FontOptions (ui::fs (13)));
+        g.drawText (t, line.reduced (10, 0), juce::Justification::centredLeft);
+    }
     if ((layShown() & 63) == 0)
         text (g, "All modules are hidden. Turn them on with the buttons above.", getLocalBounds().withTrimmedTop (toolbar.getBottom()).toFloat(), ui::fs (14), kDim);
 }
@@ -1475,6 +1511,14 @@ void MonitorPage::resized()
     pauseBtn.setBounds (tb.removeFromRight (ui::px (64)));
     tb.removeFromRight (ui::px (6));
     layoutBtn.setBounds (tb.removeFromRight (ui::px (72)));
+    tb.removeFromRight (ui::px (6));
+    const bool roomFile = tb.getWidth() >= ui::px (110 + 6 + 76 + 6 + 46 * NumModules);
+    fileBtn.setVisible (roomFile); reportBtn.setVisible (roomFile);
+    if (roomFile)
+    {
+        reportBtn.setBounds (tb.removeFromRight (ui::px (76))); tb.removeFromRight (ui::px (6));
+        fileBtn.setBounds (tb.removeFromRight (ui::px (fileModel != nullptr || measuring != nullptr ? 110 : 116))); tb.removeFromRight (ui::px (6));
+    }
     const int cw = juce::jmin (ui::px (104), (tb.getWidth() - ui::px (12)) / NumModules);
     auto chipsR = tb.withSizeKeepingCentre (cw * NumModules, tb.getHeight());
     if (chipsR.getX() < titleArea.getRight()) chipsR.setX (titleArea.getRight());
@@ -1564,7 +1608,8 @@ bool MonitorPage::isWide (int id) const { return (layWide() >> id) & 1; }
 
 void MonitorPage::layoutModules()
 {
-    auto area = getLocalBounds().withTrimmedTop (toolbar.getBottom() + ui::px (6)).reduced (ui::px (10), 0).withTrimmedBottom (ui::px (10));
+    auto area = getLocalBounds().withTrimmedTop (toolbar.getBottom() + ui::px (6) + (fileModel != nullptr || measuring != nullptr ? ui::px (fileLineH + 4) : 0))
+                    .reduced (ui::px (10), 0).withTrimmedBottom (ui::px (10));
     for (auto& m : modules) m->setVisible (false);
     if (area.isEmpty()) return;
     const int gap = ui::px (8);
@@ -1705,4 +1750,201 @@ void MonitorPage::loadForTest (const juce::File& f)
     }
     histPos = (double) engine.historyCount() - 1.0;
     for (auto& m : modules) m->repaint();
+}
+
+
+//==============================================================================
+// Measure a file (background thread), and the report
+struct MonitorPage::FileMeasure : public juce::Thread
+{
+    FileMeasure (MonitorPage& p, const juce::File& f) : juce::Thread ("Measure file"), page (p), file (f)
+    {
+        model = std::make_unique<monitor::MonitorModel>();
+        gate = p.s.monitorGate == 1;
+        const double holds[] = { 0.25, 0.5, 1.5, 5.0, -1.0 }, rms[] = { 0.05, 0.3, 1.0, 3.0 };
+        hold = holds[juce::jlimit (0, 4, p.s.monitorHoldTime)]; rmsT = rms[juce::jlimit (0, 3, p.s.monitorRmsTime)];
+    }
+    ~FileMeasure() override { stopThread (5000); }
+
+    void run() override
+    {
+        juce::AudioFormatManager fm; fm.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> rd (fm.createReaderFor (file));
+        if (rd == nullptr || rd->lengthInSamples <= 0 || rd->sampleRate <= 0) { failed = true; finish(); return; }
+        seconds = (double) rd->lengthInSamples / rd->sampleRate;
+        model->configure (rd->sampleRate);
+        model->setProgramGate (gate); model->setHoldTime (hold); model->setRmsTime (rmsT);
+        const juce::int64 len = rd->lengthInSamples;
+        const juce::int64 tailStart = juce::jmax<juce::int64> (0, len - (juce::int64) rd->sampleRate);   // the last second goes in on the message thread
+        constexpr int kChunk = 1 << 16;
+        juce::AudioBuffer<float> buf (2, kChunk);
+        for (juce::int64 pos = 0; pos < tailStart && ! threadShouldExit(); pos += kChunk)
+        {
+            const int n = (int) juce::jmin<juce::int64> (kChunk, tailStart - pos);
+            rd->read (&buf, 0, n, pos, true, true);
+            if (rd->numChannels == 1) buf.copyFrom (1, 0, buf, 0, 0, n);
+            model->push (buf.getReadPointer (0), buf.getReadPointer (1), n);
+            progress = (double) (pos + n) / (double) len;
+        }
+        if (threadShouldExit()) return;
+        tail.setSize (2, (int) (len - tailStart));
+        rd->read (&tail, 0, tail.getNumSamples(), tailStart, true, true);
+        if (rd->numChannels == 1) tail.copyFrom (1, 0, tail, 0, 0, tail.getNumSamples());
+        sampleRate = rd->sampleRate;
+        progress = 1.0;
+        finish();
+    }
+    void finish()
+    {
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MonitorPage> (&page)] { if (safe != nullptr) safe->finishMeasure(); });
+    }
+
+    MonitorPage& page;
+    juce::File file;
+    std::unique_ptr<monitor::MonitorModel> model;
+    juce::AudioBuffer<float> tail;
+    std::atomic<double> progress { 0 };
+    double seconds = 0, sampleRate = 48000, hold = 1.5, rmsT = 0.3;
+    bool gate = true, failed = false;
+};
+
+double MonitorPage::measureProgress() const { return measuring != nullptr ? measuring->progress.load() : 0.0; }
+
+void MonitorPage::measureFile (const juce::File& f)
+{
+    measuring.reset();
+    fileModel.reset();
+    fileName = f.getFileName();
+    measuring = std::make_unique<FileMeasure> (*this, f);
+    measuring->startThread (juce::Thread::Priority::normal);
+    fileBtn.setButtonText ("Cancel");
+    resized();
+    repaint();
+}
+
+void MonitorPage::finishMeasure()
+{
+    if (measuring == nullptr) return;
+    auto job = std::move (measuring);
+    job->stopThread (2000);
+    if (job->failed) { fileBtn.setButtonText ("Measure file..."); resized(); repaint(); return; }
+    fileModel = std::move (job->model);
+    fileSeconds = job->seconds;
+    // the last second in display-frame pieces, so the sound field has its trail and the peak lines their decay
+    const int n = job->tail.getNumSamples(), step = juce::jmax (1, (int) (job->sampleRate / 60));
+    for (int p = 0; p < n; p += step)
+    {
+        fileModel->push (job->tail.getReadPointer (0) + p, job->tail.getReadPointer (1) + p, juce::jmin (step, n - p));
+        for (auto& m : modules) m->advance (1.0 / 60);
+    }
+    histPos = (double) fileModel->historyCount() - 1.0;
+    fileBtn.setButtonText ("Live");
+    fileBtn.setTooltip ("Back to the live input (the file's results are dropped)");
+    resized();
+    repaint();
+}
+
+void MonitorPage::backToLive()
+{
+    measuring.reset();
+    fileModel.reset();
+    fileBtn.setButtonText ("Measure file...");
+    fileBtn.setTooltip ("Measure a whole file (WAV, AIFF, FLAC, MP3...) faster than real time. You can also drop a file onto this page");
+    histPos = (double) engine.historyCount() - 1.5;
+    resized();
+    repaint();
+}
+
+void MonitorPage::chooseFileToMeasure()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Measure a file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.ogg");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& fc)
+    {
+        if (fc.getResult().existsAsFile()) measureFile (fc.getResult());
+    });
+}
+
+bool MonitorPage::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    for (auto& f : files)
+        for (auto* ext : { ".wav", ".aif", ".aiff", ".flac", ".mp3", ".ogg", ".wma", ".m4a" })
+            if (f.endsWithIgnoreCase (ext)) return true;
+    return false;
+}
+
+void MonitorPage::filesDropped (const juce::StringArray& files, int, int)
+{
+    dropHover = false;
+    for (auto& f : files) if (isInterestedInFileDrag ({ f })) { measureFile (juce::File (f)); return; }
+}
+
+// A plain-language report (or CSV with the loudness history) of what the modules show
+juce::String MonitorPage::reportText (bool csv)
+{
+    auto& M = model();
+    const auto& L = M.loudness();
+    auto db = [] (double v, int d = 1) { return v <= -70 ? juce::String ("-inf") : juce::String (v, d); };
+    const bool hasT = s.monitorTarget != kNoTarget;
+    const double tgt = s.monitorTargetLufs, tol = s.monitorTolerance, tpT = s.monitorPeakTarget;
+    const double I = L.getIntegrated(), tp = L.getTruePeak(), lra = L.getLoudnessRange();
+    const double plr = L.getPLR() > -70 ? L.getPLR() : -100;
+    if (csv)
+    {
+        juce::String t = "seconds,momentary_lufs,short_term_lufs,integrated_lufs,psr_db,correlation,true_peak_dbtp\n";
+        const int n = M.historySize();
+        for (int i = n - 1; i >= 0; --i)
+        {
+            const auto& e = M.history (i);
+            t << juce::String ((double) (n - 1 - i) * 0.1, 1) << "," << db (e.momentary, 2) << "," << db (e.shortTerm, 2) << "," << db (e.integrated, 2) << ","
+              << juce::String (e.psr, 2) << "," << juce::String (e.correlation, 3) << "," << db (e.truePeak, 2) << "\n";
+        }
+        return t;
+    }
+    juce::String t;
+    t << "DigiCheck Universal loudness report\n"
+      << (fileModel != nullptr ? "File: " + fileName + "  (" + juce::String (fileSeconds, 1) + " s, whole file)" : juce::String ("Live input, since the last Reset")) << "\n"
+      << "Date: " << juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H:%M") << "\n";
+    if (hasT && s.monitorTarget >= 0 && s.monitorTarget < kNumTargets) t << "Target: " << kTargets[s.monitorTarget].name << "\n";
+    t << "Gate: " << (s.monitorGate == 1 ? "program (BS.1770-2/3/4)" : "off (BS.1770-1)") << "\n\n";
+    auto line = [&] (const juce::String& k, const juce::String& v, const juce::String& verdict = {})
+    { t << k.paddedRight (' ', 24) << v.paddedRight (' ', 14) << verdict << "\n"; };
+    auto pass = [] (bool ok) { return ok ? juce::String ("pass") : juce::String ("FAIL"); };
+    line ("Integrated loudness", db (I) + " LUFS", hasT && I > -70 ? pass (std::abs (I - tgt) <= tol) + "  (target " + juce::String (tgt, 1) + " +/- " + juce::String (tol, 1) + ")" : juce::String());
+    line ("True peak (max)", db (tp) + " dBTP", hasT && tp > -70 ? pass (tp <= tpT) + "  (limit " + juce::String (tpT, 1) + ")" : juce::String());
+    line ("Loudness range (LRA)", juce::String (lra, 1) + " LU", hasT && (s.monitorLraLo > 0 || s.monitorLraHi < 30) ? pass (lra >= s.monitorLraLo && lra <= s.monitorLraHi) + "  (" + juce::String (s.monitorLraLo, 0) + "-" + juce::String (s.monitorLraHi, 0) + " LU)" : juce::String());
+    line ("Max momentary", db (L.getMomentaryMax()) + " LUFS");
+    line ("Max short-term", db (L.getShortTermMax()) + " LUFS");
+    line ("PLR (peak to loudness)", plr > -50 ? juce::String (plr, 1) + " dB" : juce::String ("-"));
+    line ("PSR range (loud parts)", M.psrMin() > -50 ? juce::String (M.psrMin(), 1) + " - " + juce::String (M.psrMax(), 1) + " dB" : juce::String ("-"));
+    for (int c = 0; c < 2; ++c)
+        line (juce::String (c == 0 ? "Left" : "Right") + " peak / RMS max", db (monitor::MonitorModel::toDb (M.level (c).maxPeak)) + " / " + db (monitor::MonitorModel::toDb (M.level (c).maxRms)) + " dBFS",
+              M.level (c).clips > 0 ? juce::String (M.level (c).clips) + " clipped samples" : juce::String());
+    line ("Lowest correlation", juce::String (M.correlationMin(), 2));
+    return t;
+}
+
+void MonitorPage::exportReport()
+{
+    const auto base = (fileModel != nullptr ? juce::File::createLegalFileName (juce::File (fileName).getFileNameWithoutExtension()) : juce::String ("Live"))
+                      + " loudness " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H%M");
+    chooser = std::make_unique<juce::FileChooser> ("Save loudness report",
+        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("DigiCheck Universal").getChildFile ("Reports").getChildFile (base + ".txt"),
+        "*.txt;*.csv");
+    juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("DigiCheck Universal").getChildFile ("Reports").createDirectory();
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting, [this] (const juce::FileChooser& fc)
+    {
+        auto f = fc.getResult();
+        if (f == juce::File()) return;
+        const bool csv = f.hasFileExtension ("csv");
+        if (! csv && ! f.hasFileExtension ("txt")) f = f.withFileExtension ("txt");
+        f.replaceWithText (reportText (csv));
+        if (! csv)
+        {
+            // the picture of the page, next to the text (and the history as CSV)
+            const auto img = createComponentSnapshot (getLocalBounds(), true, juce::jmax (1.0f, (float) juce::Component::getApproximateScaleFactorForComponent (this)));
+            if (auto st = f.withFileExtension ("png").createOutputStream()) juce::PNGImageFormat().writeImageToStream (img, *st);
+            f.withFileExtension ("csv").replaceWithText (reportText (true));
+        }
+        f.revealToUser();
+    });
 }

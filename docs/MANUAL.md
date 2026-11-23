@@ -196,6 +196,8 @@ A modular metering page, like iZotope Insight 2. It keeps measuring while you lo
 
 **Toolbar:**
 - The module buttons show or hide modules (on narrow pages they move into **Layout → Modules**).
+- **Measure file...** (or drop an audio file onto the page) measures a whole file faster than real time. A two-minute song takes a few seconds; a bar shows the progress. Every module then shows the file's results: integrated loudness, LRA, true peak, PLR and PSR, levels, phase, and its History (set the History length to 5 or 10 min for a whole song). The live input keeps being measured meanwhile; **Live** (or Reset) goes back to it.
+- **Report...** saves the results, of the live take or the measured file: a text report with pass / FAIL against the target (integrated loudness, true peak, LRA), maxima, PLR, PSR range, clipped samples and lowest correlation, plus a PNG of the page and a CSV of the loudness history (every 100 ms). Save as `.csv` to get only the history. Reports go to `Documents\DigiCheck Universal\Reports` by default.
 - **Layout** has the number of columns, Show all and Reset layout.
 - **Pause** freezes the display.
 - **Reset** restarts the measurements.
@@ -285,6 +287,7 @@ Some graphics drivers switch a full-screen OpenGL window to *exclusive* mode. Wi
 - **GPU rendering (OpenGL):** on by default. Turn it off if your graphics driver has OpenGL problems.
 - **Frame rate limit:** 60 fps by default (smooth, and spares the GPU). *Off* follows the monitor. On a G-Sync/FreeSync monitor, pick about 3 below its maximum (for example 141 on 144 Hz).
 - **Text size:** Small, Medium, Large or Custom (70-200 %) for the whole app. Monitor modules also have their own text size in their gear menus.
+- **Colour-blind-friendly meters:** where colour means good / warning / bad (loudness and level meters, phase, the dynamics zones, the Balance markers, the LUFS boxes), red and green change to sky blue, yellow and vermillion, which stay distinct with red-green colour blindness. In Balance, "in range" turns white.
 
 ### Updates and settings (Options)
 - **Check for updates** (on by default): at start-up the app asks GitHub whether there's a newer *Latest build*; if so, a small green "1.3.x available" button appears at the bottom right (and in Options). Nothing else is sent.
@@ -362,6 +365,7 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
 | Scope recordings | `Documents\DigiCheck Universal\Scope Recordings` |
 | Scope themes | `Documents\DigiCheck Universal\Scope Themes` |
 | Copied images | `Documents\DigiCheck Universal\Screenshots` |
+| Loudness reports | `Documents\DigiCheck Universal\Reports` |
 | Transcription models | `%APPDATA%\DigiCheck Universal\Models` |
 | Settings | `%APPDATA%\DigiCheck Universal\Spectroscope.settings` |
 

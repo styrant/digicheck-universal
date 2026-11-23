@@ -381,7 +381,7 @@ void BottomBar::resized()
         r.removeFromRight (ui::px (4));
         // leave the middle controls their minimum width; the loudness boxes shrink first
         // the analyzer's combo boxes get room only if the loudness boxes can stay comfortably wide
-        const int compact = (cust ? ui::px (160) : 0) + (spec ? ui::px (66 + 6 + 34 + 8 + 80 + 4 + 62)
+        const int compact = (cust ? ui::px (160) : 0) + (spec ? ui::px (66 + 6 + 34 + 8 + 88 + 4 + 62)
                           : bal ? ui::px (110 + 4 + 96 + 6 + 96 + 6 + 52 + 44 + 6 + 48)
                           : (view == Key || view == Scope || view == Monitor || view < 0) ? 0
                           : s.anaStyle == 1 ? 0
@@ -417,6 +417,15 @@ void BottomBar::resized()
         // Curve|Diff and Reset always; then the window and smoothing boxes if they fit beside a target box of at
         // least 110 px (the smoothing box goes first when space is short); the target box takes what's left (to 220 px)
         const int base = ui::px (4 + 52 + 44 + 6 + 48), box = ui::px (96 + 6), minT = ui::px (110);
+        if (r.getWidth() < base + ui::px (60))
+        {
+            // too narrow for the group: Curve | Diff alone if they fit, else nothing (the window is tiny)
+            for (auto* c : std::initializer_list<juce::Component*> { &balTarget, &balWindow, &balSmooth, &balReset }) c->setVisible (false);
+            const bool fits = r.getWidth() >= ui::px (96);
+            balCurve.setVisible (fits); balDiff.setVisible (fits);
+            if (fits) { auto g = r.withWidth (ui::px (96)); balCurve.setBounds (g.removeFromLeft (ui::px (52))); balDiff.setBounds (g); }
+            return;
+        }
         const bool roomForWindow = r.getWidth() >= minT + base + box;
         const bool roomForSmooth = r.getWidth() >= minT + base + 2 * box;
         const int rest = base + (roomForWindow ? box : 0) + (roomForSmooth ? box : 0);
@@ -438,7 +447,7 @@ void BottomBar::resized()
     {
         // Order: Presets | Pause | Scale | Channel | Ref - + | Settings. When space is short, Settings goes first,
         // then the Ref -/+ buttons (the mouse wheel and Up/Down still change it), then the Ref readout.
-        const int core = 66 + 6 + 34 + 8 + 80 + 4 + 62;
+        const int core = 66 + 6 + 34 + 8 + 88 + 4 + 62;
         const int avail = r.getWidth();
         const bool roomRef = avail >= ui::px (core + 6 + 62);
         const bool roomRefButtons = avail >= ui::px (core + 8 + 92 + 4 + 30 + 4 + 30);
@@ -448,7 +457,7 @@ void BottomBar::resized()
         auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
         specPresets.setBounds (g.removeFromLeft (ui::px (66))); g.removeFromLeft (ui::px (6));
         pause.setBounds (g.removeFromLeft (ui::px (34)));       g.removeFromLeft (ui::px (8));
-        specScale.setBounds (g.removeFromLeft (ui::px (80)));   g.removeFromLeft (ui::px (4));
+        specScale.setBounds (g.removeFromLeft (ui::px (88)));   g.removeFromLeft (ui::px (4));
         specChannel.setBounds (g.removeFromLeft (ui::px (62)));
         // the readout: "Ref: -20 dB" with its buttons, just "-20 dB" when space is short
         ref.setText ((roomRefButtons ? "Ref: " : "") + juce::String (s.refLevel, 0) + " dB", juce::dontSendNotification);
@@ -497,15 +506,15 @@ void BottomBar::LufsReadout::paint (juce::Graphics& g)
     auto loudColour = [] (double v)
     {
         if (v < -14.0) return juce::Colours::white;
-        if (v < -9.0)  return juce::Colour (0xff3ddc84);   // green
-        if (v < -6.0)  return juce::Colour (0xffffd23f);   // yellow
-        return juce::Colour (0xffff5252);                  // red
+        if (v < -9.0)  return ui::Sem { 0xff3ddc84, ui::kSafeGood }.get();   // green
+        if (v < -6.0)  return ui::Sem { 0xffffd23f, ui::kSafeWarn }.get();   // yellow
+        return ui::Sem { 0xffff5252, ui::kSafeBad }.get();                   // red
     };
     auto peakColour = [] (double v)
     {
         if (v < -1.0) return juce::Colours::white;
-        if (v < 0.0)  return juce::Colour (0xffffd23f);
-        return juce::Colour (0xffff5252);
+        if (v < 0.0)  return ui::Sem { 0xffffd23f, ui::kSafeWarn }.get();
+        return ui::Sem { 0xffff5252, ui::kSafeBad }.get();
     };
     struct Item { const char* caption; double v; const char* unit; bool peak; };
     const Item items[] = { { "SHORT-TERM", st, "LUFS", false }, { "INTEGRATED", in, "LUFS", false }, { "TRUE PEAK", tp, "dBTP", true } };

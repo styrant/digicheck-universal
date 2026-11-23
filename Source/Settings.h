@@ -40,7 +40,8 @@ struct Settings
     int    customFocus = -1;      // the view whose controls the bar shows on the Custom page (the pane last clicked)
     juce::String customName;      // the saved layout last loaded or saved ("" none)
     bool   helpMode = false;
-    bool   checkUpdates = true;   // look for a newer Latest build at start-up      // bottom bar "?": descriptions when hovering over controls
+    bool   checkUpdates = true;
+    bool   colourSafe = false;    // colour-blind-friendly meter colours (ui::colourSafe)   // look for a newer Latest build at start-up      // bottom bar "?": descriptions when hovering over controls
     juce::String balanceTarget;   // name of the tonal balance target
     int    balanceWindow = 3;     // 0: realtime, 1: 1 s, 2: 3 s, 3: 10 s, 4: 30 s, 5: since reset
     int    balanceMode   = 0;     // 0 curve, 1 difference
@@ -264,6 +265,7 @@ struct Settings
         customMonCols  = juce::jlimit (0, 3, p.getIntValue ("customMonCols", customMonCols));
         helpMode = p.getBoolValue ("helpMode", helpMode);
         checkUpdates = p.getBoolValue ("checkUpdates", checkUpdates);
+        colourSafe = p.getBoolValue ("colourSafe", colourSafe);
         customFocus = juce::jlimit (-1, 5, p.getIntValue ("customFocus", customFocus));
         customName = p.getValue ("customName", customName);
         monitorShown  = p.getIntValue ("monitorShown", monitorShown) & 63;
@@ -344,7 +346,7 @@ struct Settings
         p.setValue ("customLayout", customLayout); p.setValue ("customSlots", customSlots);
         p.setValue ("customSplitA", customSplitA); p.setValue ("customSplitB", customSplitB);
         p.setValue ("customMonOrder", customMonOrder); p.setValue ("customMonShown", customMonShown); p.setValue ("customMonWide", customMonWide);
-        p.setValue ("customMonMax", customMonMax); p.setValue ("customMonCols", customMonCols); p.setValue ("helpMode", helpMode); p.setValue ("checkUpdates", checkUpdates);
+        p.setValue ("customMonMax", customMonMax); p.setValue ("customMonCols", customMonCols); p.setValue ("helpMode", helpMode); p.setValue ("checkUpdates", checkUpdates); p.setValue ("colourSafe", colourSafe);
         p.setValue ("customFocus", customFocus); p.setValue ("customName", customName); p.setValue ("monitorShown", monitorShown); p.setValue ("monitorWide", monitorWide);
         p.setValue ("monitorMax", monitorMax); p.setValue ("monitorCols", monitorCols); p.setValue ("monitorTarget", monitorTarget);
         p.setValue ("monitorMomMax", monitorMomMax); p.setValue ("monitorMS", monitorMS); p.setValue ("monitorRange", monitorRange);

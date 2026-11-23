@@ -209,7 +209,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     bottom.onBalanceWindow = [this] (int w) { liveBalance.setWindow (w); saveAll(); };
     bottom.onBalanceMode = [this] (bool d) { settings.balanceMode = d ? 1 : 0; balanceView.setDifferenceMode (d); bottom.refresh(); saveAll(); };
     bottom.onBalanceReset = [this] { liveBalance.reset(); };
-    bottom.onLoudnessReset = [this] { monitorPage.model().reset(); };
+    bottom.onLoudnessReset = [this] { monitorPage.liveModel().reset(); };
     bottom.onSpectrogramDsp = [this] { onChange (Change::Dsp); };
     bottom.onBalanceTargetsAction = [this] (int a) { balanceTargetsAction (a); };
     refreshBalanceTargets();
@@ -243,7 +243,22 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     updateToggle.onClick = [this] { settings.checkUpdates = updateToggle.getToggleState(); saveAll(); if (settings.checkUpdates) checkForUpdates(); };
     updateBtn.setTooltip ("A newer build is available: open the download page");
     updateBtn.onClick = [] { juce::URL ("https://github.com/styrant/digicheck-universal/releases/tag/latest").launchInDefaultBrowser(); };
-    for (auto* c : std::initializer_list<juce::Component*> { &copyImgBtn, &backupBtn, &restoreBtn, &defaultsBtn, &updateToggle })
+    ui::colourSafe = settings.colourSafe;
+    safeToggle.setToggleState (settings.colourSafe, juce::dontSendNotification);
+    safeToggle.setTooltip ("Meters that use red / green for good and bad switch to sky blue / yellow / vermillion, "
+                           "which stay distinct with red-green colour blindness (loudness, levels, phase, dynamics zones, Balance markers, the LUFS boxes)");
+    safeToggle.onClick = [this]
+    {
+        settings.colourSafe = safeToggle.getToggleState();
+        ui::colourSafe = settings.colourSafe;
+        saveAll();
+        balanceView.invalidateStatic();
+        monitorPage.repaint();
+        for (auto* c : getChildren()) c->repaint();
+        bottom.repaint();
+        repaint();
+    };
+    for (auto* c : std::initializer_list<juce::Component*> { &copyImgBtn, &backupBtn, &restoreBtn, &defaultsBtn, &updateToggle, &safeToggle })
         options.addAndMakeVisible (c);
     options.addChildComponent (updateBtn);
     if (settings.checkUpdates)
@@ -1160,7 +1175,7 @@ void MainComponent::setHelpMode (bool on)
 void MainComponent::layoutOptions()
 {
     using ui::px;
-    const int w = juce::jmin (px (470), getWidth() - 16), h = px ((settings.textSize == 3 ? 404 : 372) + (device != nullptr ? 34 : 0) + 38 + 30 + 4);
+    const int w = juce::jmin (px (470), getWidth() - 16), h = px ((settings.textSize == 3 ? 404 : 372) + (device != nullptr ? 34 : 0) + 38 + 30 + 28);
     options.setBounds (8, getHeight() - BottomBar::height() - h - 6, w, h);
     options.headings.clear();
     auto r = options.getLocalBounds().reduced (14, 10);
@@ -1207,6 +1222,7 @@ void MainComponent::layoutOptions()
     row = r.removeFromTop (px (24));
     updateToggle.setBounds (row.removeFromLeft (px (170))); row.removeFromLeft (px (6));
     updateBtn.setBounds (row.removeFromLeft (px (200)));
+    safeToggle.setBounds (r.removeFromTop (px (24)).withWidth (px (280)));
     heading ("SETTINGS");
     row = r.removeFromTop (px (28));
     backupBtn.setBounds (row.removeFromLeft (px (100))); row.removeFromLeft (px (6));

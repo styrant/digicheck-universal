@@ -22,7 +22,7 @@
 #include "../Settings.h"
 #include "MonitorModel.h"
 
-class MonitorPage : public juce::Component
+class MonitorPage : public juce::Component, public juce::FileDragAndDropTarget
 {
 public:
     enum ModuleId { Loudness = 0, Dynamics = 1, Levels = 2, SoundField = 3, Phase = 4, History = 5, NumModules = 6 };
@@ -40,9 +40,29 @@ public:
     void applySettings();
 
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
+    double measureProgress() const;
+    static constexpr int fileLineH = 26;
 
-    monitor::MonitorModel& model()               { return engine; }
+    // what the modules show: a measured file (Measure file / drag and drop), or the live input
+    monitor::MonitorModel& model()               { return fileModel != nullptr ? *fileModel : engine; }
+    monitor::MonitorModel& liveModel()           { return engine; }
+    bool showingFile() const                     { return fileModel != nullptr; }
+
+    // Measure a file: the whole file runs through its own set of meters on a background thread, faster
+    // than real time; the modules then show its results (the live input keeps being measured meanwhile)
+    void measureFile (const juce::File&);
+    void backToLive();
+    void chooseFileToMeasure();
+    bool isInterestedInFileDrag (const juce::StringArray&) override;
+    void filesDropped (const juce::StringArray&, int, int) override;
+    void fileDragEnter (const juce::StringArray&, int, int) override  { dropHover = true; repaint(); }
+    void fileDragExit (const juce::StringArray&) override              { dropHover = false; repaint(); }
+
+    // Report: the results (live or file) as a PNG of the page plus a text file, or CSV
+    void exportReport();
+    juce::String reportText (bool csv);
     void loadForTest (const juce::File& f);      // self-test: runs a file through the meters and holds them
 
     struct Module; struct LoudnessModule; struct DynamicsModule; struct LevelsModule; struct FieldModule; struct PhaseModule; struct HistoryModule;
@@ -91,6 +111,16 @@ private:
     bool active = false, held = false, paused = false, lastPlaying = false;
     juce::TextButton pauseBtn { "Pause" };
     double lastFrame = 0, histPos = 0;
+
+    std::unique_ptr<monitor::MonitorModel> fileModel;
+    juce::String fileName;
+    double fileSeconds = 0;
+    struct FileMeasure;
+    std::unique_ptr<FileMeasure> measuring;
+    juce::TextButton fileBtn { "Measure file..." }, reportBtn { "Report..." };
+    bool dropHover = false;
+    std::unique_ptr<juce::FileChooser> chooser;
+    void finishMeasure();
 
     std::array<std::unique_ptr<Module>, NumModules> modules;
     std::array<juce::TextButton, NumModules> chips;

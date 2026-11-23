@@ -3,6 +3,7 @@
 #include "SettingsDialog.h"
 #include "AppLookAndFeel.h"
 #include "HdrInfo.h"
+#include "LayoutCheck.h"
 
 class SpectroscopeApp : public juce::JUCEApplication
 {
@@ -28,6 +29,12 @@ public:
         const auto args = juce::StringArray::fromTokens (commandLine, true);
         const int i = args.indexOf ("--test-screenshot");
         if (i >= 0 && i + 1 < args.size()) runSelfTest (args[i + 1].unquoted());
+        if (const int lc = args.indexOf ("--layout-check"); lc >= 0 && lc + 1 < args.size()) runLayoutCheck (args[lc + 1].unquoted());
+        // checking by hand: SPECTROSCOPE_MEASURE_FILE=song.wav opens the Monitor measuring that file
+        if (auto f = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_MEASURE_FILE", {}); f.isNotEmpty())
+            juce::Timer::callAfterDelay (1500, [this, f] { window->content->setView (5); window->content->getMonitorPage().measureFile (juce::File (f)); });
+        if (auto out = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_REPORT_OUT", {}); out.isNotEmpty())
+            juce::Timer::callAfterDelay (9000, [this, out] { juce::File (out).replaceWithText (window->content->getMonitorPage().reportText (false)); });
     }
 
     void shutdown() override
@@ -165,6 +172,50 @@ private:
             if (v == 6) mc->getAnalyzerPanel().setStyle (0);
         }
         std::fputs (report.toRawUTF8(), stdout); std::fflush (stdout);
+    }
+
+    // CI: every page at several window sizes (see LayoutCheck.h)
+    void runLayoutCheck (juce::String folder)
+    {
+        juce::MessageManager::callAsync ([this, folder]
+        {
+            auto* mc = window->content.get();
+            auto& st = mc->getSettings();
+            st.gpu = false; mc->applyRendererForTest();
+            st.showLufs = true; st.hidePanel = false; st.helpMode = false; st.textSize = 1;
+            mc->startSourceByKey ("test");
+            const juce::File dir = juce::File::getCurrentWorkingDirectory().getChildFile (folder);
+            dir.createDirectory();
+            layoutcheck::Result res;
+            struct Size { int w, h; };
+            const Size sizes[] = { { 1920, 1050 }, { 1300, 760 }, { 1024, 640 } };
+            const char* pages[] = { "Spectrogram", "Analyzer-Bars", "Balance", "Key", "Scope", "Monitor", "Custom-2x2", "Analyzer-FFT", "Custom-large-left" };
+            for (auto sz : sizes)
+                for (int v = 0; v < 9; ++v)
+                {
+                    window->setSize (sz.w, sz.h);
+                    if (v == 7) mc->getAnalyzerPanel().setStyle (1);
+                    if (v == 6) mc->setCustomForTest (5, "0,5,4,2");
+                    else if (v == 8) mc->setCustomForTest (2, "1,5,4");
+                    else mc->setView (v == 7 ? 1 : v);
+                    mc->resized();
+                    for (auto* c : mc->getChildren()) c->resized();
+                    const auto name = juce::String (pages[v]) + " " + juce::String (sz.w) + "x" + juce::String (sz.h);
+                    layoutcheck::inspect (*mc, name, res);
+                    if (auto s = dir.getChildFile (name + ".png").createOutputStream())
+                        juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), *s);
+                    if (v == 7) mc->getAnalyzerPanel().setStyle (0);
+                }
+            dir.getChildFile ("layout.json").replaceWithText (juce::JSON::toString (res.fingerprint, false));
+            juce::String rep;
+            rep << "Layout check: " << res.errors.size() << " overlap(s), " << res.warnings.size() << " warning(s)\n\n";
+            if (! res.errors.isEmpty()) rep << "OVERLAPS (errors)\n" << res.errors.joinIntoString ("\n") << "\n\n";
+            if (! res.warnings.isEmpty()) rep << "Warnings\n" << res.warnings.joinIntoString ("\n") << "\n";
+            dir.getChildFile ("layout_report.txt").replaceWithText (rep);
+            std::fputs (rep.toRawUTF8(), stdout); std::fflush (stdout);
+            juce::JUCEApplicationBase::getInstance()->setApplicationReturnValue (res.errors.isEmpty() ? 0 : 1);
+            juce::JUCEApplicationBase::quit();
+        });
     }
 
     void runSelfTest (juce::String path)
