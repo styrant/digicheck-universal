@@ -27,7 +27,7 @@ struct Settings
     double textScaleCustom = 1.0;
     bool   autoHideBar = true;    // hide the top toolbar in full screen (reveal at the top edge)
 
-    int    viewMode   = 0;        // 0 spectrogram, 1 analyzer, 2 balance, 3 key
+    int    viewMode   = 0;        // 0 spectrogram, 1 analyzer, 2 balance, 3 key, 4 scope
     juce::String balanceTarget;   // name of the tonal balance target
     int    balanceWindow = 3;     // 0: realtime, 1: 1 s, 2: 3 s, 3: 10 s, 4: 30 s, 5: since reset
     int    balanceMode   = 0;     // 0 curve, 1 difference
@@ -43,6 +43,17 @@ struct Settings
     float  keyVolume     = 0.8f;
     int    keySensitivity = 70;   // 0..100, see transcribe/NoteFilter.h
     juce::String keyOutput;       // playback output device; empty = system default
+    // Scope (oscilloscope, after Scyllascope)
+    int    scopeMode     = 0;     // 0 free (sweep), 1 scroll
+    int    scopeDivision = 2;     // 0 1/4, 1 1/2, 2 1, 3 2, 4 4, 5 8 bars
+    bool   scopeTriplet  = false;
+    double scopeGainDb   = 0.0;   // display gain
+    bool   scopeSpectral = true, scopeAA = true, scopeGuides = true;
+    bool   scopeBP       = false; double scopeBPHz = 100.0;
+    bool   scopeSide     = false; // Side2SC overlay
+    int    scopeSource   = 2;     // 0 left, 1 right, 2 mid, 3 peak
+    juce::String scopeTheme = "Dark";
+    bool   scopeRecNormalize = false, scopeRecTrim = true, scopeRecSnap = false;
     double bpm        = 120.0;    // tempo calculator
     bool   tempoTriplets = false, tempoDotted = false;
     juce::String analyzerState;   // Spectrum Analyzer settings (XML)
@@ -118,6 +129,21 @@ struct Settings
         keyVolume     = juce::jlimit (0.0f, 1.0f, (float) p.getDoubleValue ("keyVolume", keyVolume));
         keySensitivity = juce::jlimit (0, 100, p.getIntValue ("keySensitivity", keySensitivity));
         keyOutput     = p.getValue ("keyOutput", keyOutput);
+        scopeMode     = juce::jlimit (0, 1, p.getIntValue ("scopeMode", scopeMode));
+        scopeDivision = juce::jlimit (0, 5, p.getIntValue ("scopeDivision", scopeDivision));
+        scopeTriplet  = p.getBoolValue ("scopeTriplet", scopeTriplet);
+        scopeGainDb   = juce::jlimit (-24.0, 24.0, p.getDoubleValue ("scopeGainDb", scopeGainDb));
+        scopeSpectral = p.getBoolValue ("scopeSpectral", scopeSpectral);
+        scopeAA       = p.getBoolValue ("scopeAA", scopeAA);
+        scopeGuides   = p.getBoolValue ("scopeGuides", scopeGuides);
+        scopeBP       = p.getBoolValue ("scopeBP", scopeBP);
+        scopeBPHz     = juce::jlimit (20.0, 20000.0, p.getDoubleValue ("scopeBPHz", scopeBPHz));
+        scopeSide     = p.getBoolValue ("scopeSide", scopeSide);
+        scopeSource   = juce::jlimit (0, 3, p.getIntValue ("scopeSource", scopeSource));
+        scopeTheme    = p.getValue ("scopeTheme", scopeTheme);
+        scopeRecNormalize = p.getBoolValue ("scopeRecNormalize", scopeRecNormalize);
+        scopeRecTrim  = p.getBoolValue ("scopeRecTrim", scopeRecTrim);
+        scopeRecSnap  = p.getBoolValue ("scopeRecSnap", scopeRecSnap);
         bpm        = p.getDoubleValue ("bpm", bpm);
         tempoTriplets = p.getBoolValue ("tempoTriplets", tempoTriplets);
         tempoDotted   = p.getBoolValue ("tempoDotted", tempoDotted);
@@ -149,6 +175,11 @@ struct Settings
         p.setValue ("keyAuto", keyAuto); p.setValue ("keySevenths", keySevenths); p.setValue ("keyShowNotes", keyShowNotes);
         p.setValue ("keyListen", keyListen); p.setValue ("keySynth", keySynth); p.setValue ("keyVolume", keyVolume);
         p.setValue ("keySensitivity", keySensitivity); p.setValue ("keyOutput", keyOutput);
+        p.setValue ("scopeMode", scopeMode); p.setValue ("scopeDivision", scopeDivision); p.setValue ("scopeTriplet", scopeTriplet);
+        p.setValue ("scopeGainDb", scopeGainDb); p.setValue ("scopeSpectral", scopeSpectral); p.setValue ("scopeAA", scopeAA);
+        p.setValue ("scopeGuides", scopeGuides); p.setValue ("scopeBP", scopeBP); p.setValue ("scopeBPHz", scopeBPHz);
+        p.setValue ("scopeSide", scopeSide); p.setValue ("scopeSource", scopeSource); p.setValue ("scopeTheme", scopeTheme);
+        p.setValue ("scopeRecNormalize", scopeRecNormalize); p.setValue ("scopeRecTrim", scopeRecTrim); p.setValue ("scopeRecSnap", scopeRecSnap);
         p.setValue ("bpm", bpm);               p.setValue ("tempoTriplets", tempoTriplets);
         p.setValue ("tempoDotted", tempoDotted);
         if (auto* file = dynamic_cast<juce::PropertiesFile*> (&p)) file->saveIfNeeded();     // the app writes its file at once

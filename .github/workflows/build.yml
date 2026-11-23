@@ -115,6 +115,9 @@ jobs:
       - name: Key page playback test (original, synth, mix, seeking; no sound card)
         run: build\player_test_artefacts\Release\player_test.exe
 
+      - name: Scope test (sweep, scroll, spectral bands, band-pass, stats, recorder)
+        run: build\scope_test.exe
+
       - name: Target loader test
         run: build\target_loader_test_artefacts\Release\target_loader_test.exe
 

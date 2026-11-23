@@ -169,6 +169,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     engine.addTap (&keyFinder);
     engine.addTap (&liveBalance);
     engine.addTap (&recorder);
+    engine.addTap (&scopeTap);
     setWantsKeyboardFocus (true);
 
     status.setJustificationType (juce::Justification::topLeft);
@@ -186,6 +187,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     addChildComponent (analyzerPanel);
     addChildComponent (balanceView);
     addChildComponent (keyPage);
+    addChildComponent (scopePage);
     addAndMakeVisible (bottom);
 
     // tonal balance: targets from the targets folder, measurement on its own thread
@@ -334,6 +336,7 @@ void MainComponent::onFrame (double t)
     if (! frameclock::clock().due (t)) return;
     bottom.onFrame();
     balanceView.onFrame (t);
+    scopePage.onFrame (t);
     if (glContext.isAttached()) glContext.triggerRepaint();
 }
 
@@ -387,11 +390,14 @@ void MainComponent::setOptionsVisible (bool show)
 
 void MainComponent::setView (int v)
 {
-    settings.viewMode = juce::jlimit (0, 3, v);
+    settings.viewMode = juce::jlimit (0, 4, v);
     const bool spec = settings.viewMode == BottomBar::Spectrogram, ana = settings.viewMode == BottomBar::Analyzer,
-               bal = settings.viewMode == BottomBar::Balance, key = settings.viewMode == BottomBar::Key;
+               bal = settings.viewMode == BottomBar::Balance, key = settings.viewMode == BottomBar::Key,
+               sco = settings.viewMode == BottomBar::Scope;
     keyPage.setVisible (key);
     keyPage.setActive (key);
+    scopePage.setVisible (sco);
+    scopePage.setActive (sco);
     view.setVisible (spec);
     analyzerPanel.setVisible (ana);
     analyzerPanel.setActive (ana);
@@ -400,7 +406,7 @@ void MainComponent::setView (int v)
     liveBalance.setActive (bal);
     engine.setSpectrogramActive (spec);
     if (bal) { refreshBalanceTargets(); grabKeyboardFocus(); }
-    if (key) grabKeyboardFocus();
+    if (key || sco) grabKeyboardFocus();
     if (ana) analyzerPanel.getView().grabKeyboardFocus();
     bottom.refresh();
     saveAll();
@@ -543,6 +549,7 @@ void MainComponent::timerCallback()
 {
     balanceView.setInputRunning (engine.isRunning());
     keyPage.setInputRunning (engine.isRunning());
+    scopePage.setInputRunning (engine.isRunning());
     if (++tick % 10 == 0) updateStatus();
 }
 
@@ -593,6 +600,7 @@ void MainComponent::resized()
     analyzerPanel.setBounds (r);
     balanceView.setBounds (r);
     keyPage.setBounds (r);
+    scopePage.setBounds (r);
     layoutOptions();
 }
 
@@ -635,16 +643,17 @@ void MainComponent::layoutOptions()
 
 bool MainComponent::keyPressed (const juce::KeyPress& k)
 {
-    const bool ana = settings.viewMode == BottomBar::Analyzer, bal = settings.viewMode == BottomBar::Balance || settings.viewMode == BottomBar::Key;
+    const bool ana = settings.viewMode == BottomBar::Analyzer, bal = settings.viewMode == BottomBar::Balance || settings.viewMode == BottomBar::Key || settings.viewMode == BottomBar::Scope;
     if (k == juce::KeyPress::spaceKey)
     {
         if (settings.viewMode == BottomBar::Key) keyPage.togglePlay();
+        else if (settings.viewMode == BottomBar::Scope) scopePage.toggleFreeze();
         else if (ana) analyzerPanel.getView().toggleFreeze();
         else if (! bal) view.togglePause();
         return true;
     }
-    if (k.getTextCharacter() == 'v' || k.getTextCharacter() == 'V') { setView ((settings.viewMode + 1) % 4); return true; }
-    if (k.getTextCharacter() >= '1' && k.getTextCharacter() <= '4') { setView ((int) (k.getTextCharacter() - '1')); return true; }
+    if (k.getTextCharacter() == 'v' || k.getTextCharacter() == 'V') { setView ((settings.viewMode + 1) % 5); return true; }
+    if (k.getTextCharacter() >= '1' && k.getTextCharacter() <= '5') { setView ((int) (k.getTextCharacter() - '1')); return true; }
     if (k == juce::KeyPress::F11Key)            { toggleFullscreen(); return true; }
     if (k.getTextCharacter() == 'o' || k.getTextCharacter() == 'O') { toggleOptions(); return true; }
     if (k == juce::KeyPress::escapeKey)

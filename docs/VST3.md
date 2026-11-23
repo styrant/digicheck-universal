@@ -62,6 +62,19 @@ and editor.
 9. **Standalone-only features.** ASIO, WASAPI loopback, device selection and the test signal stay in
    the standalone shell. The plugin analyses its track's audio.
 
+10. **Scope features reserved for the plugin.** The Scope header and menu already show these, disabled:
+    - **Sync** to the host transport (window start on bar lines from `AudioPlayHead::getPosition()`: PPQ,
+      BPM, time signature, isPlaying) and **Sync to Start** (restart when playback starts). In the standalone
+      the window follows the typed BPM and restarts after silence.
+    - **Sidechain**: a second input bus (`BusesProperties().withInput("Sidechain", stereo, false)`) drawn as
+      the overlay, and **instance sidechain** (another Scope instance's wave via a process-wide registry of
+      `ScopeTap`s, keyed by instance ID). The standalone's Side2SC (L−R of the input) stays.
+    - **Track name and colour** from `AudioProcessor::updateTrackProperties`.
+    - **Listen to the BP band**: route the band-passed signal to the plugin's output while held.
+    - **REAPER embedded mode** (`IReaperUIEmbedInterface`, via `VST3ClientExtensions`).
+    - `ScopeTap` becomes per instance (one FIFO each; it already has no globals). `ScopeModel` takes the
+      host's sample rate in `prepareToPlay`.
+
 ## Licences relevant to a plugin
 
 - VST3 SDK: MIT licensed since 2025 (bundled with JUCE).

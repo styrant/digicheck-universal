@@ -139,6 +139,22 @@ private:
             { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
             // Key page; optionally with a song (SPECTROSCOPE_TEST_KEYFILE=/path/song.wav) and, for the chords and
             // melody, a model (SPECTROSCOPE_TEST_MODEL=/path/model.gguf); SPECTROSCOPE_TEST_KEYWAIT=ms to wait for it
+            // Scope page (after the test signal has run through it for a while)
+            mc->setView (4);
+            if (auto f = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_SCOPEFILE", {}); f.isNotEmpty())
+                juce::Timer::callAfterDelay (300, [mc, f]
+                {
+                    mc->getScopePage().loadForTest (juce::File (f), juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_SCOPEGAIN", "0").getDoubleValue(),
+                                                    true, juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_SCOPESIDE", {}).isNotEmpty());
+                });
+            juce::Timer::callAfterDelay (juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_SCOPEWAIT", "2500").getIntValue(), [out, mc]
+            {
+                if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_scope.png")); s.openedOk())
+                { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
+                mc->setView (3);
+            });
+            juce::Timer::callAfterDelay (juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_SCOPEWAIT", "2500").getIntValue() + 200, [this, out, mc]
+            {
             mc->setView (3);
             const auto keyFile = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_KEYFILE", {});
             if (keyFile.isNotEmpty()) mc->getKeyPage().loadSource (juce::File (keyFile));
@@ -184,6 +200,7 @@ private:
                             dw->exitModalState (0);
                         }
                 quit();
+            });
             });
             });
             });

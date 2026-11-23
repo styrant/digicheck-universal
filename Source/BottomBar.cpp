@@ -17,7 +17,7 @@ namespace
 BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor& proc) : s (st), engine (e)
 {
     smallLnf = std::make_unique<SmallButtonLnf>();          // per instance: no static look-and-feel outliving the UI
-    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &viewBal, &viewKey, &balCurve, &balDiff, &balReset, &lufsBtn, &tempoBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
+    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &viewBal, &viewKey, &viewScope, &balCurve, &balDiff, &balReset, &lufsBtn, &tempoBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
                      &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &full })
     {
         addAndMakeVisible (b);
@@ -34,15 +34,18 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
     viewSpec.setConnectedEdges (juce::Button::ConnectedOnRight);
     viewAna.setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
     viewBal.setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
-    viewKey.setConnectedEdges (juce::Button::ConnectedOnLeft);
+    viewKey.setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
+    viewScope.setConnectedEdges (juce::Button::ConnectedOnLeft);
     viewSpec.setTooltip ("Reassigned spectrogram (1, V cycles)");
     viewAna.setTooltip ("Filter-bank spectrum analyzer (2, V cycles)");
     viewBal.setTooltip ("Tonal balance against a target (3, V cycles)");
     viewKey.setTooltip ("Key finder, chords and melody (4 or K, V cycles)");
+    viewScope.setTooltip ("Oscilloscope (5, V cycles)");
     viewSpec.onClick = [this] { if (onViewChange) onViewChange (Spectrogram); };
     viewAna.onClick  = [this] { if (onViewChange) onViewChange (Analyzer); };
     viewBal.onClick  = [this] { if (onViewChange) onViewChange (Balance); };
     viewKey.onClick  = [this] { if (onViewChange) onViewChange (Key); };
+    viewScope.onClick = [this] { if (onViewChange) onViewChange (Scope); };
 
     // balance controls
     balTarget.setTooltip ("Target to compare with (files in the targets folder)");
@@ -136,7 +139,7 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
     resetBtn.onClick = [this] { engine.resetLoudness(); };
     full.onClick     = [this] { if (onToggleFullscreen) onToggleFullscreen(); };
 
-    for (auto* b : { &viewSpec, &viewAna, &viewBal, &viewKey, &balCurve, &balDiff, &lufsBtn })
+    for (auto* b : { &viewSpec, &viewAna, &viewBal, &viewKey, &viewScope, &balCurve, &balDiff, &lufsBtn })
         b->setClickingTogglesState (false);   // state comes from settings via refresh()
 
     refresh();
@@ -155,6 +158,7 @@ void BottomBar::refresh()
     viewAna.setToggleState  (s.viewMode == Analyzer, juce::dontSendNotification);
     viewBal.setToggleState  (s.viewMode == Balance, juce::dontSendNotification);
     viewKey.setToggleState  (s.viewMode == Key, juce::dontSendNotification);
+    viewScope.setToggleState (s.viewMode == Scope, juce::dontSendNotification);
     balCurve.setToggleState (s.balanceMode == 0, juce::dontSendNotification);
     balDiff.setToggleState  (s.balanceMode == 1, juce::dontSendNotification);
     balWindow.setSelectedId (juce::jlimit (0, 5, s.balanceWindow) + 1, juce::dontSendNotification);
@@ -217,7 +221,8 @@ void BottomBar::resized()
     optionsBtn.setBounds (r.removeFromLeft (ui::px (72))); r.removeFromLeft (ui::px (10));
     viewSpec.setBounds (r.removeFromLeft (ui::px (90))); viewAna.setBounds (r.removeFromLeft (ui::px (74)));
     viewBal.setBounds (r.removeFromLeft (ui::px (70)));
-    viewKey.setBounds (r.removeFromLeft (ui::px (46))); r.removeFromLeft (ui::px (10));
+    viewKey.setBounds (r.removeFromLeft (ui::px (46)));
+    viewScope.setBounds (r.removeFromLeft (ui::px (58))); r.removeFromLeft (ui::px (10));
     lufsBtn.setBounds (r.removeFromLeft (ui::px (48))); r.removeFromLeft (ui::px (4));
     tempoBtn.setBounds (r.removeFromLeft (ui::px (56))); r.removeFromLeft (ui::px (12));
 
@@ -234,7 +239,7 @@ void BottomBar::resized()
         // the analyzer's combo boxes get room only if the loudness boxes can stay comfortably wide
         const int compact = spec ? ui::px (66 + 6 + 34 + 8 + 80 + 4 + 62)
                           : bal ? ui::px (110 + 4 + 80 + 6 + 52 + 44 + 6 + 48)
-                          : s.viewMode == Key ? 0
+                          : (s.viewMode == Key || s.viewMode == Scope) ? 0
                                 : ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
         const int withCombos = compact + ui::px (64 + 4 + 122 + 4 + 84 + 10);
         auto lufsFor = [&] (int group) { return juce::jmin (ui::px (450), juce::jmin (r.getWidth() / 2, r.getWidth() - group - ui::px (16))); };
@@ -296,7 +301,7 @@ void BottomBar::resized()
         return;
     }
 
-    if (s.viewMode != Analyzer) return;               // the Key view has no controls here (they're on its page)
+    if (s.viewMode != Analyzer) return;               // the Key and Scope views have no controls here (they're on their pages)
 
     const bool roomForCombos = r.getWidth() >= ui::px (66 + 6 + 64 + 4 + 122 + 4 + 84 + 10 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
     for (auto* c : { &bpoBox, &chanBox, &gridBox }) c->setVisible (roomForCombos);

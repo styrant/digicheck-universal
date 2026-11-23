@@ -10,6 +10,7 @@
 #include "SpectrogramPresets.h"
 #include "balance/BalanceView.h"
 #include "key/KeyPage.h"
+#include "scope/ScopePage.h"
 
 class MainComponent : public juce::Component, private juce::Timer, private juce::OpenGLRenderer
 {
@@ -34,6 +35,7 @@ public:
     void applyRendererForTest() { applyRenderer(); }
     Settings& getSettings() { return settings; }
     KeyPage& getKeyPage() { return keyPage; }
+    ScopePage& getScopePage() { return scopePage; }
 
 private:
     void timerCallback() override;
@@ -99,6 +101,7 @@ private:
     KeyFinder keyFinder;
     LiveBalance liveBalance;
     LiveRecorder recorder;
+    ScopeTap scopeTap;
     TranscriptionSession transcription;
     ModelStore modelStore;
     TranscriptionPlayer keyPlayer;
@@ -108,6 +111,7 @@ private:
     SpectrogramView view;
     AnalyzerPanel analyzerPanel { analyzerProc };
     BalanceView balanceView { liveBalance, targetLibrary };
+    ScopePage scopePage { scopeTap, settings, [this] { saveAll(); } };
     KeyPage keyPage { keyFinder, transcription, recorder, modelStore, keyPlayer, &keyOutput, settings, [this] { saveAll(); } };
     void refreshBalanceTargets();
     void balanceTargetsAction (int action);

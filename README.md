@@ -37,7 +37,7 @@ Set-up in Azure: create an Artifact Signing account (Basic plan), complete ident
 Settings → Channel Select. (The Analyzer has its own channel box with the same choices plus Stereo.)
 
 ## Views
-Switch with the **Spectrogram | Analyzer | Balance | Key** buttons at the bottom left (keys **1-4**, **V** cycles, **K** goes to Key). The bottom bar stays the same in every view: Options, the LUFS readout, Tempo, Reset and Full screen are always there. The controls in the middle change with the view.
+Switch with the **Spectrogram | Analyzer | Balance | Key | Scope** buttons at the bottom left (keys **1-5**, **V** cycles, **K** goes to Key). The bottom bar stays the same in every view: Options, the LUFS readout, Tempo, Reset and Full screen are always there. The controls in the middle change with the view.
 
 - **Spectrogram:** the reassigned spectrogram described below. Bottom bar: Presets, Pause, **frequency scale**,
   **channel** (Left / Right / Mid / Side), Ref level -/+ and Settings (on narrow windows Settings, then the Ref
@@ -55,6 +55,18 @@ Switch with the **Spectrogram | Analyzer | Balance | Key** buttons at the bottom
   - Hover for the readout (frequency, level, note and cents). Right-click or **Settings** opens its settings panel.
   - Keys: F freeze, R reset meters, 0 full range.
   - It only runs while its view is visible, and its settings are saved with the app's.
+
+- **Scope:** a tempo-synced oscilloscope modelled on Scyllascope's design.
+  - The window is a musical length: **1/4, 1/2, 1, 2, 4 or 8 bars** at the BPM shown (click to type it; **T** = triplets). Beat and bar lines are drawn behind the wave.
+  - **Free** sweeps left to right and restarts at the left edge after 0.25 s of silence; **Scroll** scrolls instead; **Freeze** (or Space) stops it.
+  - **Spectral** colours each slice by its frequency content: red/orange for lows (kicks, bass), yellow/green for mids, purple for highs (hats). **AA** smooths the outline.
+  - **Gain** (-24 to +24 dB; Ctrl+wheel) magnifies quiet parts. Anything past 0 dBFS turns the clipping colour, and with negative gain a dashed line marks 0 dBFS.
+  - **BP** and its frequency knob show only a band (two cascaded band-passes, Q 1.4), e.g. 60 Hz to see the kick alone.
+  - **Side2SC** overlays the Side signal (L−R) on the main wave; **Hold** freezes a ghost copy behind the live wave for comparison.
+  - Mouse: the wheel zooms, Shift+wheel scrolls, Alt+wheel changes the length, drag zooms (vertical) and pans (horizontal), double-click shows everything. **Ctrl+drag selects** a region and shows its length, peak, RMS and crest factor. Ctrl+click pins a dB ruler.
+  - **Rec** arms the recorder: it starts with the next audio and records one window. Drag the wave icon into your DAW or Explorer to take it as a 24-bit WAV (right-click: Normalize, Trim silence, Snap to grid, Save as…). Recordings go to Documents\DigiCheck Universal\Scope Recordings.
+  - Menu: source (Stereo, Left, Right, Mid, Side, Peak), guide lines, and colour **themes** (Dark, Neon, DigiCheck). Scyllascope-style JSON themes in Documents\DigiCheck Universal\Scope Themes are loaded too.
+  - Reserved for the VST3 version: Sync to the host transport, Sync to Start, sidechain from another track or instance, track name/colour, listening to the BP band, and REAPER's embedded mode. They are shown greyed out.
 
 ## Rendering
 - The display is synced to the monitor's refresh rate (60/120/144 Hz…). New spectrogram columns pass through a ~30 ms buffer and are released at exactly the display speed, so the scroll is even on every frame.
@@ -148,7 +160,7 @@ Switch with the **Spectrogram | Analyzer | Balance | Key** buttons at the bottom
 - If the DSP can't keep up, the gap is drawn in white, as DigiCheck does.
 - A full-scale sine reads about 0 dBFS. `dsp_test` checks this on every build.
 
-Code layout: `Source/Reassigner.*` (DSP, no dependencies), `AnalysisEngine.*` (sample ring, DSP thread, column queue, analysis taps; no audio device), `AudioEngine.*` (the standalone app's inputs: devices, loopback, test signal), `LoopbackCapture.*` (WASAPI loopback), `SpectrogramView.*` (display), `SettingsDialog.*`, `key/` (key finder, Key page), `transcribe/` (engine wrapper, chords / melody, models, MIDI), `balance/` (tonal balance). The code is kept ready for a VST3 version: see [docs/VST3.md](docs/VST3.md).
+Code layout: `Source/Reassigner.*` (DSP, no dependencies), `AnalysisEngine.*` (sample ring, DSP thread, column queue, analysis taps; no audio device), `AudioEngine.*` (the standalone app's inputs: devices, loopback, test signal), `LoopbackCapture.*` (WASAPI loopback), `SpectrogramView.*` (display), `SettingsDialog.*`, `key/` (key finder, Key page), `transcribe/` (engine wrapper, chords / melody, models, MIDI), `balance/` (tonal balance), `scope/` (oscilloscope: `ScopeModel` has no JUCE dependency). The code is kept ready for a VST3 version: see [docs/VST3.md](docs/VST3.md).
 
 ## Building locally
 Requires CMake 3.24+, Visual Studio 2022 or newer (Desktop C++ workload) with its Clang tools (clang-cl), Ninja, and
