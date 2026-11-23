@@ -22,7 +22,19 @@ public:
         props = std::make_unique<juce::PropertiesFile> (o);
 
         juce::LookAndFeel::setDefaultLookAndFeel (&lnf);
+        // the layout check notes how far start-up got (a crash before the check shows up in CI's log)
+        juce::File startLog;
+        {
+            const auto a = juce::StringArray::fromTokens (commandLine, true);
+            if (const int lc = a.indexOf ("--layout-check"); lc >= 0 && lc + 1 < a.size())
+            {
+                startLog = juce::File::getCurrentWorkingDirectory().getChildFile (a[lc + 1].unquoted()).getChildFile ("progress.log");
+                startLog.getParentDirectory().createDirectory();
+                startLog.appendText ("initialise\n");
+            }
+        }
         window = std::make_unique<MainWindow> (*props);
+        if (startLog != juce::File()) startLog.appendText ("window created\n");
 
         // Self-test used by the build: "--test-screenshot out.png" runs the test signal,
         // saves screenshots of the main window and the settings dialog, then quits.

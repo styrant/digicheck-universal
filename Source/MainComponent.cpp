@@ -384,7 +384,9 @@ void MainComponent::saveAll()
 
 void MainComponent::applyRenderer()
 {
-    const bool wantGpu = settings.gpu && ! cpuOverride;
+    // SPECTROSCOPE_NO_GPU: never OpenGL (checks on machines without a real GPU driver)
+    static const bool noGpu = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_NO_GPU", {}).isNotEmpty();
+    const bool wantGpu = settings.gpu && ! cpuOverride && ! noGpu;
     if (wantGpu && ! glContext.isAttached())
     {
         view.setGpuMode (true);
