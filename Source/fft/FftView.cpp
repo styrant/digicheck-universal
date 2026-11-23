@@ -134,9 +134,9 @@ void FftView::menuFor (juce::TextButton& b, int which)
     {
         case 0: for (int i = 0; i < 5; ++i) m.addItem (kChannels[i], true, s.fftChannel == i, [this, i, apply] { s.fftChannel = i; apply(); }); break;
         case 1:
-            for (int i = 0; i < 6; ++i)
-                m.addItem (i == 0 ? juce::String ("No second curve") : (i == 5 ? juce::String ("Sidechain") + (scAvailable ? "" : " (VST3 version)") : juce::String (kSecondary[i])),
-                           i != 5 || scAvailable, s.fftSecondary == i, [this, i, apply] { s.fftSecondary = i; apply(); });
+            for (int i = 0; i < (scAvailable ? 6 : 5); ++i)           // Sidechain only where there is one (VST3)
+                m.addItem (i == 0 ? juce::String ("No second curve") : (i == 5 ? juce::String ("Sidechain") : juce::String (kSecondary[i])),
+                           true, s.fftSecondary == i, [this, i, apply] { s.fftSecondary = i; apply(); });
             m.addSeparator();
             for (int i = 0; i < 3; ++i) m.addItem (juce::String ("Style: ") + kStyles[i], true, s.fftSecStyle == i, [this, i, apply] { s.fftSecStyle = i; apply(); });
             m.addItem ("Colour...", [this] { juce::CallOutBox::launchAsynchronously (std::make_unique<LiveColourPicker> (hex (s.fftSecColour), [this] (juce::Colour c)
@@ -315,6 +315,19 @@ void FftView::paint (juce::Graphics& g)
         const double hz = hzAtX ((float) hoverX + 0.5f);
         g.setColour (juce::Colours::white.withAlpha (0.25f));
         g.drawVerticalLine (hoverX, (float) plot.getY(), (float) plot.getBottom());
+        // the horizontal line: the level at the cursor height
+        if (hoverY >= plot.getY() && hoverY <= plot.getBottom())
+        {
+            const double db = s.fftTop - (hoverY - plot.getY()) / (double) plot.getHeight() * (s.fftTop - s.fftBottom);
+            g.setColour (juce::Colours::white.withAlpha (0.45f));
+            for (float x = (float) plot.getX(); x < plot.getRight(); x += 6) g.drawLine (x, (float) hoverY, juce::jmin ((float) plot.getRight(), x + 3), (float) hoverY, 1.0f);
+            g.setFont (juce::FontOptions (ui::fs (12.0f)));
+            const auto t = juce::String (db, 1) + " dB";
+            const int w = ui::px (64);
+            auto box = juce::Rectangle<int> (plot.getX() + 4, juce::jlimit (plot.getY(), plot.getBottom() - ui::px (18), hoverY - ui::px (9)), w, ui::px (18));
+            g.setColour (juce::Colour (0xe0101215)); g.fillRoundedRectangle (box.toFloat(), 4);
+            g.setColour (kText); g.drawText (t, box, juce::Justification::centred);
+        }
         juce::String t = (hz >= 1000 ? juce::String (hz / 1000, 2) + " kHz" : juce::String (hz, hz < 100 ? 1 : 0) + " Hz") + "   " + noteName (hz, s.noteRef)
                          + "   " + juce::String (mainDb[(size_t) i], 1) + " dB";
         if (sec && i < (int) secDb.size()) t << "   " << juce::String (secDb[(size_t) i], 1) << " dB";
@@ -337,8 +350,8 @@ void FftView::paint (juce::Graphics& g)
     }
 }
 
-void FftView::mouseMove (const juce::MouseEvent& e) { hoverX = e.x; repaint (plot.expanded (0, 4)); }
-void FftView::mouseExit (const juce::MouseEvent&)    { hoverX = -1; repaint(); }
+void FftView::mouseMove (const juce::MouseEvent& e) { hoverX = e.x; hoverY = e.y; repaint (plot.expanded (40, 4)); }
+void FftView::mouseExit (const juce::MouseEvent&)    { hoverX = hoverY = -1; repaint(); }
 void FftView::mouseDown (const juce::MouseEvent& e)  { if (plot.contains (e.getPosition()) && ! e.mods.isPopupMenu()) engine.resetHold(); if (e.mods.isPopupMenu()) colourMenu(); }
 void FftView::mouseDoubleClick (const juce::MouseEvent&) { s.fftTop = 6; s.fftBottom = -90; repaint(); if (changed) changed(); }
 

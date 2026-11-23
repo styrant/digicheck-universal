@@ -61,7 +61,7 @@ private:
     double lastT = 0;
     juce::Rectangle<int> plot, header;
     std::vector<float> edges, mainDb, holdDb, secDb;
-    int hoverX = -1, headerInset = 0;
+    int hoverX = -1, hoverY = -1, headerInset = 0;
 
     juce::TextButton chanBtn, secBtn, sizeBtn, avgBtn, slopeBtn, smoothBtn, holdBtn { "Hold" }, freezeBtn { "Freeze" }, colourBtn { "Colours" };
 };

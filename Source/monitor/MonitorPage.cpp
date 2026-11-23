@@ -136,7 +136,24 @@ namespace
         g.drawText (t, r, j, false);
     }
 
-    double historySeconds (int h) { return h == 0 ? 30.0 : (h == 1 ? 60.0 : 300.0); }
+    // a horizontal cursor line across `area` at y, with its value in a small box at the right
+    void hoverLine (juce::Graphics& g, juce::Rectangle<float> area, float y, const juce::String& value)
+    {
+        if (y < area.getY() || y > area.getBottom()) return;
+        g.setColour (juce::Colours::white.withAlpha (0.55f));
+        for (float x = area.getX(); x < area.getRight(); x += 6) g.drawLine (x, y, juce::jmin (area.getRight(), x + 3), y, 1.0f);
+        g.setFont (juce::FontOptions (12.5f));
+        const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), value) + 14;
+        auto box = juce::Rectangle<float> (area.getRight() - w, juce::jlimit (area.getY(), area.getBottom() - 18, y - 9), w, 18);
+        g.setColour (juce::Colour (0xf0101215)); g.fillRoundedRectangle (box, 4);
+        g.setColour (juce::Colours::white); g.drawText (value, box, juce::Justification::centred);
+    }
+
+    // history lengths (Dynamics, Phase, History)
+    constexpr double kHistLengths[] = { 5, 10, 30, 60, 300, 600 };
+    const char* kHistNames[] = { "5 seconds", "10 seconds", "30 seconds", "1 minute", "5 minutes", "10 minutes" };
+    double historySeconds (int h) { return kHistLengths[juce::jlimit (0, 5, h)]; }
+    juce::String agoLabel (double secs) { return secs >= 60 ? juce::String ((int) secs / 60) + " min" : juce::String ((int) secs) + " s"; }
 }
 
 //==============================================================================
@@ -157,6 +174,12 @@ struct MonitorPage::Module : public juce::Component
     const MonitorModel& m() { return page.model(); }
 
     float textScale() { return 1.15f * page.textScaleFor (id); }
+    // where history entry `ago` (0 = newest) sits: driven by the page's smooth history clock, so the graphs
+    // glide instead of jumping every 100 ms (an entry is the centre of its 100 ms slot)
+    float histX (int ago, float right, float dx)
+    {
+        return right - (float) (page.historyPos() - (double) (m().historyCount() - 1 - ago)) * dx;
+    }
 
     void paint (juce::Graphics& g) override
     {
@@ -365,21 +388,41 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
         paintFooter (g, r.reduced (0, 2), juce::jlimit (12.0f, 18.0f, H * 0.17f));
     }
 
+    // peak lines on the bars: each holds its highest value for 1.5 s, then falls at 6 LU/s
+    std::array<double, 3> peakV { -200, -200, -200 }, peakT { 0, 0, 0 };
+    void advance (double dt) override
+    {
+        const auto& L = m().loudness();
+        const double v[3] = { L.getShortTerm(), L.getIntegrated(), L.getMomentary() };
+        for (int i = 0; i < 3; ++i)
+        {
+            if (v[i] >= peakV[(size_t) i]) { peakV[(size_t) i] = v[i]; peakT[(size_t) i] = 1.5; }
+            else if ((peakT[(size_t) i] -= dt) < 0) peakV[(size_t) i] = juce::jmax (v[i], peakV[(size_t) i] - 6.0 * dt);
+        }
+    }
+
+    // hover: a horizontal line across the bars with its value
+    int hoverY = -1;
+    juce::Rectangle<float> barsArea;
+    void mouseMove (const juce::MouseEvent& e) override { hoverY = barsArea.contains (e.position) ? e.y : -1; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override   { hoverY = -1; repaint(); }
+
     void paintBars (juce::Graphics& g)
     {
         const auto& L = m().loudness();
         auto r = body.toFloat();
-        const float f = 14.0f;
+        const float f = 16.0f;
         auto footer = r.removeFromBottom (f * 2.4f * gTextMul);
         g.setColour (kPanelLine); g.drawHorizontalLine ((int) footer.getY(), r.getX(), r.getRight());
         paintFooter (g, footer.reduced (0, 4), f);
         const float numH = juce::jlimit (34.0f, 70.0f, r.getHeight() * 0.16f);
-        auto numbers = r.removeFromBottom (numH * gTextMul / 1.15f + f * 1.6f * gTextMul);
+        const float titleH = 15.0f * 1.5f * gTextMul;
+        auto numbers = r.removeFromBottom (numH * gTextMul / 1.15f + titleH);
         const float colW = r.getWidth() / 3;
         const float barW = juce::jlimit (28.0f, 90.0f, colW * 0.24f);
+        const float scaleW = 40.0f * gTextMul;
         const double tgt = target();
         auto lab = [&] (double v) { const double x = relative() ? v - tgt : v; return (relative() && x > 0 ? "+" : "") + juce::String ((int) std::lround (x)); };
-        // scale marks: every 3 dB near the top, then wider
         std::vector<double> marks;
         if (scale().nonLinear || st().monitorLoudRange == 0) marks = { 0, -3, -6, -10, -15, -20, -30, -40, -50 };
         else for (double v = std::ceil (hi() / 3) * 3; v >= lo(); v -= (hi() - lo() > 40 ? 6 : 3)) marks.push_back (v);
@@ -389,14 +432,18 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
         const Bar bars[3] = { { "Short Term", L.getShortTerm(), kWarn, L.getShortTerm(), "LUFS" },
                               { "Integrated", L.getIntegrated(), kBad, L.getIntegrated(), "LUFS" },
                               { "Momentary", mom, kWarn, momMax, "Max\nLUFS" } };
+        juce::Rectangle<float> firstBar, lastBar;
+        std::function<float (double)> yOfAny;
         for (int i = 0; i < 3; ++i)
         {
             auto col = juce::Rectangle<float> (r.getX() + i * colW, r.getY(), colW, r.getHeight());
-            auto area = col.withSizeKeepingCentre (barW + 50 * gTextMul, col.getHeight());
-            auto bar = area.removeFromLeft (barW).withTrimmedTop (6).withTrimmedBottom (4);
-            auto sc = area.withTrimmedLeft (6);
+            // the bar in the middle of its column, its scale to the right
+            const float cx = col.getCentreX();
+            auto bar = juce::Rectangle<float> (cx - barW * 0.5f, col.getY() + 8, barW, col.getHeight() - 14);
+            auto sc = juce::Rectangle<float> (bar.getRight() + 6, col.getY(), scaleW, col.getHeight());
             auto yOf = [&] (double v) { return bar.getBottom() - frac (v) * bar.getHeight(); };
-            // background: dark, tinted above the target
+            if (i == 0) { firstBar = bar; yOfAny = [this, bar] (double v) { return bar.getBottom() - frac (v) * bar.getHeight(); }; }
+            lastBar = bar;
             g.setColour (juce::Colour (0xff1d2024)); g.fillRect (bar);
             if (hasTarget()) { g.setColour (bars[i].over.withAlpha (0.08f)); g.fillRect (bar.withBottom (yOf (tgt))); }
             const double v = bars[i].v;
@@ -407,34 +454,49 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
                 g.setColour (kGood); g.fillRect (bar.withTop (juce::jmax (y, yt)));
                 if (y < yt) { g.setColour (bars[i].over); g.fillRect (bar.withTop (y).withBottom (yt)); }
             }
-            // target tick and the LRA bar (on the Integrated meter)
-            if (hasTarget()) { g.setColour (juce::Colours::white.withAlpha (0.8f)); g.fillRect (bar.getX() - 5, yOf (tgt) - 1, 4.0f, 2.0f); }
+            // the peak line
+            if (peakV[(size_t) i] > lo() && peakV[(size_t) i] > -70)
+            {
+                const float y = yOf (peakV[(size_t) i]);
+                g.setColour (juce::Colours::white.withAlpha (0.9f)); g.fillRect (bar.getX(), y - 1.0f, bar.getWidth(), 2.0f);
+            }
+            if (hasTarget()) { g.setColour (juce::Colours::white.withAlpha (0.8f)); g.fillRect (bar.getX() - 6, yOf (tgt) - 1, 5.0f, 2.0f); }
             if (i == 1 && L.getRangeLow() > -70 && L.getRangeHigh() > L.getRangeLow())
             {
                 g.setColour (juce::Colours::white);
-                g.fillRect (juce::Rectangle<float>::leftTopRightBottom (bar.getX() - 4, yOf (L.getRangeHigh()), bar.getX() - 1, yOf (L.getRangeLow())));
+                g.fillRect (juce::Rectangle<float>::leftTopRightBottom (bar.getX() - 5, yOf (L.getRangeHigh()), bar.getX() - 2, yOf (L.getRangeLow())));
             }
             for (double mk : marks)
             {
                 if (mk > hi() + 0.01 || mk < lo() - 0.01) continue;
-                text (g, lab (mk), { sc.getX(), yOf (mk) - 7, sc.getWidth(), 14 }, 10.5f, kDim, juce::Justification::left);
+                text (g, lab (mk), { sc.getX(), yOf (mk) - 8, sc.getWidth(), 16 }, 12.0f, kDim, juce::Justification::left);
             }
-            text (g, relative() ? "LU" : "-Inf", { sc.getX(), bar.getBottom() - 7, sc.getWidth(), 14 }, 10.5f, kFaint, juce::Justification::left);
+            text (g, relative() ? "LU" : "-Inf", { sc.getX(), bar.getBottom() - 8, sc.getWidth(), 16 }, 12.0f, kFaint, juce::Justification::left);
 
-            // the readout under the bar
-            auto nb = juce::Rectangle<float> (col.getX(), numbers.getY(), colW, numbers.getHeight());
-            text (g, bars[i].name, nb.removeFromTop (f * 1.4f * gTextMul), 12.0f, kDim);
+            // the title and the readout, centred on the bar
+            auto nb = juce::Rectangle<float> (cx - colW * 0.5f, numbers.getY(), colW, numbers.getHeight());
+            text (g, bars[i].name, nb.removeFromTop (titleH), 15.0f, kDim);
             const double shown = bars[i].shown;
             const auto c = i == 1 ? integratedColour (shown) : levelColour (shown);
             const auto str = relative() && shown > -70 ? num (shown - tgt, 1) : plain (shown, 1);
-            g.setFont (juce::FontOptions (numH * gTextMul / 1.15f));
+            g.setFont (juce::FontOptions (juce::jmin (numH * gTextMul, nb.getHeight())));
             const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), str);
             text (g, str, nb, numH, c);
             const auto unit = relative() ? juce::String (i == 2 ? "Max\nLU" : "LU") : juce::String (bars[i].unit);
-            g.setColour (kFaint); g.setFont (juce::FontOptions (11.0f * gTextMul));
-            g.drawFittedText (unit, juce::Rectangle<float> (nb.getCentreX() + tw * 0.5f + 3, nb.getCentreY() - 2, 60, nb.getHeight() * 0.45f).toNearestInt(),
+            g.setColour (kFaint); g.setFont (juce::FontOptions (12.0f * gTextMul));
+            g.drawFittedText (unit, juce::Rectangle<float> (cx + tw * 0.5f + 4, nb.getCentreY() - 4, 70, nb.getHeight() * 0.5f).toNearestInt(),
                               juce::Justification::topLeft, 2);
             if (i == 2) momLabel = nb.toNearestInt();
+        }
+        barsArea = juce::Rectangle<float>::leftTopRightBottom (r.getX(), firstBar.getY(), r.getRight(), firstBar.getBottom());
+        if (hoverY >= 0 && yOfAny)
+        {
+            // the value at the cursor (inverting the bar mapping)
+            double loV = lo(), hiV = hi();
+            for (int it = 0; it < 40; ++it) { const double mid = 0.5 * (loV + hiV); (yOfAny (mid) > hoverY ? loV : hiV) = mid; }
+            const double v = 0.5 * (loV + hiV);
+            const auto t = relative() ? num (v - tgt, 1) + " LU" : juce::String (v, 1) + " LUFS";
+            hoverLine (g, { r.getX(), firstBar.getY(), r.getWidth(), firstBar.getHeight() }, (float) hoverY, t);
         }
     }
 
@@ -463,7 +525,6 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
         menu.addSubMenu ("Bar range", range);
         menu.addItem ("Scale relative to the target (LU)", hasTarget(), st().monitorRelative, [this] { st().monitorRelative = ! st().monitorRelative; page.changed(); });
         menu.addItem ("Reset when playback starts (VST3)", true, st().monitorResetOnPlay, [this] { st().monitorResetOnPlay = ! st().monitorResetOnPlay; page.changed(); });
-        menu.addSectionHeader ("Tall enough (or maximised): the meter bars");
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -557,30 +618,41 @@ struct MonitorPage::DynamicsModule : public MonitorPage::Module
         for (double v : { 6.0, 8.0, 12.0, 16.0 }) g.drawHorizontalLine ((int) yOf (v), hist.getX(), hist.getRight());
         for (double v : { 6.0, 12.0 }) text (g, juce::String ((int) v), { hist.getX() + 2, yOf (v) - 13, 20, 12 }, ui::fs (10), kFaint, juce::Justification::left);
         const float dx = hist.getWidth() / (float) (secs * 10);
-        for (int k = 0; k < entries; ++k)
+        g.saveState();
+        g.reduceClipRegion (hist.toNearestInt());
         {
-            const auto& e = m().history (k);
-            if (e.psr < 0) continue;
-            const float x = hist.getRight() - (k + 1) * dx;
-            g.setColour (zoneOf (e.psr).c.withAlpha (0.75f));
-            g.fillRect (juce::Rectangle<float>::leftTopRightBottom (x, yOf (e.psr), x + dx + 0.6f, hist.getBottom()));
+            std::array<juce::RectangleList<float>, 5> byZone;           // one fill per colour, not one per bar
+            for (int k = 0; k < juce::jmin (m().historySize(), entries + 3); ++k)
+            {
+                const auto& e = m().history (k);
+                if (e.psr < 0) continue;
+                const float x = histX (k, hist.getRight(), dx) - dx * 0.5f;
+                if (x > hist.getRight()) continue;
+                int z = 0; for (int i = 0; i < 5; ++i) if (e.psr >= kZones[i].from) z = i;
+                byZone[(size_t) z].addWithoutMerging (juce::Rectangle<float>::leftTopRightBottom (x, yOf (e.psr), x + dx + 0.6f, hist.getBottom()));
+            }
+            for (int z = 0; z < 5; ++z) { g.setColour (kZones[z].c.withAlpha (0.75f)); g.fillRectList (byZone[(size_t) z]); }
         }
         if (st().monitorDynLoud && entries > 1)
         {
             // short-term loudness on its own scale: -40 .. 0 LUFS
             auto yL = [&] (double v) { return hist.getBottom() - (float) (juce::jlimit (0.0, 1.0, (v + 40.0) / 40.0)) * hist.getHeight(); };
             juce::Path p; bool started = false;
-            for (int k = 0; k < entries; ++k)
+            for (int k = 0; k < juce::jmin (m().historySize(), entries + 3); ++k)
             {
                 const auto& e = m().history (k);
-                const float x = hist.getRight() - (k + 0.5f) * dx;
+                const float x = histX (k, hist.getRight(), dx);
                 if (e.shortTerm < -60) { started = false; continue; }
                 if (! started) { p.startNewSubPath (x, yL (e.shortTerm)); started = true; } else p.lineTo (x, yL (e.shortTerm));
             }
             g.setColour (juce::Colours::white.withAlpha (0.7f)); g.strokePath (p, juce::PathStrokeType (1.3f));
+        }
+        g.restoreState();
+        if (st().monitorDynLoud && entries > 1)
+        {
             text (g, "short-term LUFS", { hist.getRight() - 220, hist.getY() + 2, 216, 13 }, ui::fs (10), kDim, juce::Justification::right);
         }
-        text (g, juce::String (juce::roundToInt (secs < 60 ? secs : secs / 60)) + (secs < 60 ? " s" : " min"),
+        text (g, agoLabel (secs),
               { hist.getX() + 4, hist.getY() + 2, 120, 13 }, ui::fs (10), kFaint, juce::Justification::left);
         text (g, "PSR dB", { hist.getX() + 4, hist.getBottom() - 15, 120, 13 }, ui::fs (10), kFaint, juce::Justification::left);
     }
@@ -588,14 +660,9 @@ struct MonitorPage::DynamicsModule : public MonitorPage::Module
     void addMenuItems (juce::PopupMenu& menu) override
     {
         juce::PopupMenu h;
-        const char* names[] = { "30 seconds", "1 minute", "5 minutes" };
-        for (int i = 0; i < 3; ++i) h.addItem (names[i], true, st().monitorHistory == i, [this, i] { st().monitorHistory = i; page.changed(); });
+        for (int i = 0; i < 6; ++i) h.addItem (kHistNames[i], true, st().monitorHistory == i, [this, i] { st().monitorHistory = i; page.changed(); });
         menu.addSubMenu ("History length", h);
         menu.addItem ("Short-term loudness line", true, st().monitorDynLoud, [this] { st().monitorDynLoud = ! st().monitorDynLoud; page.changed(); });
-        menu.addSeparator();
-        menu.addSectionHeader ("PSR: true peak (last 3 s) - short-term loudness");
-        menu.addSectionHeader ("PLR: true peak (since reset) - integrated loudness");
-        menu.addSectionHeader ("Under 6 crushed, 8-12 punchy, over 16 open");
     }
 };
 
@@ -605,6 +672,10 @@ struct MonitorPage::LevelsModule : public MonitorPage::Module
 {
     using Module::Module;
     std::array<juce::Rectangle<int>, 4> numbersR;
+    juce::Rectangle<float> metersR;
+    int hoverY = -1;
+    void mouseMove (const juce::MouseEvent& e) override { hoverY = metersR.contains (e.position) ? e.y : -1; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override   { hoverY = -1; repaint(); }
 
     double lo() { return st().monitorRange == 1 ? -40.0 : (st().monitorRange == 2 ? -90.0 : -60.0); }
     float pos (double db) { const double l = lo(); return (float) std::pow (juce::jlimit (0.0, 1.0, (db - l) / -l), l < -60 ? 2.0 : 1.6); }
@@ -669,6 +740,14 @@ struct MonitorPage::LevelsModule : public MonitorPage::Module
             text (g, plain (maxPk, 1), nr.removeFromTop (numbersH * 0.5f), ui::fs (12.5f), maxPk > -0.1 ? kBad : kHeaderText, juce::Justification::centred, true);
             text (g, plain (rms, 1), nr, ui::fs (12), kDim);
         }
+        // the hover line: the level at the cursor
+        metersR = juce::Rectangle<float> (x0 - scaleW, meters.getY(), total + 2 * scaleW, meters.getHeight());
+        if (hoverY >= 0)
+        {
+            const double l = lo(), f = juce::jlimit (0.0, 1.0, (meters.getBottom() - hoverY) / (double) meters.getHeight());
+            const double db = l + (-l) * std::pow (f, 1.0 / (l < -60 ? 2.0 : 1.6));
+            hoverLine (g, metersR, (float) hoverY, juce::String (db, 1) + " dB");
+        }
         // the peak target (Loudness > Targets) as a red dashed line across the meters
         if (st().monitorTarget != kNoTarget && st().monitorPeakTarget < 0 && st().monitorPeakTarget > lo())
         {
@@ -693,7 +772,6 @@ struct MonitorPage::LevelsModule : public MonitorPage::Module
         const char* names[] = { "-60 dB", "-40 dB", "-90 dB" };
         for (int i = 0; i < 3; ++i) range.addItem (names[i], true, st().monitorRange == i, [this, i] { st().monitorRange = i; page.changed(); });
         menu.addSubMenu ("Scale", range);
-        menu.addSectionHeader ("Click the numbers to reset the maxima");
     }
 
     void mouseDoubleClick (const juce::MouseEvent& e) override
@@ -743,7 +821,7 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
     {
         // radius from the view's size: about 1 px per 250 px of view, at least a 2 x 2 dot
         const float size = (float) juce::jmin (plot.getWidth(), plot.getHeight());
-        const float r = juce::jmax (0.75f, size / 250.0f);
+        const float r = juce::jlimit (0.75f, 2.6f, size / 330.0f);
         const float gain = st().monitorPoints == 0 ? 0.6f : (st().monitorPoints == 2 ? 1.7f : 1.0f);
         const int key = juce::roundToInt (r * 100) * 10 + st().monitorPoints;
         if (key == kernelFor) return;
@@ -851,8 +929,13 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
                 }
                 else
                 {
-                    const float s = la.getWidth() * 0.5f * (float) autoGain;
-                    px = la.getCentreX() + (float) x * s; py = la.getCentreY() - (float) y * s;
+                    // the L/R box |l|, |r| <= 1 is the diamond: a mono full-scale sample (y = sqrt 2) reaches its
+                    // tip, hence the 1 / sqrt 2. Anything beyond the edge (auto gain catching up) is drawn on it
+                    const float s = la.getWidth() * 0.5f * (float) autoGain * 0.70710678f;
+                    double fx = x * s, fy = y * s;
+                    const double half = la.getWidth() * 0.5, d = std::abs (fx) + std::abs (fy);
+                    if (d > half) { fx *= half / d; fy *= half / d; }
+                    px = la.getCentreX() + (float) fx; py = la.getCentreY() - (float) fy;
                 }
                 const int ix = (int) px, iy = (int) py;
                 if (ix < R || iy < R || ix + R + 1 >= W || iy + R + 1 >= H) continue;
@@ -1088,14 +1171,19 @@ struct MonitorPage::PhaseModule : public MonitorPage::Module
         g.setColour (kGrid); g.drawHorizontalLine ((int) yOf (0), r.getX(), r.getRight());
         const float dx = r.getWidth() / (float) (secs * 10);
         juce::Path p;
-        for (int k = 0; k < entries; ++k)
+        juce::RectangleList<float> neg;
+        g.saveState();
+        g.reduceClipRegion (r.toNearestInt());
+        for (int k = 0; k < juce::jmin (m().historySize(), entries + 3); ++k)
         {
             const auto& e = m().history (k);
-            const float x = r.getRight() - (k + 0.5f) * dx;
+            const float x = histX (k, r.getRight(), dx);
             if (k == 0) p.startNewSubPath (x, yOf (e.correlation)); else p.lineTo (x, yOf (e.correlation));
-            if (e.correlation < 0) { g.setColour (kBad.withAlpha (0.5f)); g.fillRect (juce::Rectangle<float>::leftTopRightBottom (x - dx * 0.5f, yOf (0), x + dx * 0.5f + 0.5f, yOf (e.correlation))); }
+            if (e.correlation < 0) neg.addWithoutMerging (juce::Rectangle<float>::leftTopRightBottom (x - dx * 0.5f, yOf (0), x + dx * 0.5f + 0.5f, yOf (e.correlation)));
         }
+        g.setColour (kBad.withAlpha (0.5f)); g.fillRectList (neg);
         g.setColour (kGood.withAlpha (0.85f)); g.strokePath (p, juce::PathStrokeType (1.3f));
+        g.restoreState();
         text (g, "+1", { r.getX() + 3, r.getY() + 1, 20, 12 }, ui::fs (9.5f), kFaint, juce::Justification::left);
         text (g, "-1", { r.getX() + 3, r.getBottom() - 13, 20, 12 }, ui::fs (9.5f), kFaint, juce::Justification::left);
     }
@@ -1103,11 +1191,8 @@ struct MonitorPage::PhaseModule : public MonitorPage::Module
     void addMenuItems (juce::PopupMenu& menu) override
     {
         juce::PopupMenu h;
-        const char* names[] = { "30 seconds", "1 minute", "5 minutes" };
-        for (int i = 0; i < 3; ++i) h.addItem (names[i], true, st().monitorHistory == i, [this, i] { st().monitorHistory = i; page.changed(); });
+        for (int i = 0; i < 6; ++i) h.addItem (kHistNames[i], true, st().monitorHistory == i, [this, i] { st().monitorHistory = i; page.changed(); });
         menu.addSubMenu ("History length", h);
-        menu.addSectionHeader ("+1 mono, 0 unrelated L/R, -1 inverted polarity");
-        menu.addSectionHeader ("White: 3 s average. Red tick: lowest since reset");
     }
 };
 
@@ -1117,10 +1202,10 @@ struct MonitorPage::PhaseModule : public MonitorPage::Module
 struct MonitorPage::HistoryModule : public MonitorPage::Module
 {
     using Module::Module;
-    int hoverX = -1;
+    int hoverX = -1, hoverY = -1;
     juce::Rectangle<float> plotR;
 
-    double seconds() { const double l[] = { 30, 60, 300, 600 }; return l[juce::jlimit (0, 3, st().monitorHistLen)]; }
+    double seconds() { return historySeconds (st().monitorHistLen); }
     bool hasTarget() { return st().monitorTarget != kNoTarget; }
 
     void paintBody (juce::Graphics& g) override
@@ -1162,11 +1247,11 @@ struct MonitorPage::HistoryModule : public MonitorPage::Module
         auto trace = [&] (int which, juce::Colour c, float width)
         {
             juce::Path p, over; bool on = false, onOver = false;
-            for (int k = entries - 1; k >= 0; --k)
+            for (int k = juce::jmin (m().historySize(), entries + 3) - 1; k >= 0; --k)
             {
                 const auto& e = m().history (k);
                 const float v = which == 0 ? e.momentary : (which == 1 ? e.shortTerm : e.integrated);
-                const float x = r.getRight() - (k + 0.5f) * dx;
+                const float x = histX (k, r.getRight(), dx);
                 if (v < -100) { on = onOver = false; continue; }
                 const float y = yOf (v);
                 if (! on) { p.startNewSubPath (x, y); on = true; } else p.lineTo (x, y);
@@ -1196,11 +1281,16 @@ struct MonitorPage::HistoryModule : public MonitorPage::Module
         // hover: the values then
         if (hoverX >= r.getX() && hoverX < r.getRight())
         {
-            const int k = (int) ((r.getRight() - hoverX) / dx);
+            const int k = juce::roundToInt ((histX (0, r.getRight(), dx) - hoverX) / dx);
             if (k >= 0 && k < entries)
             {
                 const auto& e = m().history (k);
                 g.setColour (juce::Colours::white.withAlpha (0.3f)); g.drawVerticalLine (hoverX, r.getY(), r.getBottom());
+                if (hoverY >= r.getY() && hoverY <= r.getBottom())
+                {
+                    const double v = lo + (r.getBottom() - hoverY) / r.getHeight() * (hi - lo);
+                    hoverLine (g, r, (float) hoverY, rel ? num (v - tgt, 1) + " LU" : juce::String (v, 1) + " LUFS");
+                }
                 auto v = [&] (float x) { return x < -100 ? juce::String ("-inf") : (rel ? num (x - tgt, 1) : juce::String (x, 1)); };
                 const auto t = "-" + juce::String (k / 10.0, 1) + " s    M " + v (e.momentary) + "   S " + v (e.shortTerm) + "   I " + v (e.integrated);
                 const float w = 300 * gTextMul;
@@ -1210,8 +1300,8 @@ struct MonitorPage::HistoryModule : public MonitorPage::Module
             }
         }
     }
-    void mouseMove (const juce::MouseEvent& e) override { hoverX = e.x; repaint(); }
-    void mouseExit (const juce::MouseEvent&) override   { hoverX = -1; repaint(); }
+    void mouseMove (const juce::MouseEvent& e) override { hoverX = e.x; hoverY = e.y; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override   { hoverX = hoverY = -1; repaint(); }
 
     void addMenuItems (juce::PopupMenu& menu) override
     {
@@ -1219,8 +1309,7 @@ struct MonitorPage::HistoryModule : public MonitorPage::Module
         for (int i = 0; i < 3; ++i)
             menu.addItem (traces[i], true, (st().monitorHistTraces >> i) & 1, [this, i] { st().monitorHistTraces ^= 1 << i; page.changed(); });
         juce::PopupMenu len;
-        const char* names[] = { "30 seconds", "1 minute", "5 minutes", "10 minutes" };
-        for (int i = 0; i < 4; ++i) len.addItem (names[i], true, st().monitorHistLen == i, [this, i] { st().monitorHistLen = i; page.changed(); });
+        for (int i = 0; i < 6; ++i) len.addItem (kHistNames[i], true, st().monitorHistLen == i, [this, i] { st().monitorHistLen = i; page.changed(); });
         menu.addSubMenu ("Length", len);
         menu.addItem ("Relative to the target (LU)", st().monitorTarget != kNoTarget, st().monitorRelative, [this] { st().monitorRelative = ! st().monitorRelative; page.changed(); });
     }
@@ -1305,6 +1394,15 @@ void MonitorPage::onFrame (double t)
     pump();
     const double dt = lastFrame > 0 ? juce::jlimit (0.0, 0.25, t - lastFrame) : 1.0 / 60;
     lastFrame = t;
+    // the history clock: one entry per 100 ms, advanced smoothly each frame and kept ~150 ms behind the
+    // newest entry (entries arrive in bursts with the audio); jumps after a reset or a stall
+    if (! held && ! paused)
+    {
+        histPos += dt * 10.0;
+        const double err = ((double) engine.historyCount() - 1.5) - histPos;
+        if (std::abs (err) > 20) histPos = (double) engine.historyCount() - 1.5;
+        else histPos += err * 0.04;
+    }
     if (! active || ! isShowing()) return;
     for (auto& m : modules)
         if (m->isVisible()) { if (! held && ! paused) m->advance (dt); m->repaint(); }
@@ -1537,8 +1635,6 @@ void MonitorPage::showLayoutMenu()
         s.monitorOrder = "0,1,2,3,4,5"; s.monitorShown = 63; s.monitorWide = 35; s.monitorMax = -1; s.monitorCols = 0;
         updateChips(); layoutModules(); repaint(); changed();
     });
-    menu.addSeparator();
-    menu.addSectionHeader ("Drag a module's title onto another to swap them");
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&layoutBtn));
 }
 
@@ -1562,5 +1658,6 @@ void MonitorPage::loadForTest (const juce::File& f)
         engine.push (buf.getReadPointer (0) + p, buf.getReadPointer (1) + p, juce::jmin (step, len - p));
         for (auto& m : modules) if (m->isVisible()) m->advance (1.0 / 60);
     }
+    histPos = (double) engine.historyCount() - 1.0;
     for (auto& m : modules) m->repaint();
 }

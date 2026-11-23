@@ -90,7 +90,7 @@ struct Settings
     int    monitorHoldTime = 2;   // levels peak hold: 0 0.25 s, 1 0.5 s, 2 1.5 s, 3 5 s, 4 until reset
     int    monitorRmsTime = 1;    // levels RMS integration: 0 50 ms, 1 300 ms, 2 1 s, 3 3 s
     int    monitorHistTraces = 7; // History: bit 0 momentary, 1 short-term, 2 integrated
-    int    monitorHistLen = 1;    // History: 0 30 s, 1 1 min, 2 5 min, 3 10 min
+    int    monitorHistLen = 3;    // History: 0 5 s, 1 10 s, 2 30 s, 3 1 min, 4 5 min, 5 10 min
     int    monitorPoints = 1;     // Sound Field point brightness: 0 subtle, 1 normal, 2 bright
     juce::String monitorOrder = "0,1,2,3,4";   // module order: loudness, dynamics, levels, sound field, phase
     int    monitorShown  = 31;    // bit per module
@@ -103,7 +103,7 @@ struct Settings
     int    monitorRange  = 0;     // levels scale: 0 -60, 1 -40, 2 -90 dB
     bool   monitorAes    = false; // RMS + 3 dB (AES17: a sine reads its peak)
     int    monitorField  = 0;     // 0 polar sample, 1 polar level, 2 lissajous
-    int    monitorHistory = 1;    // 0 30 s, 1 1 min, 2 5 min
+    int    monitorHistory = 3;    // Dynamics / Phase history: same lengths as monitorHistLen
     bool   monitorDynLoud = true; // dynamics history: short-term loudness line
     double bpm        = 120.0;    // tempo calculator
     bool   tempoTriplets = false, tempoDotted = false;
@@ -234,7 +234,7 @@ struct Settings
         monitorHoldTime = juce::jlimit (0, 4, p.getIntValue ("monitorHoldTime", monitorHoldTime));
         monitorRmsTime = juce::jlimit (0, 3, p.getIntValue ("monitorRmsTime", monitorRmsTime));
         monitorHistTraces = p.getIntValue ("monitorHistTraces", monitorHistTraces) & 7;
-        monitorHistLen = juce::jlimit (0, 3, p.getIntValue ("monitorHistLen", monitorHistLen));
+        monitorHistLen = juce::jlimit (0, 5, p.getIntValue ("monitorHistLen", monitorHistLen));
         monitorPoints = juce::jlimit (0, 2, p.getIntValue ("monitorPoints", monitorPoints));
         monitorOrder  = p.getValue ("monitorOrder", monitorOrder);
         monitorShown  = p.getIntValue ("monitorShown", monitorShown) & 63;
@@ -247,12 +247,17 @@ struct Settings
         monitorRange  = juce::jlimit (0, 2, p.getIntValue ("monitorRange", monitorRange));
         monitorAes    = p.getBoolValue ("monitorAes", monitorAes);
         monitorField  = juce::jlimit (0, 2, p.getIntValue ("monitorField", monitorField));
-        monitorHistory = juce::jlimit (0, 2, p.getIntValue ("monitorHistory", monitorHistory));
+        monitorHistory = juce::jlimit (0, 5, p.getIntValue ("monitorHistory", monitorHistory));
         monitorDynLoud = p.getBoolValue ("monitorDynLoud", monitorDynLoud);
         if (p.getIntValue ("settingsVersion", 1) < 3)        // v3: the History module (shown, full width), more targets
         {
             monitorShown |= 32; monitorWide |= 32;
             if (monitorTarget == 6) monitorTarget = 16;      // "No target" moved to the end of the list
+        }
+        if (p.getIntValue ("settingsVersion", 1) < 4)        // v4: 5 s and 10 s history lengths added in front
+        {
+            if (p.containsKey ("monitorHistLen")) monitorHistLen = juce::jlimit (0, 5, monitorHistLen + 2);
+            if (p.containsKey ("monitorHistory")) monitorHistory = juce::jlimit (0, 5, monitorHistory + 2);
         }
         bpm        = p.getDoubleValue ("bpm", bpm);
         tempoTriplets = p.getBoolValue ("tempoTriplets", tempoTriplets);
@@ -276,7 +281,7 @@ struct Settings
         p.setValue ("noteRef", noteRef);       p.setValue ("source", source);
         p.setValue ("showLufs", showLufs);     p.setValue ("gpu", gpu);
         p.setValue ("fpsCap", fpsCap);
-        p.setValue ("settingsVersion", 3);
+        p.setValue ("settingsVersion", 4);
         p.setValue ("textSize", textSize);     p.setValue ("textScaleCustom", textScaleCustom);     p.setValue ("autoHideBar", autoHideBar);
         p.setValue ("chL", chL);               p.setValue ("chR", chR);
         p.setValue ("windowState", windowState);

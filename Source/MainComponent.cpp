@@ -576,7 +576,6 @@ void MainComponent::setUpPlugin()
     {
         juce::PopupMenu m, colours;
         const auto apply = [this] { view.sidechainStyleChanged(); saveAll(); if (auto* e = host->sidechainEngine()) e->setSpectrogramActive (settings.viewMode == BottomBar::Spectrogram && settings.specSc); };
-        m.addSectionHeader (host->sidechainConnected() ? "Sidechain: connected" : "Sidechain: route a track to this plugin's sidechain input");
         m.addItem ("Show the sidechain", true, settings.specSc, [this, apply] { settings.specSc = ! settings.specSc; apply(); });
         m.addItem ("Style: tint (its colour, by level)", true, settings.specScStyle == 0, [this, apply] { settings.specScStyle = 0; apply(); });
         m.addItem ("Style: contour lines (the main picture stays clear)", true, settings.specScStyle == 1, [this, apply] { settings.specScStyle = 1; apply(); });

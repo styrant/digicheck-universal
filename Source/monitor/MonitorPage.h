@@ -59,6 +59,7 @@ public:
     void applyTargetPreset (int index);          // a loudness standard: its target, tolerance, peak target and gate
     void showTargetsPanel (juce::Rectangle<int> anchor, juce::Component* from);
     void applyGate();
+    double historyPos() const                    { return histPos; }      // fractional history entry at the right edge
     void applyLevelOptions();                    // peak hold and RMS times
     std::function<bool()> hostPlaying;           // VST3: the transport (Reset when playback starts)
     float textScaleFor (int id) const;           // the module's Text size (1 = the Monitor's default)
@@ -81,7 +82,7 @@ private:
     const bool shared;
     bool active = false, held = false, paused = false, lastPlaying = false;
     juce::TextButton pauseBtn { "Pause" };
-    double lastFrame = 0;
+    double lastFrame = 0, histPos = 0;
 
     std::array<std::unique_ptr<Module>, NumModules> modules;
     std::array<juce::TextButton, NumModules> chips;

@@ -992,8 +992,6 @@ void ScopePage::showMenu()
     }
     else
     {
-        m.addItem (3, "Sidechain from another track (VST3 version)", false);
-        m.addItem (4, "Sync to the DAW (VST3 version)", false);
         m.addItem (702, "Overlay style: filled", true, s.scopeScStyle == 0);
         m.addItem (703, "Overlay style: outline", true, s.scopeScStyle == 1);
     }
