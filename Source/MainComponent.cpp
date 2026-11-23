@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "listen/ListenPanel.h"
 #include "SettingsDialog.h"
 
 namespace
@@ -34,6 +35,9 @@ namespace
             dotted.onClick   = [this] { s.tempoDotted   = dotted.getToggleState();   resizeToFit(); changed(); };
             resizeToFit();
         }
+
+        // the tempo changed outside (the VST3 version follows the host's tempo)
+        void syncFromSettings() { if (std::abs (bpm.getValue() - s.bpm) > 1e-6) { bpm.setValue (s.bpm, juce::dontSendNotification); repaint(); } }
 
         void resizeToFit()
         {
@@ -160,18 +164,9 @@ namespace
 
 }
 
-MainComponent::MainComponent (juce::PropertiesFile& p)
-    : props (p), view (settings, engine, [this] (Change c) { onChange (c); })
+MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& e, AudioEngine* d, HostLink* h)
+    : props (p), core (c), engine (e), device (d), host (h), view (settings, engine, [this] (Change ch) { onChange (ch); })
 {
-    settings.load (props);
-    if (settings.analyzerState.isNotEmpty()) analyzerProc.restoreStateXml (settings.analyzerState);
-    engine.setAnalyzer (&analyzerProc);
-    engine.addTap (&keyFinder);
-    engine.addTap (&liveBalance);
-    engine.addTap (&recorder);
-    engine.addTap (&scopeTap);
-    engine.addTap (&monitorTap);
-    engine.addTap (&fftTap);
     setWantsKeyboardFocus (true);
 
     status.setJustificationType (juce::Justification::topLeft);
@@ -241,16 +236,16 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     ui::textScale = ui::presetScale (settings.textSize, settings.textScaleCustom);
     textSlider.setVisible (settings.textSize == 3);
 
-    startBtn.onClick    = [this] { if (engine.isRunning()) stopSource(); else startSelected(); };
+    startBtn.onClick    = [this] { if (inputRunning()) stopSource(); else startSelected(); };
     settingsBtn.onClick = [this] { if (settings.viewMode == BottomBar::Analyzer) analyzerPanel.toggleSettings(); else openSettings(); };
     rescanBtn.onClick   = [this] { rescan(); };
-    source.onChange     = [this] { if (engine.isRunning()) startSelected(); };
+    source.onChange     = [this] { if (inputRunning()) startSelected(); };
     chL.onChange = chR.onChange = [this]
     {
         if (chL.getSelectedItemIndex() < 0 || chR.getSelectedItemIndex() < 0) return;
         settings.chL = chL.getSelectedItemIndex(); settings.chR = chR.getSelectedItemIndex();
         engine.setChannels (settings.chL, settings.chR);
-        settings.save (props);
+        settings.save (core.state);
     };
 
     // bottom bar
@@ -283,11 +278,13 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     glContext.setPreferredVersion ({ 3, 2 });
     applyRenderer();
 
-    rescan();
     setSize (1300, 760);
     startTimerHz (20);
+    if (host != nullptr) setUpPlugin();
+    if (device == nullptr) { view.sourceStarted(); return; }      // the plugin: the track is the source, always on
 
     // Resume the last source automatically
+    rescan();
     if (settings.source.isNotEmpty())
         for (auto& s : sources)
             if (s.key == settings.source) { juce::MessageManager::callAsync ([this] { startSelected(); }); break; }
@@ -298,14 +295,12 @@ MainComponent::~MainComponent()
     juce::Desktop::getInstance().removeGlobalMouseListener (&outsideClick);
     glContext.detach();
     saveAll();
-    engine.stop();
-    engine.setAnalyzer (nullptr);
+    if (device != nullptr) { device->stop(); engine.setAnalyzer (nullptr); }
 }
 
 void MainComponent::saveAll()
 {
-    settings.analyzerState = analyzerProc.saveStateXml();
-    settings.save (props);
+    core.save();
 }
 
 void MainComponent::applyRenderer()
@@ -416,6 +411,7 @@ void MainComponent::setView (int v)
     balanceView.setActive (bal);
     liveBalance.setActive (bal);
     engine.setSpectrogramActive (spec);
+    if (host != nullptr) if (auto* e = host->sidechainEngine()) e->setSpectrogramActive (spec && settings.specSc);
     if (bal) { refreshBalanceTargets(); grabKeyboardFocus(); }
     if (key || sco || mon) grabKeyboardFocus();
     if (ana) { if (analyzerPanel.isFft()) grabKeyboardFocus(); else analyzerPanel.getView().grabKeyboardFocus(); }
@@ -426,7 +422,8 @@ void MainComponent::setView (int v)
 void MainComponent::rescan()
 {
     const auto keep = source.getSelectedItemIndex() >= 0 ? sources[(size_t) source.getSelectedItemIndex()].key : settings.source;
-    sources = engine.scanSources();
+    if (device == nullptr) return;
+    sources = device->scanSources();
     source.clear (juce::dontSendNotification);
     juce::String group;
     int preferred = -1;
@@ -458,14 +455,15 @@ void MainComponent::startSelected()
     if (i < 0 || i >= (int) sources.size()) return;
     view.sourceStopped();
     error.clear();
-    if (! engine.start (sources[(size_t) i], error))
+    if (device == nullptr) return;
+    if (! device->start (sources[(size_t) i], error))
     {
         startBtn.setButtonText ("Start");
         updateStatus();
         return;
     }
     settings.source = sources[(size_t) i].key;
-    settings.save (props);
+    settings.save (core.state);
     fillChannelBoxes();
     startBtn.setButtonText ("Stop");
     startBtn.setColour (juce::TextButton::buttonColourId, juce::Colour (0xffc0392b));
@@ -475,7 +473,8 @@ void MainComponent::startSelected()
 
 void MainComponent::stopSource()
 {
-    engine.stop();
+    if (device == nullptr) return;
+    device->stop();
     view.sourceStopped();
     startBtn.setButtonText ("Start");
     startBtn.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff4c8dff));
@@ -484,7 +483,8 @@ void MainComponent::stopSource()
 
 void MainComponent::fillChannelBoxes()
 {
-    const auto& names = engine.getChannelNames();
+    if (device == nullptr) return;
+    const auto& names = device->getChannelNames();
     for (auto* b : { &chL, &chR })
     {
         b->clear (juce::dontSendNotification);
@@ -556,11 +556,66 @@ void MainComponent::toggleTempoWindow()
     bottom.setTempoOpen (show);
 }
 
+// The VST3 version's extras: the sidechain in the views, Listen, the host's tempo (see HostLink)
+void MainComponent::setUpPlugin()
+{
+    bottom.setPluginMode (true);
+    for (auto* c : std::initializer_list<juce::Component*> { &source, &lblL, &chL, &lblR, &chR, &startBtn, &rescanBtn }) c->setVisible (false);
+    view.setSidechainEngine (host->sidechainEngine());
+    scopePage.setHost (host);
+    analyzerPanel.getFftView().setSidechainAvailable (true);
+    if (host->hostBpm() > 0) { settings.bpm = host->hostBpm(); lastHostBpm = settings.bpm; scopePage.applySettings(); }
+
+    bottom.onListen = [this] (juce::Component& anchor)
+    {
+        auto panel = std::make_unique<ListenPanel> (host->isolation(), settings, [this] { saveAll(); updateListen(); scopePage.applySettings(); });
+        juce::CallOutBox::launchAsynchronously (std::move (panel), anchor.getScreenBounds(), nullptr);
+    };
+    bottom.onSidechainMenu = [this] (juce::Component& anchor)
+    {
+        juce::PopupMenu m, colours;
+        const auto apply = [this] { view.sidechainStyleChanged(); saveAll(); if (auto* e = host->sidechainEngine()) e->setSpectrogramActive (settings.viewMode == BottomBar::Spectrogram && settings.specSc); };
+        m.addSectionHeader (host->sidechainConnected() ? "Sidechain: connected" : "Sidechain: route a track to this plugin's sidechain input");
+        m.addItem ("Show the sidechain", true, settings.specSc, [this, apply] { settings.specSc = ! settings.specSc; apply(); });
+        m.addItem ("Style: tint (its colour, by level)", true, settings.specScStyle == 0, [this, apply] { settings.specScStyle = 0; apply(); });
+        m.addItem ("Style: contour lines (the main picture stays clear)", true, settings.specScStyle == 1, [this, apply] { settings.specScStyle = 1; apply(); });
+        const std::pair<const char*, const char*> presets[] = { { "Orange", "#ff8a3d" }, { "Cyan", "#3ee0ff" }, { "Green", "#4cd07d" }, { "Magenta", "#ff4fa3" }, { "White", "#ffffff" } };
+        for (auto& [name, hex] : presets)
+            colours.addItem (name, true, settings.specScColour.equalsIgnoreCase (hex), [this, apply, h = juce::String (hex)] { settings.specScColour = h; apply(); });
+        m.addSubMenu ("Colour", colours);
+        juce::PopupMenu op;
+        for (int pct : { 40, 60, 75, 90, 100 })
+            op.addItem (juce::String (pct) + " %", true, std::abs (settings.specScOpacity * 100 - pct) < 1, [this, apply, pct] { settings.specScOpacity = pct / 100.0; apply(); });
+        m.addSubMenu ("Strength", op);
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&anchor));
+    };
+    updateListen();
+}
+
+void MainComponent::updateListen()
+{
+    if (host == nullptr) return;
+    bottom.setListenState (host->isolation().active(), ListenPanel::summary (host->isolation()));
+}
+
 void MainComponent::timerCallback()
 {
-    balanceView.setInputRunning (engine.isRunning());
-    keyPage.setInputRunning (engine.isRunning());
-    scopePage.setInputRunning (engine.isRunning());
+    if (host != nullptr)
+    {
+        // the project's tempo is the app's tempo (Tempo window, the Scope's bars)
+        const double hb = host->hostBpm();
+        if (hb > 0 && std::abs (hb - lastHostBpm) > 1e-4)
+        {
+            lastHostBpm = hb; settings.bpm = hb;
+            scopePage.applySettings();
+            if (tempoWindow != nullptr)
+                if (auto* tc = dynamic_cast<TempoChart*> (tempoWindow->getContentComponent())) tc->syncFromSettings();
+        }
+        updateListen();
+    }
+    balanceView.setInputRunning (inputRunning());
+    keyPage.setInputRunning (inputRunning());
+    scopePage.setInputRunning (inputRunning());
     monitorPage.pump();                          // keeps measuring when display frames stall (minimised)
     if (++tick % 10 == 0) updateStatus();
 }
@@ -583,15 +638,16 @@ void MainComponent::updateStatus()
         + (settings.fpsCap > 0 ? " (limit " + juce::String (settings.fpsCap) + ")" : juce::String());
     juce::String text;
     if (error.isNotEmpty()) text = "Could not start: " + error;
-    else if (! engine.isRunning()) text = "Stopped";
+    else if (device == nullptr) text = host != nullptr ? host->describe() : juce::String();
+    else if (! device->isRunning()) text = "Stopped";
     else
     {
-        const auto& src = engine.getCurrentSource();
+        const auto& src = device->getCurrentSource();
         const juce::String kind = src.kind == AudioEngine::Source::Loopback ? "Loopback"
                                 : src.kind == AudioEngine::Source::Test     ? "Test signal"
                                 : src.typeName;
         text = kind + "  |  " + juce::String (engine.getSampleRate() / 1000.0, 1) + " kHz  |  "
-             + juce::String (engine.getChannelNames().size()) + " ch  |  latency "
+             + juce::String (device->getChannelNames().size()) + " ch  |  latency "
              + juce::String (juce::roundToInt (engine.getLatencySeconds() * 1000)) + " ms  |  DSP "
              + juce::String (juce::roundToInt (engine.getLoad() * 100)) + "%";
     }
@@ -626,7 +682,7 @@ void MainComponent::layoutOptions()
     auto r = options.getLocalBounds().reduced (14, 10);
     auto heading = [&] (const juce::String& t) { options.headings.push_back ({ r.removeFromTop (px (20)), t }); };
 
-    heading ("AUDIO INPUT");
+    heading (device != nullptr ? "AUDIO INPUT" : "PLUGIN");
     source.setBounds (r.removeFromTop (px (28))); r.removeFromTop (px (6));
     auto row = r.removeFromTop (px (28));
     lblL.setBounds (row.removeFromLeft (px (18))); chL.setBounds (row.removeFromLeft ((row.getWidth() - px (26)) / 2)); row.removeFromLeft (px (8));

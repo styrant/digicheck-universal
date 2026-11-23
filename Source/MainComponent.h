@@ -12,11 +12,15 @@
 #include "key/KeyPage.h"
 #include "scope/ScopePage.h"
 #include "monitor/MonitorPage.h"
+#include "Core.h"
 
 class MainComponent : public juce::Component, private juce::Timer, private juce::OpenGLRenderer
 {
 public:
-    explicit MainComponent (juce::PropertiesFile& props);
+    // globalProps: presets and other app-wide things; core: settings, analysers and taps (owned by the
+    // app window or the plugin processor); engine: the analysis they're fed by; device: the standalone
+    // app's audio input (nullptr in the plugin); host: the plugin (nullptr in the standalone app)
+    MainComponent (juce::PropertiesFile& globalProps, Core& core, AnalysisEngine& engine, AudioEngine* device, HostLink* host);
     ~MainComponent() override;
 
     void paint (juce::Graphics&) override;
@@ -43,6 +47,9 @@ public:
 
 private:
     void timerCallback() override;
+    void setUpPlugin();
+    void updateListen();
+    double lastHostBpm = 0;
     void rescan();
     void startSelected();
     void stopSource();
@@ -99,26 +106,30 @@ private:
     std::atomic<float> ownerW { 1.0f }, ownerH { 1.0f };
 
     juce::PropertiesFile& props;
-    Settings settings;
-    SpectrumAnalyzerProcessor analyzerProc;   // declared before the engine: it must outlive the DSP thread
-    // analysis taps fed from the DSP thread: declared before the engine so they outlive it
-    KeyFinder keyFinder;
-    LiveBalance liveBalance;
-    LiveRecorder recorder;
-    ScopeTap scopeTap;
-    FifoTap monitorTap;
-    FifoTap fftTap;
-    TranscriptionSession transcription;
-    ModelStore modelStore;
-    TranscriptionPlayer keyPlayer;
-    PlaybackOutput keyOutput { keyPlayer };
-    TargetLibrary targetLibrary;
-    AudioEngine engine;
+    Core& core;
+    AnalysisEngine& engine;
+    AudioEngine* device;
+    HostLink* host;
+    bool inputRunning() const { return device != nullptr ? device->isRunning() : (host != nullptr && host->isProcessing()); }
+    // the core's parts, under the names the rest of this class uses
+    Settings& settings = core.settings;
+    SpectrumAnalyzerProcessor& analyzerProc = core.analyzerProc;
+    KeyFinder& keyFinder = core.keyFinder;
+    LiveBalance& liveBalance = core.liveBalance;
+    LiveRecorder& recorder = core.recorder;
+    FifoTap& scopeTap = core.scopeTap;
+    FifoTap& monitorTap = core.monitorTap;
+    FifoTap& fftTap = core.fftTap;
+    TranscriptionSession& transcription = core.transcription;
+    ModelStore& modelStore = core.modelStore;
+    TranscriptionPlayer& keyPlayer = core.keyPlayer;
+    PlaybackOutput& keyOutput = core.keyOutput;
+    TargetLibrary& targetLibrary = core.targetLibrary;
     SpectrogramView view;
     AnalyzerPanel analyzerPanel { analyzerProc, fftTap, settings, [this] { saveAll(); } };
     BalanceView balanceView { liveBalance, targetLibrary };
     ScopePage scopePage { scopeTap, settings, [this] { saveAll(); } };
-    MonitorPage monitorPage { monitorTap, settings, [this] { saveAll(); }, [this] { engine.resetLoudness(); } };
+    MonitorPage monitorPage { monitorTap, settings, [this] { saveAll(); }, [this] { engine.resetLoudness(); }, core.plugin ? &core.monitorModel : nullptr };
     KeyPage keyPage { keyFinder, transcription, recorder, modelStore, keyPlayer, &keyOutput, settings, [this] { saveAll(); } };
     void refreshBalanceTargets();
     void balanceTargetsAction (int action);

@@ -18,7 +18,7 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
 {
     smallLnf = std::make_unique<SmallButtonLnf>();          // per instance: no static look-and-feel outliving the UI
     for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &viewBal, &viewKey, &viewScope, &viewMon, &balCurve, &balDiff, &balReset, &lufsBtn, &tempoBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
-                     &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &full })
+                     &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &full, &listenBtn, &scBtn })
     {
         addAndMakeVisible (b);
         b->setColour (juce::TextButton::buttonColourId, kButton);
@@ -43,6 +43,10 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
     viewKey.setTooltip ("Key finder, chords and melody (4 or K, V cycles)");
     viewScope.setTooltip ("Oscilloscope (5, V cycles)");
     viewMon.setTooltip ("Monitor: loudness, dynamics, levels, sound field, phase (6, V cycles)");
+    listenBtn.setTooltip ("Hear only some bands, or Mid / Side / Left / Right (the plugin's output)");
+    listenBtn.onClick = [this] { if (onListen) onListen (listenBtn); };
+    scBtn.setTooltip ("How the sidechain is drawn on the spectrogram");
+    scBtn.onClick = [this] { if (onSidechainMenu) onSidechainMenu (scBtn); };
     viewSpec.onClick = [this] { if (onViewChange) onViewChange (Spectrogram); };
     viewAna.onClick  = [this] { if (onViewChange) onViewChange (Analyzer); };
     viewBal.onClick  = [this] { if (onViewChange) onViewChange (Balance); };
@@ -231,10 +235,19 @@ void BottomBar::resized()
     viewMon.setBounds (r.removeFromLeft (ui::px (70))); r.removeFromLeft (ui::px (10));
     lufsBtn.setBounds (r.removeFromLeft (ui::px (48))); r.removeFromLeft (ui::px (4));
     tempoBtn.setBounds (r.removeFromLeft (ui::px (56))); r.removeFromLeft (ui::px (12));
+    listenBtn.setVisible (plugin);
+    scBtn.setVisible (plugin && spec);
+    full.setVisible (! plugin);
+    if (plugin)
+    {
+        r.removeFromLeft (ui::px (-6));
+        listenBtn.setBounds (r.removeFromLeft (ui::px (listenBtn.getButtonText().length() > 8 ? 190 : 60))); r.removeFromLeft (ui::px (6));
+        if (spec) { scBtn.setBounds (r.removeFromLeft (ui::px (36))); r.removeFromLeft (ui::px (12)); }
+    }
 
     // right corner: small Full screen / Auto-hide / Reset, then the loudness boxes
     auto small = [&] (juce::TextButton& b, int w) { b.setBounds (r.removeFromRight (w).withSizeKeepingCentre (w, ui::px (20))); r.removeFromRight (ui::px (4)); };
-    small (full, ui::px (full.getButtonText().startsWith ("Exit") ? 92 : 70));
+    if (! plugin) small (full, ui::px (full.getButtonText().startsWith ("Exit") ? 92 : 70));
     resetBtn.setVisible (s.showLufs);
     lufs.setVisible (s.showLufs);
     if (s.showLufs)
@@ -327,6 +340,16 @@ void BottomBar::resized()
         if (i.drop == 0) continue;
         i.c->setBounds (g.removeFromLeft (ui::px (i.w))); g.removeFromLeft (ui::px (i.gap));
     }
+}
+
+void BottomBar::setListenState (bool active, const juce::String& what)
+{
+    const auto text = active ? "Listening: " + what : juce::String ("Listen");
+    if (text == listenBtn.getButtonText()) return;
+    listenBtn.setButtonText (text);
+    listenBtn.setColour (juce::TextButton::buttonColourId, active ? juce::Colour (0xffff7a45) : kButton);
+    listenBtn.setColour (juce::TextButton::textColourOffId, active ? juce::Colours::black : juce::Colours::white);
+    resized();
 }
 
 void BottomBar::LufsReadout::paint (juce::Graphics& g)

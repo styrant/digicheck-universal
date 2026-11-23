@@ -70,6 +70,7 @@ namespace scope
         if (m == mode) return;
         mode = m;
         live.clear();
+        live.sparse = mode == Sync;
     }
 
     void ScopeModel::setBandpass (double hz)
@@ -95,8 +96,11 @@ namespace scope
     void ScopeModel::disarm() { rec = Rec::Idle; takeL.clear(); takeR.clear(); }
 
     //==========================================================================
-    void ScopeModel::push (const float* L, const float* R, int n)
+    void ScopeModel::push (const float* L, const float* R, int n) { push (L, R, nullptr, nullptr, nullptr, n); }
+
+    void ScopeModel::push (const float* L, const float* R, const float* SL, const float* SR, const float* phase, int n)
     {
+        const bool scOverlay = overlaySc && SL != nullptr && SR != nullptr;
         for (int i = 0; i < n; ++i)
         {
             const float l = L[i], r = R[i];
@@ -121,11 +125,19 @@ namespace scope
                     silentRun = 0;
                 }
             }
-            write (l, r);
+            // Sync: the host's position decides where this sample goes; stopped: nothing is written
+            if (mode == Sync)
+            {
+                if (phase == nullptr || phase[i] < 0.0f) continue;
+                const auto pos = std::min (live.n - 1, (std::size_t) ((double) phase[i] * (double) live.n));
+                if (pos < live.writePos && live.writePos - pos > live.n / 2) live.written = std::max<std::uint64_t> (live.written, live.n);  // wrapped: a full lap
+                live.writePos = pos;
+            }
+            write (l, r, scOverlay ? 0.5f * (SL[i] + SR[i]) : 0.5f * (l - r));
         }
     }
 
-    void ScopeModel::write (float l, float r)
+    void ScopeModel::write (float l, float r, float s)
     {
         float m;
         switch (source)
@@ -135,7 +147,6 @@ namespace scope
             case Peak:  m = std::abs (l) >= std::abs (r) ? l : r; break;
             default:    m = 0.5f * (l + r); break;
         }
-        const float s = 0.5f * (l - r);
         const float b = bp2.process (bp1.process (m));
         float e[kBands];
         { const float x = bandFilters[0].process (m); e[0] = x * x; }
@@ -167,7 +178,7 @@ namespace scope
     std::size_t ScopeModel::positionAt (const Rings& g, double t) const
     {
         const double s = std::clamp (t, 0.0, window) * sr;
-        if (mode == Free) return std::min (g.n - 1, (std::size_t) s);
+        if (mode != Scroll) return std::min (g.n - 1, (std::size_t) s);
         // Scroll: the right edge is the newest sample
         const double back = window * sr - s;
         const auto newest = (double) g.writePos;
@@ -178,7 +189,7 @@ namespace scope
 
     double ScopeModel::playhead() const
     {
-        return mode == Free ? (double) live.writePos / sr : window;
+        return mode == Scroll ? window : (double) live.writePos / sr;
     }
 
     Column ScopeModel::gather (const Rings& g, std::size_t pa, std::size_t cnt, bool bpOn) const

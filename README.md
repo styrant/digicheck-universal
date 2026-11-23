@@ -23,6 +23,22 @@ The workflow signs the exe and the installer automatically when these repository
 
 Set-up in Azure: create an Artifact Signing account (Basic plan), complete identity validation as an individual, and create a Public Trust certificate profile. Then create an app registration with a client secret and give it the **Artifact Signing Certificate Profile Signer** role on the profile. Signed builds show a verified publisher. SmartScreen reputation still builds up over time, so very new builds may warn for a while.
 
+## VST3 plugin
+
+**DigiCheck Universal.vst3** puts the same six views on a track in your DAW. The setup installs it (the "Install the VST3 plugin" box), or unzip **DigiCheckUniversal-VST3.zip** into `C:\Program Files\Common Files\VST3`. It's an analysis plugin: the audio passes through untouched (bit for bit, no latency) unless you use Listen.
+
+What the plugin adds:
+- **The project's tempo.** The Tempo window and the Scope's bar lengths follow the DAW's tempo (you can still type another one; it follows again when the project's tempo changes).
+- **Scope Sync.** The window starts on a bar line and the trace follows the transport sample-accurately (it stays still while stopped). **Free** and **Scroll** work as in the app.
+- **Sidechain.** Route another track to the plugin's sidechain input (in most DAWs: the plugin's sidechain / aux input selector), then:
+  - **Spectrogram:** the sidechain is drawn over the track in its own colour. **SC** in the bottom bar: show or hide it, **tint** (its colour, by level) or **contour lines** (the track's picture stays clear underneath), colour and strength.
+  - **Scope:** **SC** draws the sidechain over the waveform (menu: the sidechain input or Side, L - R), **filled** or **outline** (its envelope as two lines, so you can see the kick against the bass it ducks). Its colour is Menu > Colours > Side2SC / sidechain.
+  - **Analyzer (FFT):** **+ Curve > Sidechain** shows its spectrum as the second curve, in its own colour and line / filled / dashed style.
+- **Listen** (bottom bar): hear only some bands, and / or only Mid, Side, Left or Right, like Metric AB's band solo or ISOL8. Five bands (Sub < 60, Low 60-250, Low-mid 250-2k, High-mid 2k-6k, High > 6k, with movable crossovers): click a band to hear it or not, double-click to hear it alone. The crossovers are Linkwitz-Riley (24 dB/oct) with allpass alignment, so any combination sums cleanly and all five together are flat. The button turns orange and says what you're hearing; **Off** puts everything back. Changes fade over 10 ms, so they never click. On the Scope, **Listen** next to the BP knob plays the band-pass you're looking at.
+- The views' settings are saved with the project; presets are shared by all instances.
+
+Not in the plugin: the audio-input choice (the track is the input), full screen (resize the plugin window instead). The Monitor keeps measuring while the plugin window is closed.
+
 ## Sources
 | Source | Use it for |
 |---|---|
@@ -170,7 +186,7 @@ Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor** but
 - If the DSP can't keep up, the gap is drawn in white, as DigiCheck does.
 - A full-scale sine reads about 0 dBFS. `dsp_test` checks this on every build.
 
-Code layout: `Source/Reassigner.*` (DSP, no dependencies), `AnalysisEngine.*` (sample ring, DSP thread, column queue, analysis taps; no audio device), `AudioEngine.*` (the standalone app's inputs: devices, loopback, test signal), `LoopbackCapture.*` (WASAPI loopback), `SpectrogramView.*` (display), `SettingsDialog.*`, `key/` (key finder, Key page), `transcribe/` (engine wrapper, chords / melody, models, MIDI), `balance/` (tonal balance), `scope/` (oscilloscope: `ScopeModel` has no JUCE dependency), `monitor/` (the Monitor page: `MonitorModel` has no JUCE dependency). The code is kept ready for a VST3 version: see [docs/VST3.md](docs/VST3.md).
+The VST3 version: `plugin/` (processor, editor), `listen/` (band listening), `Core.h` (what the app window or the plugin processor owns). Code layout: `Source/Reassigner.*` (DSP, no dependencies), `AnalysisEngine.*` (sample ring, DSP thread, column queue, analysis taps; no audio device), `AudioEngine.*` (the standalone app's inputs: devices, loopback, test signal), `LoopbackCapture.*` (WASAPI loopback), `SpectrogramView.*` (display), `SettingsDialog.*`, `key/` (key finder, Key page), `transcribe/` (engine wrapper, chords / melody, models, MIDI), `balance/` (tonal balance), `scope/` (oscilloscope: `ScopeModel` has no JUCE dependency), `monitor/` (the Monitor page: `MonitorModel` has no JUCE dependency). The code is kept ready for a VST3 version: see [docs/VST3.md](docs/VST3.md).
 
 ## Building locally
 Requires CMake 3.24+, Visual Studio 2022 or newer (Desktop C++ workload) with its Clang tools (clang-cl), Ninja, and

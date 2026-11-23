@@ -17,6 +17,9 @@ message(STATUS "DigiCheck Universal ${DCU_VERSION}")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# the plugin is a shared library: everything linked into it (ggml, the transcription engine) must be PIC
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 include(FetchContent)
 
 # JUCE: use a local checkout if given (-DJUCE_DIR=...), otherwise download the pinned release.
@@ -97,13 +100,15 @@ set(DCU_SHARED_SOURCES
     Source/monitor/MonitorModel.cpp
     Source/monitor/MonitorPage.cpp
     Source/fft/FftAnalyzer.cpp
-    Source/fft/FftView.cpp)
+    Source/fft/FftView.cpp
+    Source/listen/BandIsolator.cpp
+    Source/listen/ListenPanel.cpp
+    Source/MainComponent.cpp            # the main view: the app window and the plugin editor both show it
+    Source/AudioEngine.cpp              # the standalone's audio input (the plugin never creates one)
+    Source/LoopbackCapture.cpp)
 
 target_sources(Spectroscope PRIVATE
     Source/Main.cpp
-    Source/MainComponent.cpp
-    Source/AudioEngine.cpp
-    Source/LoopbackCapture.cpp
     ${DCU_SHARED_SOURCES})
 
 # Key finder model (OpenKeyScan KeyNet, MIT; exported by tools/export_keynet.py)
@@ -145,6 +150,61 @@ if(WIN32)
     target_link_libraries(Spectroscope PRIVATE ole32)
 endif()
 
+# ---- The VST3 version: the same views as an analysis plugin, with a sidechain input, the host's tempo and
+# transport (Scope Sync) and band listening. Codes fixed for good: hosts store them in their projects.
+option(DCU_BUILD_VST3 "Build the VST3 plugin" ON)
+if(DCU_BUILD_VST3)
+    juce_add_plugin(DigiCheckUniversal
+        PRODUCT_NAME "DigiCheck Universal"
+        COMPANY_NAME "DigiCheck Universal"
+        BUNDLE_ID "com.digicheckuniversal.plugin"
+        PLUGIN_MANUFACTURER_CODE Dcun
+        PLUGIN_CODE Dcu1
+        FORMATS VST3
+        VST3_CATEGORIES Analyzer Tools
+        IS_SYNTH FALSE
+        NEEDS_MIDI_INPUT FALSE
+        NEEDS_MIDI_OUTPUT FALSE
+        IS_MIDI_EFFECT FALSE
+        EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+        COPY_PLUGIN_AFTER_BUILD FALSE
+        VERSION ${DCU_VERSION})
+    juce_generate_juce_header(DigiCheckUniversal)
+    target_sources(DigiCheckUniversal PRIVATE
+        Source/plugin/PluginProcessor.cpp
+        Source/plugin/PluginEditor.cpp
+        ${DCU_SHARED_SOURCES})
+    target_compile_definitions(DigiCheckUniversal PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_WASAPI=1
+        JUCE_DIRECTSOUND=0
+        JUCE_ASIO=0)               # a plugin never opens an audio device of its own (the Key page's preview uses Windows Audio)
+    target_link_libraries(DigiCheckUniversal
+        PRIVATE
+            SpectroscopeData
+            dcu_transcribe
+            juce::juce_cryptography
+            juce::juce_audio_utils
+            juce::juce_audio_devices
+            juce::juce_gui_extra
+            juce::juce_opengl
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_warning_flags)
+    if(WIN32)
+        target_link_libraries(DigiCheckUniversal PRIVATE ole32)
+    endif()
+
+    # a minimal host: loads the built VST3 with a sidechain and a play head (tests/plugin_host_test.cpp)
+    juce_add_console_app(plugin_host_test PRODUCT_NAME "plugin_host_test")
+    target_sources(plugin_host_test PRIVATE tests/plugin_host_test.cpp)
+    target_compile_definitions(plugin_host_test PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_STANDALONE_APPLICATION=1)
+    target_link_libraries(plugin_host_test PRIVATE juce::juce_audio_utils juce::juce_gui_extra juce::juce_recommended_config_flags)
+    juce_generate_juce_header(plugin_host_test)
+endif()
+
 # Stand-alone DSP calibration test (no JUCE)
 add_executable(dsp_test tests/dsp_test.cpp Source/Reassigner.cpp)
 add_executable(loudness_test tests/loudness_test.cpp Source/LoudnessMeter.cpp)
@@ -154,6 +214,7 @@ add_executable(balance_test tests/balance_test.cpp Source/balance/TonalAnalysis.
 add_executable(harmony_test tests/harmony_test.cpp Source/transcribe/Harmony.cpp Source/transcribe/Resample.cpp Source/transcribe/NoteFilter.cpp)   # chords, melody, key, resampling
 add_executable(fft_test tests/fft_test.cpp Source/fft/FftAnalyzer.cpp)                       # the Analyzer's FFT style
 add_executable(monitor_test tests/monitor_test.cpp Source/monitor/MonitorModel.cpp Source/LoudnessMeter.cpp)   # the Monitor page's meters
+add_executable(isolator_test tests/isolator_test.cpp Source/listen/BandIsolator.cpp)          # VST3 band listening
 add_executable(scope_test tests/scope_test.cpp Source/scope/ScopeModel.cpp)                  # the oscilloscope engine
 add_executable(transcribe_test tests/transcribe_test.cpp Source/transcribe/Harmony.cpp Source/transcribe/Resample.cpp)  # the engine end to end
 target_link_libraries(transcribe_test PRIVATE dcu_transcribe)

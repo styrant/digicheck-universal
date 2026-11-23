@@ -1,8 +1,9 @@
-# VST3 readiness
+# The VST3 version
 
-DigiCheck Universal is **standalone only** for now. This page records how the code is kept ready for a
-VST3 version, so that it can be added as a second build target from the same sources and released with
-the same version number, without forking the code.
+DigiCheck Universal is built twice from the same sources, with the same version number: the
+standalone app (`Spectroscope`) and the VST3 plugin (`DigiCheckUniversal`, **DigiCheck Universal.vst3**).
+What the plugin does for the user is in the README ("VST3 plugin"); this page is how it's put together
+and what is still open.
 
 ## How the code is split
 
@@ -17,69 +18,49 @@ the same version number, without forking the code.
 CMake lists the shared files once, in `DCU_SHARED_SOURCES`; a plugin target adds only its processor
 and editor.
 
-## Already done (Nov 2026)
+## How the plugin is put together (Nov 2026)
 
-- **AnalysisEngine split from AudioEngine.** The audio-device code (`AudioEngine`) only feeds an
-  `AnalysisEngine` through `push()`, which is real-time safe (a lock-free ring, no allocation, no locks).
-- **AudioTap.** Live analysers no longer hang off the engine as special cases; anything that analyses
-  the stream implements `AudioTap::push`.
-- **Views depend on `AnalysisEngine`, not `AudioEngine`.**
-- **Settings serialise to any `juce::PropertySet`.** The app uses its settings file; a plugin can keep
-  a `PropertySet` per instance and store it in the host's project with `createXml` / `restoreFromXml`.
-- **No shared static UI state.** The bottom bar's look-and-feel is owned per instance (a static
-  look-and-feel destroyed at DLL unload is a classic plugin crash); the Key page's download watcher is
-  per instance.
-- **One version number.** Major.minor in `VERSION`; CMake and CI read it, and the patch is the CI build
-  number. A plugin target gets the same version automatically.
-- **Fixed bundle IDs** (`com.digicheckuniversal.spectroscope`, `.targetbuilder`). Hosts identify
-  plugins by IDs like these, so they are set explicitly now rather than derived from names.
-- **The transcription engine is isolated.** Its C++23 headers stay inside `dcu_transcribe`; the
-  2.7 GB of model weights are never part of a binary.
+- **Target.** `juce_add_plugin` (`FORMATS VST3`, category Analyzer | Tools). The codes are fixed for good
+  (hosts store them in projects): manufacturer `Dcun`, plugin `Dcu1`, bundle ID
+  `com.digicheckuniversal.plugin`. ASIO is off in the plugin (`JUCE_ASIO=0`).
+- **Buses.** Main stereo or mono in = out; an optional stereo "Sidechain" input, off until the host
+  routes something to it (mono works too).
+- **Core** (`Core.h`): settings, the Spectrum Analyzer processor, key finder, live balance, recorder,
+  transcription, and the Scope / Monitor / FFT taps. The app window owns one; the processor owns one per
+  instance and lends it to the editor, so the analysis outlives the plugin window. `Core::registerWith`
+  hooks the taps to an `AnalysisEngine`.
+- **MainComponent** is the main view in both: `MainComponent (globalProps, core, engine, device, host)`.
+  The standalone passes its `AudioEngine` as `device`; the plugin passes `nullptr` and itself as `host`
+  (`HostLink`: processing?, host tempo, transport, sidechain connected, the sidechain's engine, Scope
+  sync bars, Scope listen, band listening, a status line).
+- **Processor** (`plugin/PluginProcessor`): `processBlock` feeds the shared `AnalysisEngine`
+  (spectrogram, loudness, analyzer, key, balance, recorder, Monitor), a second `AnalysisEngine` with the
+  sidechain (its spectrogram), and pushes the Scope and FFT taps itself with the sidechain and the
+  Scope's sync phase per sample (`FifoTap` extras: sample-aligned with the main signal). It reads the
+  play head (tempo, PPQ, time signature, playing). Band listening (`listen/BandIsolator`) runs last on
+  the output and returns immediately, untouched, when nothing is active.
+- **Monitor.** Its `MonitorModel` lives in `Core` in the plugin; a processor timer (message thread) feeds
+  it while no editor is open, so loudness, LRA and PLR cover everything since the last reset.
+- **Editor** (`plugin/PluginEditor`): its own `AppLookAndFeel` (never a static one), resizable, the size
+  saved per instance; it rebuilds the views when the host loads another state.
+- **State.** The instance's `PropertySet` (all view settings) as XML in the project; app-wide things
+  (presets) in "DigiCheck Universal Plugin.settings".
+- **Tests.** `isolator_test` (band listening), `plugin_host_test` (loads the built .vst3 like a DAW:
+  sidechain bus, bit-exact pass-through, state round trip; with a display also the editor, the project
+  tempo and screenshots of the views with a sidechain), pluginval in CI (strictness 5, no GUI).
 
-## To do when the VST3 work starts
+## Still open
 
-1. **Plugin target.** `juce_add_plugin` with `FORMATS VST3` (Standalone stays the existing app),
-   `IS_SYNTH FALSE`, `NEEDS_MIDI_INPUT FALSE`, the audio passed through unchanged, latency 0. Choose the
-   4-character `PLUGIN_MANUFACTURER_CODE` and `PLUGIN_CODE` once and never change them: hosts store
-   them in projects.
-2. **Editor shell.** Split `MainComponent` into a reusable "main view" (the four views and the bottom
-   bar) and the standalone shell. In the plugin the Options panel shows display settings only (there's
-   no device to choose), and fullscreen becomes a resizable editor.
-3. **Frame clock.** `frameclock::clock()` and `frameclock::capHz` are process-wide. Fine for one
-   window, but each plugin editor should own its own clock (several editors can be on different
-   monitors).
-4. **Look-and-feel.** `Main.cpp` sets the app-wide default look-and-feel. A plugin must set it on its
-   editor instead, because the default is shared with the host and other plugins.
-5. **Shared services per process.** `ModelStore` should become a `juce::SharedResourcePointer` (one
-   download for all instances; an inter-process lock already stops two downloads of the same model).
-   Allow one transcription at a time per process: each run holds 0.3–3 GB.
-6. **Per-instance vs global settings.** Per project: the view, spectrogram, analyzer and balance
-   settings, and the target. Global: text size, model size, compute device, frame-rate cap.
-7. **Idle threads.** The DSP thread polls every 10 ms while idle. Fine for one app, wasteful with
-   dozens of instances: make it wait on an event until `prepare()`.
-8. **Text size.** `ui::textScale` is process-wide; that suits a user preference, but a change in one
-   editor should trigger a relayout of the others.
-9. **Standalone-only features.** ASIO, WASAPI loopback, device selection and the test signal stay in
-   the standalone shell. The plugin analyses its track's audio.
-
-10. **Scope features reserved for the plugin.** The Scope header and menu already show these, disabled:
-    - **Sync** to the host transport (window start on bar lines from `AudioPlayHead::getPosition()`: PPQ,
-      BPM, time signature, isPlaying) and **Sync to Start** (restart when playback starts). In the standalone
-      the window follows the typed BPM and restarts after silence.
-    - **Sidechain**: a second input bus (`BusesProperties().withInput("Sidechain", stereo, false)`) drawn as
-      the overlay, and **instance sidechain** (another Scope instance's wave via a process-wide registry of
-      `ScopeTap`s, keyed by instance ID). The standalone's Side2SC (L−R of the input) stays.
-    - **Track name and colour** from `AudioProcessor::updateTrackProperties`.
-    - **Listen to the BP band**: route the band-passed signal to the plugin's output while held.
-    - **REAPER embedded mode** (`IReaperUIEmbedInterface`, via `VST3ClientExtensions`).
-    - `ScopeTap` becomes per instance (one FIFO each; it already has no globals). `ScopeModel` takes the
-      host's sample rate in `prepareToPlay`.
-
-11. **Monitor page.** `MonitorPage` takes a `FifoTap` and a `Settings`, like the Scope, so it can be an
-    editor's content. Per instance: the tap and the model (each track gets its own loudness, PSR / PLR and
-    phase). The layout (order, shown, wide, columns) is a global preference. In the plugin, Reset should
-    also follow the host: restart the integrated loudness when playback starts from the beginning (as
-    Insight does), using the same `AudioPlayHead` information as the Scope's Sync.
+1. **Frame clock and text size are process-wide** (`frameclock::clock()`, `ui::textScale`). Fine for
+   one plugin window; several open editors share one frame-rate cap and text size.
+2. **Shared services per process.** `ModelStore` should become a `juce::SharedResourcePointer` (one
+   download for all instances); allow one transcription at a time per process (0.3-3 GB each).
+3. **Idle threads.** Each instance has two DSP threads that poll every 10 ms while idle; with dozens of
+   instances they should wait on an event.
+4. **Sidechain from another instance** (without routing a bus), **Sync to Start**, **track name and
+   colour** (`updateTrackProperties`) and **REAPER's embedded UI** are not done.
+5. **Mono-in / stereo-out** layouts are refused (in must equal out).
+6. The bars analyzer (Spectrum Analyzer 2) has no sidechain; the FFT style does.
 
 ## Licences relevant to a plugin
 

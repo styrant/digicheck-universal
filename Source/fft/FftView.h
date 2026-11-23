@@ -22,8 +22,9 @@ public:
 
     void setActive (bool shown);
     void onFrame (double vblankSeconds);
-    void setSidechainInput (FifoTap* sc) { sidechain = sc; applySettings(); }   // VST3: the sidechain bus
-    bool hasSidechain() const            { return sidechain != nullptr; }
+    // VST3: the input tap also carries the sidechain bus (FifoTap extras)
+    void setSidechainAvailable (bool on) { scAvailable = on; applySettings(); }
+    bool hasSidechain() const            { return scAvailable; }
     void applySettings();
     void setHeaderInset (int px)         { headerInset = px; resized(); }      // room on the left for the host's controls
     void toggleFreeze()                  { frozen = ! frozen; updateButtons(); }
@@ -52,7 +53,7 @@ private:
     juce::Path curvePath (const std::vector<float>& db, bool closed) const;
 
     FifoTap& input;
-    FifoTap* sidechain = nullptr;
+    bool scAvailable = false;
     Settings& s;
     std::function<void()> changed;
     fft::FftAnalyzer engine;

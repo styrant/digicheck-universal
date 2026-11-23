@@ -811,10 +811,12 @@ struct MonitorPage::PhaseModule : public MonitorPage::Module
 };
 
 //==============================================================================
-MonitorPage::MonitorPage (FifoTap& t, Settings& st, std::function<void()> settingsChanged, std::function<void()> resetLoudness)
-    : tap (t), s (st), onChanged (std::move (settingsChanged)), onResetLoudness (std::move (resetLoudness))
+MonitorPage::MonitorPage (FifoTap& t, Settings& st, std::function<void()> settingsChanged, std::function<void()> resetLoudness,
+                          monitor::MonitorModel* sharedModel)
+    : tap (t), s (st), onChanged (std::move (settingsChanged)), onResetLoudness (std::move (resetLoudness)),
+      engine (sharedModel != nullptr ? *sharedModel : ownModel), shared (sharedModel != nullptr)
 {
-    engine.configure (tap.sampleRate());
+    if (! shared) engine.configure (tap.sampleRate());
     tap.setActive (true);                       // always measuring: integrated loudness covers everything since reset
 
     modules[Loudness]   = std::make_unique<LoudnessModule> (*this, Loudness);
@@ -848,7 +850,7 @@ MonitorPage::MonitorPage (FifoTap& t, Settings& st, std::function<void()> settin
     updateChips();
 }
 
-MonitorPage::~MonitorPage() { tap.setActive (false); }
+MonitorPage::~MonitorPage() { if (! shared) tap.setActive (false); }   // a shared model keeps being fed
 
 void MonitorPage::setActive (bool shown)
 {

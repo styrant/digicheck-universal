@@ -69,6 +69,17 @@ struct Settings
     juce::String fftColour = "#5aa9ff", fftSecColour = "#ff8a3d";
     int    fftSecStyle   = 0;     // 0 line, 1 filled, 2 dashed
 
+    // VST3 version
+    juce::String listenSplits = "60,250,2000,6000";   // band listening crossover points (Hz)
+    bool   scopeSync     = true;  // Scope follows the host's transport (Sync) when it can
+    bool   scopeScInput  = true;  // the Scope's overlay shows the sidechain input (else Side, L-R)
+    int    scopeScStyle  = 0;     // overlay: 0 filled, 1 outline
+    bool   specSc        = true;  // spectrogram: draw the sidechain
+    int    specScStyle   = 0;     // 0 tint, 1 contour lines
+    juce::String specScColour = "#ff8a3d";
+    double specScOpacity = 0.75;
+    int    editorW = 1300, editorH = 760;
+    // Monitor (modular metering page)
     juce::String monitorOrder = "0,1,2,3,4";   // module order: loudness, dynamics, levels, sound field, phase
     int    monitorShown  = 31;    // bit per module
     int    monitorWide   = 3;     // bit per module: spans the whole row (loudness, dynamics)
@@ -175,6 +186,16 @@ struct Settings
         scopeRecNormalize = p.getBoolValue ("scopeRecNormalize", scopeRecNormalize);
         scopeRecTrim  = p.getBoolValue ("scopeRecTrim", scopeRecTrim);
         scopeRecSnap  = p.getBoolValue ("scopeRecSnap", scopeRecSnap);
+        listenSplits  = p.getValue ("listenSplits", listenSplits);
+        scopeSync     = p.getBoolValue ("scopeSync", scopeSync);
+        scopeScInput  = p.getBoolValue ("scopeScInput", scopeScInput);
+        scopeScStyle  = juce::jlimit (0, 1, p.getIntValue ("scopeScStyle", scopeScStyle));
+        specSc        = p.getBoolValue ("specSc", specSc);
+        specScStyle   = juce::jlimit (0, 1, p.getIntValue ("specScStyle", specScStyle));
+        specScColour  = p.getValue ("specScColour", specScColour);
+        specScOpacity = juce::jlimit (0.1, 1.0, p.getDoubleValue ("specScOpacity", specScOpacity));
+        editorW       = juce::jlimit (900, 6000, p.getIntValue ("editorW", editorW));
+        editorH       = juce::jlimit (520, 4000, p.getIntValue ("editorH", editorH));
         anaStyle      = juce::jlimit (0, 1, p.getIntValue ("anaStyle", anaStyle));
         fftOrder      = juce::jlimit (11, 15, p.getIntValue ("fftOrder", fftOrder));
         fftChannel    = juce::jlimit (0, 4, p.getIntValue ("fftChannel", fftChannel));
@@ -239,6 +260,10 @@ struct Settings
         p.setValue ("scopeSide", scopeSide); p.setValue ("scopeSource", scopeSource); p.setValue ("scopeTheme", scopeTheme);
         p.setValue ("scopePalette", scopePalette); p.setValue ("scopeColours", scopeColours);
         p.setValue ("scopeRecNormalize", scopeRecNormalize); p.setValue ("scopeRecTrim", scopeRecTrim); p.setValue ("scopeRecSnap", scopeRecSnap);
+        p.setValue ("listenSplits", listenSplits); p.setValue ("scopeSync", scopeSync); p.setValue ("scopeScInput", scopeScInput);
+        p.setValue ("scopeScStyle", scopeScStyle); p.setValue ("specSc", specSc); p.setValue ("specScStyle", specScStyle);
+        p.setValue ("specScColour", specScColour); p.setValue ("specScOpacity", specScOpacity);
+        p.setValue ("editorW", editorW); p.setValue ("editorH", editorH);
         p.setValue ("anaStyle", anaStyle); p.setValue ("fftOrder", fftOrder); p.setValue ("fftChannel", fftChannel);
         p.setValue ("fftSecondary", fftSecondary); p.setValue ("fftSlope", fftSlope); p.setValue ("fftAvgMs", fftAvgMs);
         p.setValue ("fftSmooth", fftSmooth); p.setValue ("fftHold", fftHold); p.setValue ("fftTop", fftTop); p.setValue ("fftBottom", fftBottom);

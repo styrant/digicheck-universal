@@ -155,6 +155,31 @@ int main()
         expect (same && a.size() == 801 && std::abs (fb - std::fmod (fa + 0.25, 1.0)) < 1e-6,
                 "Scroll grid: +1 column shifts the columns by exactly one; +1/4 column moves the offset by 0.25 (" + f2 (fa) + " -> " + f2 (fb) + ")");
     }
+    {
+        // Sync (VST3): the phase decides where each sample lands; stopped (-1) writes nothing
+        scope::ScopeModel m; m.configure (48000, 1.0); m.setMode (scope::Sync);
+        std::vector<float> L (12000, 0.5f), R (12000, 0.5f), ph (12000);
+        for (int i = 0; i < 12000; ++i) ph[(size_t) i] = 0.5f + i / 48000.0f;        // the host is half-way through the window
+        m.push (L.data(), R.data(), nullptr, nullptr, ph.data(), 12000);
+        std::vector<scope::Column> cols;
+        m.columns (0, 1.0, 100, false, false, cols);
+        int first = -1, valid = 0; for (int c = 0; c < 100; ++c) if (cols[(size_t) c].valid) { ++valid; if (first < 0) first = c; }
+        std::vector<float> stop (4800, -1.0f), L2 (4800, 0.9f);
+        m.push (L2.data(), L2.data(), nullptr, nullptr, stop.data(), 4800);
+        m.columns (0, 1.0, 100, false, false, cols);
+        float top = 0; for (auto& c : cols) if (c.valid) top = std::max (top, c.mx);
+        expect (first == 50 && (valid == 25 || valid == 26) && std::abs (m.playhead() - 0.75) < 0.01 && top < 0.6f,
+                "Sync: written from the host's position (column " + std::to_string (first) + ", " + std::to_string (valid) + " columns), nothing while stopped");
+    }
+    {
+        // sidechain overlay: the side ring carries the sidechain (mono sum) instead of L-R
+        scope::ScopeModel m; m.configure (48000, 0.5); m.setOverlayFromSidechain (true);
+        std::vector<float> L (24000, 0.3f), R (24000, 0.3f), SL (24000, 0.8f), SR (24000, 0.4f);
+        m.push (L.data(), R.data(), SL.data(), SR.data(), nullptr, 24000);
+        std::vector<scope::Column> cols;
+        m.columns (0, 0.5, 10, false, false, cols);
+        expect (std::abs (cols[5].smx - 0.6f) < 1e-5f && std::abs (cols[5].mx - 0.3f) < 1e-5f, "sidechain overlay: side ring = (scL + scR) / 2 = " + f2 (cols[5].smx));
+    }
     std::printf (failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;
 }

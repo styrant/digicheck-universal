@@ -27,7 +27,10 @@ class MonitorPage : public juce::Component
 public:
     enum ModuleId { Loudness = 0, Dynamics = 1, Levels = 2, SoundField = 3, Phase = 4, NumModules = 5 };
 
-    MonitorPage (FifoTap&, Settings&, std::function<void()> settingsChanged, std::function<void()> resetLoudness);
+    // sharedModel: measurements kept elsewhere (the plugin's Core, which keeps measuring while the window is
+    // closed); nullptr: the page's own
+    MonitorPage (FifoTap&, Settings&, std::function<void()> settingsChanged, std::function<void()> resetLoudness,
+                 monitor::MonitorModel* sharedModel = nullptr);
     ~MonitorPage() override;
 
     void setActive (bool shown);
@@ -66,7 +69,9 @@ private:
     FifoTap& tap;
     Settings& s;
     std::function<void()> onChanged, onResetLoudness;
-    monitor::MonitorModel engine;
+    monitor::MonitorModel ownModel;
+    monitor::MonitorModel& engine;
+    const bool shared;
     bool active = false, held = false;
     double lastFrame = 0;
 

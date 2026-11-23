@@ -30,11 +30,15 @@ CloseApplications=yes
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+Name: "vst3"; Description: "Install the VST3 plugin (DigiCheck Universal.vst3, for your DAW)"; GroupDescription: "Plugin:"
 
 [Files]
 Source: "..\build\Spectroscope_artefacts\Release\Spectroscope.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\TargetBuilder_artefacts\Release\TargetBuilder.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
+; the VST3 bundle: Common Files\VST3 for an administrator install, else the per-user VST3 folder
+; (%LOCALAPPDATA%\Programs\Common\VST3, the VST3 specification's user location)
+Source: "..\build\DigiCheckUniversal_artefacts\Release\VST3\DigiCheck Universal.vst3\*"; DestDir: "{autocf}\VST3\DigiCheck Universal.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: vst3
 
 [Icons]
 Name: "{autoprograms}\Spectroscope"; Filename: "{app}\Spectroscope.exe"

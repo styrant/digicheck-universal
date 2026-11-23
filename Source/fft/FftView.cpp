@@ -64,7 +64,7 @@ FftView::FftView (FifoTap& in, Settings& st, std::function<void()> ch) : input (
     configure();
 }
 
-FftView::~FftView() { input.setActive (false); if (sidechain) sidechain->setActive (false); }
+FftView::~FftView() { input.setActive (false); }
 
 void FftView::configure()
 {
@@ -78,7 +78,7 @@ void FftView::applySettings()
     engine.setAveraging (s.fftAvgMs);
     engine.setSeries (0, true, 0, s.fftChannel);
     const int sec = s.fftSecondary;
-    if (sec == 5) engine.setSeries (1, sidechain != nullptr, 1, fft::Stereo);
+    if (sec == 5) engine.setSeries (1, scAvailable, 1, fft::Stereo);
     else          engine.setSeries (1, sec > 0, 0, sec - 1);
     updateButtons();
     computeEdges();
@@ -89,7 +89,6 @@ void FftView::setActive (bool shown)
 {
     active = shown;
     input.setActive (shown);
-    if (sidechain) sidechain->setActive (shown);
     if (shown) applySettings();
     lastT = 0;
 }
@@ -100,9 +99,12 @@ void FftView::onFrame (double t)
     const double dt = lastT > 0 ? juce::jlimit (0.0, 0.25, t - lastT) : 0.0;
     lastT = t;
     if (std::abs (input.sampleRate() - engine.sampleRate()) > 0.5) configure();
-    if (frozen) { input.drain ([] (const float*, const float*, int) {}); if (sidechain) sidechain->drain ([] (const float*, const float*, int) {}); return; }
-    input.drain ([this] (const float* l, const float* r, int n) { engine.push (0, l, r, n); });
-    if (sidechain) sidechain->drain ([this] (const float* l, const float* r, int n) { engine.push (1, l, r, n); });
+    if (frozen) { input.drain ([] (const float*, const float*, int) {}); return; }
+    input.drainAll ([this] (const float* l, const float* r, const float* sl, const float* sr, const float*, int n)
+    {
+        engine.push (0, l, r, n);
+        if (sl != nullptr && engine.seriesOn (1)) engine.push (1, sl, sr, n);
+    });
     engine.decayHold (dt, 12.0);
     if (isShowing()) repaint (plot);
 }
@@ -119,7 +121,7 @@ void FftView::updateButtons()
     holdBtn.setToggleState (s.fftHold, juce::dontSendNotification);
     freezeBtn.setToggleState (frozen, juce::dontSendNotification);
     chanBtn.setTooltip ("Which channel the main curve shows");
-    secBtn.setTooltip ("A second curve on top, in its own colour and style" + juce::String (sidechain ? " (Sidechain: the plugin's sidechain input)" : ""));
+    secBtn.setTooltip ("A second curve on top, in its own colour and style" + juce::String (scAvailable ? " (Sidechain: the plugin's sidechain input)" : ""));
     sizeBtn.setTooltip ("FFT size: larger resolves low notes better, smaller reacts faster");
     slopeBtn.setTooltip ("Tilt in dB per octave around 1 kHz (4.5 makes a balanced mix look flat)");
 }
@@ -133,8 +135,8 @@ void FftView::menuFor (juce::TextButton& b, int which)
         case 0: for (int i = 0; i < 5; ++i) m.addItem (kChannels[i], true, s.fftChannel == i, [this, i, apply] { s.fftChannel = i; apply(); }); break;
         case 1:
             for (int i = 0; i < 6; ++i)
-                m.addItem (i == 0 ? juce::String ("No second curve") : (i == 5 ? juce::String ("Sidechain") + (sidechain ? "" : " (VST3 version)") : juce::String (kSecondary[i])),
-                           i != 5 || sidechain != nullptr, s.fftSecondary == i, [this, i, apply] { s.fftSecondary = i; apply(); });
+                m.addItem (i == 0 ? juce::String ("No second curve") : (i == 5 ? juce::String ("Sidechain") + (scAvailable ? "" : " (VST3 version)") : juce::String (kSecondary[i])),
+                           i != 5 || scAvailable, s.fftSecondary == i, [this, i, apply] { s.fftSecondary = i; apply(); });
             m.addSeparator();
             for (int i = 0; i < 3; ++i) m.addItem (juce::String ("Style: ") + kStyles[i], true, s.fftSecStyle == i, [this, i, apply] { s.fftSecStyle = i; apply(); });
             m.addItem ("Colour...", [this] { juce::CallOutBox::launchAsynchronously (std::make_unique<LiveColourPicker> (hex (s.fftSecColour), [this] (juce::Colour c)

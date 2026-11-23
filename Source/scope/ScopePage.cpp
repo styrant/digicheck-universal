@@ -1,6 +1,7 @@
 #include "ScopePage.h"
 #include "../UiScale.h"
 #include "../ColourPicker.h"
+#include "../Core.h"
 
 namespace
 {
@@ -126,6 +127,7 @@ struct ScopePage::FreqKnob : public juce::Component, public juce::SettableToolti
         const double d = (e.getDistanceFromDragStartX() - e.getDistanceFromDragStartY()) / 150.0;
         page.s.scopeBPHz = juce::jlimit (20.0, 20000.0, startHz * std::pow (2.0, d * 3));
         page.engine.setBandpass (page.s.scopeBPHz);
+        if (page.host != nullptr && page.host->isolation().bandpass.load()) page.host->setScopeListen (true, page.s.scopeBPHz);
         repaint();
     }
     void mouseUp (const juce::MouseEvent&) override { if (page.changed) page.changed(); }
@@ -431,7 +433,29 @@ struct ScopePage::Display : public juce::Component
                 };
                 if (hold) layer (holdCols, false, t.hold, false, 0.9f, false);
                 layer (cols, false, t.wave, page.s.scopeSpectral && ! bpOn, mainAlpha, true);
-                if (side) layer (cols, true, t.sideChain, false, t.sideChainAlpha, false);
+                if (side && page.s.scopeScStyle == 1)
+                {
+                    // outline: the overlay's envelope (its peak over a few columns either side) as two lines,
+                    // so its shape reads clearly over the main wave; nothing where it's silent
+                    const int n = (int) cols.size(), k = juce::jmax (2, (int) (3 * scale));
+                    std::vector<float> e ((size_t) n, 0.0f), env ((size_t) n, 0.0f);
+                    for (int x = 0; x < n; ++x) if (cols[(size_t) x].valid) e[(size_t) x] = juce::jmax (std::abs (cols[(size_t) x].smx), std::abs (cols[(size_t) x].smn));
+                    for (int x = 0; x < n; ++x) { float m = 0; for (int d = -k; d <= k; ++d) if (x + d >= 0 && x + d < n) m = juce::jmax (m, e[(size_t) (x + d)]); env[(size_t) x] = m; }
+                    const float lw = 2.0f * scale;
+                    for (int sgn : { 1, -1 })
+                    {
+                        juce::Path p; bool on = false;
+                        for (int x = 0; x < n; ++x)
+                        {
+                            if (env[(size_t) x] < 0.001f) { on = false; continue; }
+                            const float y = py ((float) sgn * env[(size_t) x]);
+                            if (! on) { p.startNewSubPath ((float) x, y); on = true; } else p.lineTo ((float) x, y);
+                        }
+                        g.setColour (t.sideChain);
+                        g.strokePath (p, juce::PathStrokeType (lw, juce::PathStrokeType::curved));
+                    }
+                }
+                else if (side) layer (cols, true, t.sideChain, false, t.sideChainAlpha, false);
                 g.restoreState();
             }
         }
@@ -594,7 +618,9 @@ ScopePage::ScopePage (ScopeTap& t, Settings& st, std::function<void()> ch) : tap
     spectralBtn.setTooltip ("Colour the waveform by frequency: sub, low, mid, high, air");
     aaBtn.setTooltip ("Anti-aliasing: smoother edges");
     freezeBtn.onClick = [this] { toggleFreeze(); };
-    scrollBtn.onClick = [this] { s.scopeMode = s.scopeMode == scope::Scroll ? scope::Free : scope::Scroll; engine.setMode (s.scopeMode); updateButtons(); if (changed) changed(); };
+    scrollBtn.onClick = [this] { s.scopeMode = s.scopeMode == scope::Scroll ? scope::Free : scope::Scroll; s.scopeSync = false; engine.setMode (effectiveMode()); updateButtons(); if (changed) changed(); };
+    syncBtn.onClick = [this] { s.scopeSync = true; engine.setMode (effectiveMode()); updateButtons(); if (changed) changed(); };
+    freeBtn.onClick = [this] { s.scopeSync = false; engine.setMode (effectiveMode()); updateButtons(); if (changed) changed(); };
     spectralBtn.onClick = [this] { s.scopeSpectral = ! s.scopeSpectral; updateButtons(); if (changed) changed(); };
     aaBtn.onClick = [this] { s.scopeAA = ! s.scopeAA; updateButtons(); if (changed) changed(); };
     menuBtn.onClick = [this] { showMenu(); };
@@ -651,8 +677,21 @@ ScopePage::ScopePage (ScopeTap& t, Settings& st, std::function<void()> ch) : tap
         updateButtons();
     };
 
+    style (listenBtn, "box");
+    listenBtn.getProperties().set ("rec", true);
+    listenBtn.setVisible (false);
+    listenBtn.setTooltip ("Listen: hear only the band-pass (the plugin's output; click again to stop)");
+    listenBtn.onClick = [this]
+    {
+        if (host == nullptr) return;
+        const bool on = ! host->isolation().bandpass.load();
+        if (on && ! s.scopeBP) s.scopeBP = true;
+        host->setScopeListen (on, s.scopeBPHz);
+        updateButtons();
+    };
+    addChildComponent (listenBtn);
     engine.setSource (s.scopeSource);
-    engine.setMode (s.scopeMode);
+    engine.setMode (effectiveMode());
     engine.setBandpass (s.scopeBPHz);
     configure();
     updateButtons();
@@ -660,7 +699,7 @@ ScopePage::ScopePage (ScopeTap& t, Settings& st, std::function<void()> ch) : tap
 
 ScopePage::~ScopePage()
 {
-    for (auto* b : { &syncBtn, &freeBtn, &freezeBtn, &scrollBtn, &spectralBtn, &aaBtn, &menuBtn, &tripletBtn, &bpBtn, &sideBtn, &holdBtn, &resetBtn, &recBtn })
+    for (auto* b : { &syncBtn, &freeBtn, &freezeBtn, &scrollBtn, &spectralBtn, &aaBtn, &menuBtn, &tripletBtn, &bpBtn, &sideBtn, &holdBtn, &resetBtn, &recBtn, &listenBtn })
         b->setLookAndFeel (nullptr);
     for (auto& b : divBtns) b.setLookAndFeel (nullptr);
     gain.setLookAndFeel (nullptr);
@@ -720,6 +759,26 @@ void ScopePage::exportTo (const juce::File& wav)
         w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
 }
 
+int ScopePage::effectiveMode() const
+{
+    if (host != nullptr && s.scopeSync) return scope::Sync;
+    return s.scopeMode == scope::Scroll ? scope::Scroll : scope::Free;
+}
+
+void ScopePage::setHost (HostLink* h)
+{
+    host = h;
+    syncBtn.setEnabled (h != nullptr);
+    syncBtn.setTooltip (h ? "Sync: the window starts on a bar line and follows the DAW's transport, sample-accurately"
+                          : "Sync follows the DAW's transport: in the VST3 version");
+    listenBtn.setVisible (h != nullptr);
+    engine.setMode (effectiveMode());
+    sideBtn.setButtonText (h ? "SC" : "Side2SC");
+    sideBtn.setTooltip (h ? "The overlay: the sidechain input (or Side, L - R; choose in the menu), in the Side2SC / sidechain colour"
+                          : sideBtn.getTooltip());
+    configure(); updateButtons(); resized();
+}
+
 double ScopePage::windowSeconds() const
 {
     const double beat = 60.0 / juce::jlimit (20.0, 400.0, s.bpm);
@@ -730,6 +789,7 @@ void ScopePage::configure()
 {
     lastBpm = s.bpm;
     engine.configure (tap.sampleRate(), windowSeconds());
+    if (host != nullptr) host->setScopeSyncBars (kBars[juce::jlimit (0, 5, s.scopeDivision)] * (s.scopeTriplet ? 2.0 / 3.0 : 1.0));
     display->showAll();
     display->haveSel = false;
     display->repaint();
@@ -771,7 +831,11 @@ void ScopePage::onFrame (double t)
     if (! active || ! isShowing()) { lastFrameT = 0; return; }
     if (s.bpm != lastBpm || std::abs (tap.sampleRate() - engine.sampleRate()) > 0.5) { configure(); updateButtons(); }
     const auto before = engine.recState();
-    tap.drain ([this] (const float* l, const float* r, int n) { engine.push (l, r, n); });
+    engine.setOverlayFromSidechain (host != nullptr && s.scopeScInput);
+    tap.drainAll ([this] (const float* l, const float* r, const float* sl, const float* sr, const float* ph, int n)
+    {
+        engine.push (l, r, sl, sr, ph, n);
+    });
 
     // the scroll clock: steady steps of (frame time x rate), gently pulled towards the newest audio
     const double sr = engine.sampleRate(), target = (double) engine.totalWritten() - kScrollLatency * sr;
@@ -791,9 +855,11 @@ void ScopePage::onFrame (double t)
 
 void ScopePage::updateButtons()
 {
-    freeBtn.setToggleState (true, juce::dontSendNotification);
+    freeBtn.setToggleState (effectiveMode() != scope::Sync, juce::dontSendNotification);
+    syncBtn.setToggleState (effectiveMode() == scope::Sync, juce::dontSendNotification);
+    if (host != nullptr) listenBtn.setToggleState (host->isolation().bandpass.load(), juce::dontSendNotification);
     freezeBtn.setToggleState (engine.isFrozen(), juce::dontSendNotification);
-    scrollBtn.setToggleState (s.scopeMode == scope::Scroll, juce::dontSendNotification);
+    scrollBtn.setToggleState (effectiveMode() == scope::Scroll, juce::dontSendNotification);
     spectralBtn.setToggleState (s.scopeSpectral, juce::dontSendNotification);
     aaBtn.setToggleState (s.scopeAA, juce::dontSendNotification);
     for (int i = 0; i < 6; ++i) divBtns[(size_t) i].setToggleState (i == s.scopeDivision, juce::dontSendNotification);
@@ -899,8 +965,21 @@ void ScopePage::showMenu()
     m.addItem (1, "Guide lines", true, s.scopeGuides);
     m.addItem (2, "Open recordings folder");
     m.addSeparator();
-    m.addItem (3, "Sidechain from another instance (VST3 version)", false);
-    m.addItem (4, "Sync to the DAW (VST3 version)", false);
+    if (host != nullptr)
+    {
+        m.addItem (700, "Overlay (SC): the sidechain input", true, s.scopeScInput);
+        m.addItem (701, "Overlay (SC): Side (L - R)", true, ! s.scopeScInput);
+        m.addItem (702, "Overlay style: filled", true, s.scopeScStyle == 0);
+        m.addItem (703, "Overlay style: outline (the main wave stays visible underneath)", true, s.scopeScStyle == 1);
+        m.addItem (704, "Sync to the DAW", true, s.scopeSync);
+    }
+    else
+    {
+        m.addItem (3, "Sidechain from another track (VST3 version)", false);
+        m.addItem (4, "Sync to the DAW (VST3 version)", false);
+        m.addItem (702, "Overlay style: filled", true, s.scopeScStyle == 0);
+        m.addItem (703, "Overlay style: outline", true, s.scopeScStyle == 1);
+    }
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&menuBtn), [this, list] (int id)
     {
         if (id >= 100 && id < 104) { s.scopeSource = id - 100; engine.setSource (s.scopeSource); engine.reset(); }
@@ -915,6 +994,9 @@ void ScopePage::showMenu()
             return;
         }
         else if (id == 600) { s.scopeColours = {}; s.scopePalette = 0; loadTheme(); }
+        else if (id == 700 || id == 701) { s.scopeScInput = id == 700; s.scopeSide = true; engine.reset(); }
+        else if (id == 702 || id == 703) s.scopeScStyle = id - 702;
+        else if (id == 704) { s.scopeSync = ! s.scopeSync; engine.setMode (effectiveMode()); }
         else if (id == 1) s.scopeGuides = ! s.scopeGuides;
         else if (id == 2) { recordingsFolder().createDirectory(); recordingsFolder().startAsProcess(); }
         else return;
@@ -955,7 +1037,8 @@ void ScopePage::resized()
     gain.setBounds (f.removeFromLeft (ui::px (130)));
     gainText = f.removeFromLeft (ui::px (64)); f.removeFromLeft (ui::px (10));
     bpBtn.setBounds (f.removeFromLeft (ui::px (46)).reduced (0, 3)); f.removeFromLeft (ui::px (4));
-    bpFreq->setBounds (f.removeFromLeft (ui::px (58)).reduced (0, 3)); f.removeFromLeft (ui::px (14));
+    bpFreq->setBounds (f.removeFromLeft (ui::px (58)).reduced (0, 3)); f.removeFromLeft (ui::px (host ? 4 : 14));
+    if (host != nullptr) { listenBtn.setBounds (f.removeFromLeft (ui::px (60)).reduced (0, 3)); f.removeFromLeft (ui::px (10)); }
     sideBtn.setBounds (f.removeFromLeft (ui::px (86)).reduced (0, 3));
     waveIcon->setBounds (f.removeFromRight (ui::px (52)));
     f.removeFromRight (ui::px (6));

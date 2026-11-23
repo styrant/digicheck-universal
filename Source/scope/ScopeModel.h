@@ -14,6 +14,8 @@
 //   Free    the trace sweeps left to right across the window and wraps; after silence it restarts at
 //           the left edge as soon as audio comes in, so a hit always starts at the same place
 //   Scroll  the newest audio enters at the right edge and moves left
+//   Sync    (VST3) each sample is written where the host's musical position puts it: the window starts
+//           on a bar line and the trace follows the DAW, sample-accurately; nothing moves while stopped
 //   frozen  (Freeze) nothing is written
 //
 // The window time t (0 .. window seconds, left to right) maps to a ring position; Free: t x rate;
@@ -27,7 +29,7 @@
 namespace scope
 {
     enum Source { Left = 0, Right, Mid, Peak };
-    enum Mode { Free = 0, Scroll };
+    enum Mode { Free = 0, Scroll, Sync };
     constexpr int kBands = 5;
     constexpr int kBlock = 64;
     constexpr double kBandEdges[kBands - 1] = { 80.0, 250.0, 2000.0, 6000.0 };
@@ -61,7 +63,8 @@ namespace scope
         std::vector<Block> blocks;
         std::size_t writePos = 0;           // next position to write
         std::uint64_t written = 0;          // samples written since the last clear
-        bool valid (std::size_t pos) const  { return written >= n || (pos < writePos); }
+        bool sparse = false;                // Sync: written wherever the host puts it, so judge by the blocks
+        bool valid (std::size_t pos) const  { return sparse ? blocks[pos / kBlock].count > 0 : (written >= n || (pos < writePos)); }
         void resize (std::size_t samples);
         void clear();
     };
@@ -85,6 +88,11 @@ namespace scope
         double bandpassHz() const           { return bpHz; }
 
         void push (const float* left, const float* right, int n);
+        // with a sidechain (drawn as the overlay instead of L-R when setOverlayFromSidechain) and / or a
+        // sync phase per sample (0..1 through the window, < 0 while the transport is stopped)
+        void push (const float* left, const float* right, const float* scLeft, const float* scRight, const float* phase, int n);
+        void setOverlayFromSidechain (bool on) { overlaySc = on; }
+        bool overlayFromSidechain() const   { return overlaySc; }
         void reset();                       // clears the live trace (not the Hold snapshot)
 
         // display: n columns over window time [t0, t1]
@@ -124,11 +132,11 @@ namespace scope
     private:
         std::size_t positionAt (const Rings& g, double t) const;
         Column gather (const Rings& g, std::size_t pa, std::size_t cnt, bool bpOn) const;
-        void write (float l, float r);
+        void write (float l, float r, float overlay);
 
         double sr = 48000, window = 2.0, bpHz = 100.0;
         int source = Mid, mode = Free;
-        bool frozen = false, holding = false;
+        bool frozen = false, holding = false, overlaySc = false;
         Rings live, held;
         std::array<Biquad, 8> bandFilters;  // sub LP | low HP+LP | mid HP+LP | high HP+LP | air HP
         Biquad bp1, bp2;

@@ -35,6 +35,8 @@ public:
     void onFrame (double vblankSeconds);     // from the display frame clock
     void toggleFreeze();
     void applySettings();                    // after a settings change from outside (tempo, ...)
+    // VST3: Sync to the host, the sidechain as the overlay, hearing the band-pass (HostLink in Core.h)
+    void setHost (struct HostLink* h);
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -50,7 +52,8 @@ private:
     void repaintZoomBar();
     void configure();
     void showMenu();
-    void loadTheme();                        // the chosen theme + palette + the user's colours
+    void loadTheme();
+    int effectiveMode() const;               // Free / Scroll, or Sync when the host can and it's chosen                        // the chosen theme + palette + the user's colours
     void pickColour (const juce::String& key, const juce::String& label, juce::Colour current);
     void saveThemeAs();
     void updateButtons();
@@ -80,6 +83,8 @@ private:
     juce::TextButton syncBtn { "Sync" }, freeBtn { "Free" }, freezeBtn { "Freeze" }, scrollBtn { "Scroll" },
                      spectralBtn { "Spectral" }, aaBtn { "AA" }, menuBtn { "Menu" };
     std::array<juce::TextButton, 6> divBtns;
+    struct HostLink* host = nullptr;
+    juce::TextButton listenBtn { "Listen" };
     juce::TextButton tripletBtn { "T" }, bpBtn { "BP" }, sideBtn { "Side2SC" }, holdBtn { "Hold" }, resetBtn { "Reset" }, recBtn { "Rec" };
     juce::Label bpmLabel;
     juce::Slider gain { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };

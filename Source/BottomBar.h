@@ -46,6 +46,10 @@ public:
     std::function<void (bool difference)> onBalanceMode;
     std::function<void()> onBalanceReset;
     std::function<void()> onLoudnessReset;                      // after Reset (the Monitor page resets with it)
+    // VST3: Listen (band listening) and the spectrogram's sidechain display; Full screen is hidden
+    void setPluginMode (bool on)                                { plugin = on; resized(); }
+    void setListenState (bool active, const juce::String& what);
+    std::function<void (juce::Component& anchor)> onListen, onSidechainMenu;
     std::function<void()> onSpectrogramDsp;                     // scale or channel picked in the bar
 
     void paint (juce::Graphics&) override;
@@ -65,7 +69,8 @@ private:
     AnalysisEngine& engine;
     std::unique_ptr<juce::LookAndFeel> smallLnf;     // smaller text for the corner buttons (declared before them)
 
-    juce::TextButton optionsBtn { "Options" }, viewSpec { "Spectrogram" }, viewAna { "Analyzer" }, viewBal { "Balance" }, viewKey { "Key" }, viewScope { "Scope" }, viewMon { "Monitor" }, lufsBtn { "LUFS" }, tempoBtn { "Tempo" };
+    juce::TextButton optionsBtn { "Options" }, viewSpec { "Spectrogram" }, viewAna { "Analyzer" }, viewBal { "Balance" }, viewKey { "Key" }, viewScope { "Scope" }, viewMon { "Monitor" }, lufsBtn { "LUFS" }, tempoBtn { "Tempo" }, listenBtn { "Listen" }, scBtn { "SC" };
+    bool plugin = false;
     // spectrogram group
     juce::TextButton specPresets { "Presets" }, pause { "||" }, refDown { "-" }, refUp { "+" }, specSettings { "Settings" };
     juce::Label ref;

@@ -34,6 +34,10 @@ public:
     void setCursorFrequency (double hz) { cursorF = hz; repaint(); }
     std::function<void (bool paused)> onPauseChanged;
 
+    // VST3: a second engine analysing the sidechain, drawn over the main picture (Settings::specSc*)
+    void setSidechainEngine (AnalysisEngine* e);
+    void sidechainStyleChanged() { repaintAll(); repaint(); }
+
     // Renderer selection (message thread)
     void setGpuMode (bool useGpu);
     bool isGpuMode() const noexcept { return gpu; }
@@ -66,6 +70,9 @@ private:
     void repaintAll();
     void updateGlArea();
     juce::uint32 rgbaFor (float db) const noexcept;
+    // one display column's pixels (row 0 = lowest frequency), with the sidechain composited when present
+    void colourColumn (const float* col, const float* sc, const float* scPrev, juce::PixelARGB* out) const noexcept;
+    float level01 (float db) const noexcept;
     int lutIndex (float db) const noexcept;
     std::pair<double, double> effectiveRange() const;
     freqscale::Axis axis() const;
@@ -81,6 +88,10 @@ private:
     juce::Rectangle<int> plot;
     juce::Image img;                        // CPU renderer
     std::vector<float> hist;                // dB history, column-major (W columns x H rows, row 0 = lowest freq)
+    AnalysisEngine* scEngine = nullptr;
+    std::vector<float> schist, scPend;      // the sidechain's history and jitter buffer (like hist / pend)
+    int scHead = 0, scCount = 0;
+    std::vector<juce::PixelARGB> colPix;
     int W = 1, H = 1, writeCol = 0, tick = 0;
     std::array<juce::PixelARGB, 512> lut;
     bool paused = false, running = false, gpu = false;

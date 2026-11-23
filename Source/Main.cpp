@@ -60,7 +60,12 @@ private:
             : DocumentWindow ("Spectroscope - DigiCheck Universal", juce::Colour (0xff0b0c0e), allButtons)
         {
             setUsingNativeTitleBar (true);
-            content = std::make_unique<MainComponent> (p);
+            // the analysis core and the audio input outlive the window's content; the input engine
+            // (and its DSP thread) stops before the core's taps go
+            core = std::make_unique<Core> (p, false);
+            device = std::make_unique<AudioEngine>();
+            core->registerWith (*device);
+            content = std::make_unique<MainComponent> (p, *core, *device, device.get(), nullptr);
             content->onFullscreenRequest = [this] (bool full) { setAppFullscreen (full); };
             setContentNonOwned (content.get(), true);
             setResizable (true, true);
@@ -109,6 +114,8 @@ private:
 
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
 
+        std::unique_ptr<Core> core;
+        std::unique_ptr<AudioEngine> device;
         std::unique_ptr<MainComponent> content;
         std::unique_ptr<FullscreenHost> host;
     };

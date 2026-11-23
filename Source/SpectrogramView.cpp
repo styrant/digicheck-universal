@@ -174,6 +174,9 @@ void SpectrogramView::rebuild()
     hist.assign ((size_t) W * (size_t) H, -std::numeric_limits<float>::infinity());
     pendCap = 512; pendHead = pendCount = 0;
     pend.assign ((size_t) pendCap * (size_t) H, 0.0f);
+    scPend.assign (scEngine ? (size_t) pendCap * (size_t) H : 0, 0.0f); scHead = scCount = 0;
+    schist.assign (scEngine ? (size_t) W * (size_t) H : 0, -std::numeric_limits<float>::infinity());
+    colPix.resize ((size_t) H);
     {
         const juce::ScopedLock sl (glLock);
         gpix.assign ((size_t) W * (size_t) H, 0xff000000u);
@@ -208,8 +211,11 @@ void SpectrogramView::sendConfig (bool clearHistory)
     c.reassign = s.reassign; c.shortRange = s.shortRange; c.channel = s.channel;
     c.floorDb = s.refLevel - s.range - 20;
     engine.setConfig (c);
+    if (scEngine != nullptr) scEngine->setConfig (c);
     if (! clearHistory) return;
     std::fill (hist.begin(), hist.end(), -std::numeric_limits<float>::infinity());
+    std::fill (schist.begin(), schist.end(), -std::numeric_limits<float>::infinity());
+    scHead = scCount = 0;
     img.clear (img.getBounds(), juce::Colours::black);
     writeCol = 0; pendHead = pendCount = 0; credit = 0;
     const juce::ScopedLock sl (glLock);
@@ -221,7 +227,8 @@ void SpectrogramView::settingsChanged (Change c)
 {
     switch (c)
     {
-        case Change::Visual:  engine.setFloorDb (s.refLevel - s.range - 20); buildLut(); repaintAll(); break;
+        case Change::Visual:  engine.setFloorDb (s.refLevel - s.range - 20); if (scEngine) scEngine->setFloorDb (s.refLevel - s.range - 20);
+                              buildLut(); repaintAll(); break;
         case Change::Overlay: updateGlArea(); break;
         case Change::Layout:  rebuild(); break;
         case Change::Dsp:     sendConfig(); break;
@@ -235,46 +242,109 @@ void SpectrogramView::sourceStopped() { running = false; pendHead = pendCount = 
 
 void SpectrogramView::repaintAll()
 {
+    auto colAt = [&] (const std::vector<float>& v, int x) { return v.empty() ? nullptr : v.data() + (size_t) ((x + W) % W) * (size_t) H; };
     if (gpu)
     {
         const juce::ScopedLock sl (glLock);
-        for (size_t i = 0; i < hist.size() && i < gpix.size(); ++i) gpix[i] = rgbaFor (hist[i]);
+        for (int x = 0; x < W && (size_t) (x + 1) * (size_t) H <= gpix.size(); ++x)
+        {
+            colourColumn (colAt (hist, x), colAt (schist, x), colAt (schist, x - 1), colPix.data());
+            auto* dst = gpix.data() + (size_t) x * (size_t) H;
+            for (int j = 0; j < H; ++j) { const auto& p = colPix[(size_t) j]; dst[j] = (juce::uint32) p.getRed() | ((juce::uint32) p.getGreen() << 8) | ((juce::uint32) p.getBlue() << 16) | 0xff000000u; }
+        }
         fullDirty = true;
         return;
     }
     juce::Image::BitmapData bd (img, juce::Image::BitmapData::writeOnly);
     for (int x = 0; x < W; ++x)
     {
-        const float* col = hist.data() + (size_t) x * (size_t) H;
+        colourColumn (colAt (hist, x), colAt (schist, x), colAt (schist, x - 1), colPix.data());
+        for (int j = 0; j < H; ++j)
+            *reinterpret_cast<juce::PixelARGB*> (bd.getPixelPointer (x, H - 1 - j)) = colPix[(size_t) j];
+    }
+}
+
+float SpectrogramView::level01 (float db) const noexcept
+{
+    const double v = (db - (s.refLevel - s.range)) / s.range;
+    return v > 0 ? (float) juce::jmin (1.0, v) : 0.0f;
+}
+
+// The main picture through the colour map; the sidechain on top in its colour:
+//   tint     blended in by its level (loud sidechain = its colour, quiet = the main picture shows)
+//   contour  lines where its level crosses 20 / 40 / 60 / 80 % (between rows and between columns), so
+//            the main picture stays untouched underneath
+void SpectrogramView::colourColumn (const float* col, const float* sc, const float* scPrev, juce::PixelARGB* out) const noexcept
+{
+    for (int j = 0; j < H; ++j)
+    {
+        const float v = col[j];
+        out[j] = std::isnan (v) ? juce::PixelARGB (255, 255, 255, 255) : lut[(size_t) lutIndex (v)];
+    }
+    if (sc == nullptr || scEngine == nullptr || ! s.specSc) return;
+    const auto c = juce::Colour::fromString ("ff" + s.specScColour.trimCharactersAtStart ("#"));
+    const float op = (float) s.specScOpacity;
+    auto blend = [] (juce::PixelARGB& p, juce::Colour c2, float a)
+    {
+        p = juce::PixelARGB (255, (juce::uint8) (p.getRed() + (c2.getRed() - p.getRed()) * a),
+                                  (juce::uint8) (p.getGreen() + (c2.getGreen() - p.getGreen()) * a),
+                                  (juce::uint8) (p.getBlue() + (c2.getBlue() - p.getBlue()) * a));
+    };
+    if (s.specScStyle == 0)
+    {
         for (int j = 0; j < H; ++j)
         {
-            auto* p = reinterpret_cast<juce::PixelARGB*> (bd.getPixelPointer (x, H - 1 - j));
-            const float v = col[j];
-            *p = std::isnan (v) ? juce::PixelARGB (255, 255, 255, 255) : lut[(size_t) lutIndex (v)];
+            const float l = level01 (sc[j]);
+            if (l <= 0.02f) continue;
+            blend (out[j], c.withMultipliedBrightness (0.45f + 0.55f * l), juce::jmin (op, l * op * 1.4f));
         }
+        return;
+    }
+    auto band = [] (float l) { return (int) (l * 5.0f); };      // 0..5: crossings at 20, 40, 60, 80 %
+    for (int j = 0; j < H; ++j)
+    {
+        const float l = level01 (sc[j]);
+        const int b = band (l);
+        const bool edgeRow = j > 0 && band (level01 (sc[j - 1])) != b;
+        const bool edgeCol = scPrev != nullptr && band (level01 (scPrev[j])) != b;
+        if ((edgeRow || edgeCol) && juce::jmax (l, j > 0 ? level01 (sc[j - 1]) : 0.0f) >= 0.2f)
+            blend (out[j], c.withMultipliedBrightness (0.6f + 0.4f * l), op);
     }
 }
 
 void SpectrogramView::commitColumn (const float* col, std::optional<juce::Image::BitmapData>& bd)
 {
     std::copy (col, col + H, hist.data() + (size_t) writeCol * (size_t) H);
+    // the sidechain column released with it (none buffered: an empty one)
+    const float* sc = nullptr; const float* scPrev = nullptr;
+    if (scEngine != nullptr && ! schist.empty())
+    {
+        float* dst = schist.data() + (size_t) writeCol * (size_t) H;
+        if (scCount > 0) { std::copy (scPend.data() + (size_t) scHead * (size_t) H, scPend.data() + (size_t) (scHead + 1) * (size_t) H, dst); scHead = (scHead + 1) % pendCap; --scCount; }
+        else std::fill (dst, dst + H, -std::numeric_limits<float>::infinity());
+        sc = dst;
+        scPrev = schist.data() + (size_t) ((writeCol - 1 + W) % W) * (size_t) H;
+    }
+    colourColumn (hist.data() + (size_t) writeCol * (size_t) H, sc, scPrev, colPix.data());
     if (gpu)
     {
         auto* dst = gpix.data() + (size_t) writeCol * (size_t) H;      // caller holds glLock
-        for (int j = 0; j < H; ++j) dst[j] = rgbaFor (col[j]);
+        for (int j = 0; j < H; ++j) { const auto& p = colPix[(size_t) j]; dst[j] = (juce::uint32) p.getRed() | ((juce::uint32) p.getGreen() << 8) | ((juce::uint32) p.getBlue() << 16) | 0xff000000u; }
         dirtyCols.push_back (writeCol);
     }
     else
     {
         if (! bd) bd.emplace (img, juce::Image::BitmapData::writeOnly);
         for (int j = 0; j < H; ++j)
-        {
-            auto* p = reinterpret_cast<juce::PixelARGB*> (bd->getPixelPointer (writeCol, H - 1 - j));
-            const float v = col[j];
-            *p = std::isnan (v) ? juce::PixelARGB (255, 255, 255, 255) : lut[(size_t) lutIndex (v)];
-        }
+            *reinterpret_cast<juce::PixelARGB*> (bd->getPixelPointer (writeCol, H - 1 - j)) = colPix[(size_t) j];
     }
     writeCol = (writeCol + 1) % W;
+}
+
+void SpectrogramView::setSidechainEngine (AnalysisEngine* e)
+{
+    scEngine = e;
+    rebuild();
 }
 
 double SpectrogramView::effectiveSpeedFor (double refresh) const
@@ -317,6 +387,18 @@ void SpectrogramView::onVBlank (double t)
             std::copy (col, col + H, pend.data() + (size_t) slot * (size_t) H);
             ++pendCount;
         });
+    if (running && scEngine != nullptr && ! scPend.empty())
+    {
+        scEngine->popColumns ([&] (const float* col, int rows)
+        {
+            if (paused || rows != H) return;
+            if (scCount == pendCap) { scHead = (scHead + 1) % pendCap; --scCount; }
+            std::copy (col, col + H, scPend.data() + (size_t) ((scHead + scCount) % pendCap) * (size_t) H);
+            ++scCount;
+        });
+        // the sidechain runs at the same rate: never let it fall more than a few columns behind the main one
+        while (scCount > pendCount + 4) { scHead = (scHead + 1) % pendCap; --scCount; }
+    }
 
     // 2. release a whole number of columns per frame, at the (snapped) display speed
     updateRefresh (dt);
