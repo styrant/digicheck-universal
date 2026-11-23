@@ -124,7 +124,7 @@ jobs:
       - name: Scope test (sweep, scroll, spectral bands, band-pass, stats, recorder)
         run: build\scope_test.exe
 
-      - name: Band listening test (VST3: bypass bit-exact, flat sum, bands, M/S/L/R, no clicks)
+      - name: "Band listening test (VST3: bypass bit-exact, flat sum, bands, M/S/L/R, no clicks)"
         run: build\isolator_test.exe
 
       - name: VST3 loaded in a test host (sidechain bus, bit-exact pass-through, state)
