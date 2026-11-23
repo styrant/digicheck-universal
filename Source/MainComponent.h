@@ -38,6 +38,8 @@ public:
     KeyPage& getKeyPage() { return keyPage; }
     ScopePage& getScopePage() { return scopePage; }
     MonitorPage& getMonitorPage() { return monitorPage; }
+    AnalyzerPanel& getAnalyzerPanel() { return analyzerPanel; }
+    void refreshBottomBarForTest() { bottom.refresh(); }
 
 private:
     void timerCallback() override;
@@ -105,6 +107,7 @@ private:
     LiveRecorder recorder;
     ScopeTap scopeTap;
     FifoTap monitorTap;
+    FifoTap fftTap;
     TranscriptionSession transcription;
     ModelStore modelStore;
     TranscriptionPlayer keyPlayer;
@@ -112,7 +115,7 @@ private:
     TargetLibrary targetLibrary;
     AudioEngine engine;
     SpectrogramView view;
-    AnalyzerPanel analyzerPanel { analyzerProc };
+    AnalyzerPanel analyzerPanel { analyzerProc, fftTap, settings, [this] { saveAll(); } };
     BalanceView balanceView { liveBalance, targetLibrary };
     ScopePage scopePage { scopeTap, settings, [this] { saveAll(); } };
     MonitorPage monitorPage { monitorTap, settings, [this] { saveAll(); }, [this] { engine.resetLoudness(); } };

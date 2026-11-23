@@ -181,6 +181,37 @@ namespace scope
         return mode == Free ? (double) live.writePos / sr : window;
     }
 
+    Column ScopeModel::gather (const Rings& g, std::size_t pa, std::size_t cnt, bool bpOn) const
+    {
+        Column col;
+        bool any = false;
+        for (std::size_t k = 0; k < cnt;)
+        {
+            const std::size_t p = (pa + k) % g.n;
+            if (! g.valid (p)) { ++k; continue; }
+            const auto& blk = g.blocks[p / kBlock];
+            // a whole block when it lies inside this column, else single samples
+            if (p % kBlock == 0 && k + kBlock <= cnt && blk.count >= kBlock)
+            {
+                const float lo = bpOn ? blk.bmn : blk.mn, hi = bpOn ? blk.bmx : blk.mx;
+                if (! any) { col.mn = lo; col.mx = hi; col.smn = blk.smn; col.smx = blk.smx; any = true; }
+                else { col.mn = std::min (col.mn, lo); col.mx = std::max (col.mx, hi); col.smn = std::min (col.smn, blk.smn); col.smx = std::max (col.smx, blk.smx); }
+                for (int i = 0; i < kBands; ++i) col.bands[(size_t) i] += blk.e[i];
+                k += kBlock;
+            }
+            else
+            {
+                const float v = bpOn ? g.bp[p] : g.main[p], s = g.side[p];
+                if (! any) { col.mn = col.mx = v; col.smn = col.smx = s; any = true; }
+                else { col.mn = std::min (col.mn, v); col.mx = std::max (col.mx, v); col.smn = std::min (col.smn, s); col.smx = std::max (col.smx, s); }
+                if (blk.count > 0) for (int i = 0; i < kBands; ++i) col.bands[(size_t) i] += blk.e[i] / (float) blk.count;
+                ++k;
+            }
+        }
+        col.valid = any;
+        return col;
+    }
+
     void ScopeModel::columns (double t0, double t1, int n, bool bpOn, bool fromHold, std::vector<Column>& out) const
     {
         out.assign ((std::size_t) std::max (0, n), {});
@@ -191,34 +222,28 @@ namespace scope
         {
             const double a = t0 + c * dt, b = a + dt;
             if (b <= 0 || a >= window) continue;
-            std::size_t pa = positionAt (g, a), cnt = (std::size_t) std::max (1.0, std::round ((std::min (b, window) - std::max (a, 0.0)) * sr));
-            Column col;
-            bool any = false;
-            for (std::size_t k = 0; k < cnt;)
-            {
-                const std::size_t p = (pa + k) % g.n;
-                if (! g.valid (p)) { ++k; continue; }
-                const auto& blk = g.blocks[p / kBlock];
-                // a whole block when it lies inside this column, else single samples
-                if (p % kBlock == 0 && k + kBlock <= cnt && blk.count >= kBlock)
-                {
-                    const float lo = bpOn ? blk.bmn : blk.mn, hi = bpOn ? blk.bmx : blk.mx;
-                    if (! any) { col.mn = lo; col.mx = hi; col.smn = blk.smn; col.smx = blk.smx; any = true; }
-                    else { col.mn = std::min (col.mn, lo); col.mx = std::max (col.mx, hi); col.smn = std::min (col.smn, blk.smn); col.smx = std::max (col.smx, blk.smx); }
-                    for (int i = 0; i < kBands; ++i) col.bands[(size_t) i] += blk.e[i];
-                    k += kBlock;
-                }
-                else
-                {
-                    const float v = bpOn ? g.bp[p] : g.main[p], s = g.side[p];
-                    if (! any) { col.mn = col.mx = v; col.smn = col.smx = s; any = true; }
-                    else { col.mn = std::min (col.mn, v); col.mx = std::max (col.mx, v); col.smn = std::min (col.smn, s); col.smx = std::max (col.smx, s); }
-                    if (blk.count > 0) for (int i = 0; i < kBands; ++i) col.bands[(size_t) i] += blk.e[i] / (float) blk.count;
-                    ++k;
-                }
-            }
-            col.valid = any;
-            out[(size_t) c] = col;
+            const std::size_t pa = positionAt (g, a), cnt = (std::size_t) std::max (1.0, std::round ((std::min (b, window) - std::max (a, 0.0)) * sr));
+            out[(size_t) c] = gather (g, pa, cnt, bpOn);
+        }
+    }
+
+    void ScopeModel::columnsScroll (double endSample, double spc, int n, bool bpOn, std::vector<Column>& out, double& frac) const
+    {
+        out.assign ((std::size_t) std::max (0, n + 1), {});
+        frac = 0;
+        const Rings& g = live;
+        if (g.n == 0 || n <= 0 || g.written == 0 || spc <= 0) return;
+        const double startCol = (endSample - n * spc) / spc;
+        const double k0 = std::floor (startCol);
+        frac = startCol - k0;
+        const auto written = (long long) g.written;
+        const long long oldest = written - (long long) std::min<std::uint64_t> (g.written, g.n);
+        for (int c = 0; c <= n; ++c)
+        {
+            long long a = std::llround ((k0 + c) * spc), b = std::llround ((k0 + c + 1) * spc);
+            a = std::max (a, oldest); b = std::min (b, written);
+            if (b <= a) continue;
+            out[(size_t) c] = gather (g, (std::size_t) (a % (long long) g.n), (std::size_t) (b - a), bpOn);
         }
     }
 

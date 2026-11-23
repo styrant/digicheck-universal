@@ -113,6 +113,41 @@ private:
         std::unique_ptr<FullscreenHost> host;
     };
 
+    // SPECTROSCOPE_TEST_BENCH=1: after the self-test's views have data, time 30 repaints of each view
+    // (software renderer, so it measures the CPU side of the drawing) and print the averages
+    static void benchViews (MainComponent* mc)
+    {
+        const char* names[] = { "Spectrogram", "Analyzer (bars)", "Balance", "Key", "Scope", "Monitor", "Analyzer (FFT)" };
+        juce::String report;
+        for (int v = 0; v < 7; ++v)
+        {
+            const int view = v == 6 ? 1 : v;
+            if (v == 6) mc->getAnalyzerPanel().setStyle (1);
+            mc->setView (view);
+            juce::Image img (juce::Image::ARGB, mc->getWidth(), mc->getHeight(), true);
+            for (int warm = 0; warm < 3; ++warm) { juce::Graphics g (img); mc->paintEntireComponent (g, true); }
+            const double t0 = juce::Time::getMillisecondCounterHiRes();
+            for (int i = 0; i < 30; ++i)
+            {
+                if (v == 4) mc->getScopePage().onFrame (i / 60.0 + 1000);
+                if (v == 5) mc->getMonitorPage().onFrame (i / 60.0 + 1000);
+                juce::Graphics g (img); mc->paintEntireComponent (g, true);
+            }
+            report << names[v] << ": " << juce::String ((juce::Time::getMillisecondCounterHiRes() - t0) / 30.0, 2) << " ms per frame\n";
+            if (v == 5)
+                for (auto* c : mc->getMonitorPage().getChildren())
+                    if (c->isVisible() && c->getWidth() > 200)
+                    {
+                        juce::Image ci (juce::Image::ARGB, c->getWidth(), c->getHeight(), true);
+                        const double c0 = juce::Time::getMillisecondCounterHiRes();
+                        for (int i = 0; i < 30; ++i) { juce::Graphics g (ci); c->paintEntireComponent (g, true); }
+                        report << "   module " << c->getWidth() << "x" << c->getHeight() << ": " << juce::String ((juce::Time::getMillisecondCounterHiRes() - c0) / 30.0, 2) << " ms\n";
+                    }
+            if (v == 6) mc->getAnalyzerPanel().setStyle (0);
+        }
+        std::fputs (report.toRawUTF8(), stdout); std::fflush (stdout);
+    }
+
     void runSelfTest (juce::String path)
     {
         auto* mc = window->content.get();
@@ -132,6 +167,20 @@ private:
             {
             if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_analyzer.png")); s.openedOk())
             { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
+            // the Analyzer's FFT style with a file (SPECTROSCOPE_TEST_FFTFILE) and optionally a second one as
+            // the sidechain (SPECTROSCOPE_TEST_FFTSC)
+            if (auto f = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_FFTFILE", {}); f.isNotEmpty())
+            {
+                const int prevStyle = mc->getSettings().anaStyle;
+                mc->getAnalyzerPanel().setStyle (1);
+                mc->refreshBottomBarForTest();
+                const juce::File sc (juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_FFTSC", "/nonexistent"));
+                mc->getAnalyzerPanel().getFftView().loadForTest (juce::File (f), sc.existsAsFile() ? &sc : nullptr);
+                if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_fft.png")); s.openedOk())
+                { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
+                mc->getAnalyzerPanel().getFftView().toggleFreeze();
+                mc->getAnalyzerPanel().setStyle (prevStyle);
+            }
             mc->setView (2);   // Balance view
             juce::Timer::callAfterDelay (3500, [this, out, mc]
             {
@@ -193,6 +242,7 @@ private:
             }
             if (auto playWav = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_PLAYWAV", {}); playWav.isNotEmpty())
                 mc->getKeyPage().renderPreview (juce::File (playWav), 16.0, juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_LISTEN", "1").getIntValue());
+            if (juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_BENCH", {}).isNotEmpty()) benchViews (mc);
             mc->setView (0);
             mc->getSettings().bpm = 150.0; mc->getSettings().tempoTriplets = true; mc->getSettings().tempoDotted = false;
             mc->toggleTempoWindow();

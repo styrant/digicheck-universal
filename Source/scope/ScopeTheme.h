@@ -17,6 +17,21 @@ struct ScopeTheme
     static ScopeTheme dark();                        // Scyllascope's default ("Dark")
     static ScopeTheme neon();
     static ScopeTheme digicheck();                   // matches the rest of this app
+    static ScopeTheme amber();                       // amber CRT
+    static ScopeTheme phosphor();                    // green P1 phosphor
+    static ScopeTheme ice();
+    static ScopeTheme sunset();
+    static ScopeTheme mono();                        // white on black, grey hold
+    static ScopeTheme paper();                       // light background
+
+    // spectral palettes that can replace the theme's own (0 = the theme's)
+    static juce::StringArray paletteNames();
+    static std::array<juce::Colour, 5> palette (int index, const ScopeTheme& theme);
+
+    // the user's own colours on top of the theme: "key=#rrggbb;key=#aarrggbb;..." with Scyllascope's keys
+    // (waveColor, sideChainColor, holdColor, scopeBgColor, gridColor, playheadColor, clippingColor, accentColor)
+    void applyOverrides (const juce::String& overrides);
+    juce::var toJson() const;                        // Scyllascope-compatible theme file content
 
     static juce::File folder();
     static juce::Array<ScopeTheme> all();            // the built-in ones, then any in folder()

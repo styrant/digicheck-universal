@@ -163,6 +163,7 @@ void BottomBar::refresh()
     viewKey.setToggleState  (s.viewMode == Key, juce::dontSendNotification);
     viewScope.setToggleState (s.viewMode == Scope, juce::dontSendNotification);
     viewMon.setToggleState (s.viewMode == Monitor, juce::dontSendNotification);
+
     balCurve.setToggleState (s.balanceMode == 0, juce::dontSendNotification);
     balDiff.setToggleState  (s.balanceMode == 1, juce::dontSendNotification);
     balWindow.setSelectedId (juce::jlimit (0, 5, s.balanceWindow) + 1, juce::dontSendNotification);
@@ -245,10 +246,11 @@ void BottomBar::resized()
         const int compact = spec ? ui::px (66 + 6 + 34 + 8 + 80 + 4 + 62)
                           : bal ? ui::px (110 + 4 + 80 + 6 + 52 + 44 + 6 + 48)
                           : (s.viewMode == Key || s.viewMode == Scope || s.viewMode == Monitor) ? 0
+                          : s.anaStyle == 1 ? 0
                                 : ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
         const int withCombos = compact + ui::px (64 + 4 + 122 + 4 + 84 + 10);
         auto lufsFor = [&] (int group) { return juce::jmin (ui::px (450), juce::jmin (r.getWidth() / 2, r.getWidth() - group - ui::px (16))); };
-        const int minGroup = (s.viewMode == Analyzer && lufsFor (withCombos) >= ui::px (330)) ? withCombos : compact;
+        const int minGroup = (s.viewMode == Analyzer && s.anaStyle == 0 && lufsFor (withCombos) >= ui::px (330)) ? withCombos : compact;
         const int lufsW = juce::jmax (ui::px (240), lufsFor (minGroup));
         lufs.setBounds (r.removeFromRight (lufsW).expanded (0, 2));
         r.removeFromRight (ui::px (12));
@@ -258,7 +260,7 @@ void BottomBar::resized()
     for (auto* c : std::initializer_list<juce::Component*> { &specPresets, &pause, &ref, &refDown, &refUp, &specScale, &specChannel, &specSettings })
         c->setVisible (spec && controls);
     for (auto* c : std::initializer_list<juce::Component*> { &anaPresets, &bpoBox, &chanBox, &gridBox, &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings })
-        c->setVisible (s.viewMode == Analyzer && controls);
+        c->setVisible (s.viewMode == Analyzer && controls && s.anaStyle == 0);
     for (auto* c : std::initializer_list<juce::Component*> { &balTarget, &balWindow, &balCurve, &balDiff, &balReset })
         c->setVisible (bal && controls);
     if (! controls) return;
@@ -307,24 +309,24 @@ void BottomBar::resized()
     }
 
     if (s.viewMode != Analyzer) return;               // the Key, Scope and Monitor views have no controls here (they're on their pages)
+    if (s.anaStyle == 1) return;                       // the FFT style keeps its controls in its own header
 
-    const bool roomForCombos = r.getWidth() >= ui::px (66 + 6 + 64 + 4 + 122 + 4 + 84 + 10 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
-    for (auto* c : { &bpoBox, &chanBox, &gridBox }) c->setVisible (roomForCombos);
-    const int wButtons = ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
-    const int w = wButtons + (roomForCombos ? ui::px (64 + 4 + 122 + 4 + 84 + 10) : 0);
+    // what fits, in order; when space is short the least important go first: the three combo boxes, Full,
+    // the zoom buttons, Presets, Settings (Freeze stays)
+    struct Item { juce::Component* c; int w, gap, drop; };
+    std::vector<Item> items { { &anaPresets, 66, 6, 4 }, { &bpoBox, 64, 4, 1 }, { &chanBox, 122, 4, 1 }, { &gridBox, 84, 10, 1 },
+                              { &zoomOut, 28, 2, 3 }, { &zoomIn, 28, 4, 3 }, { &fullRange, 46, 4, 2 }, { &freeze, 62, 4, 9 }, { &anaSettings, 72, 0, 5 } };
+    auto total = [&] { int t = 0; for (auto& i : items) if (i.drop > 0) t += ui::px (i.w + i.gap); return t; };
+    for (int level = 1; level <= 5 && total() > r.getWidth(); ++level)
+        for (auto& i : items) if (i.drop == level) i.drop = 0;
+    const int w = juce::jmin (r.getWidth(), total());
     auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
-    anaPresets.setBounds (g.removeFromLeft (ui::px (66))); g.removeFromLeft (ui::px (6));
-    if (roomForCombos)
+    for (auto& i : items)
     {
-        bpoBox.setBounds (g.removeFromLeft (ui::px (64)));  g.removeFromLeft (ui::px (4));
-        chanBox.setBounds (g.removeFromLeft (ui::px (122))); g.removeFromLeft (ui::px (4));
-        gridBox.setBounds (g.removeFromLeft (ui::px (84)));  g.removeFromLeft (ui::px (10));
+        i.c->setVisible (i.drop > 0);
+        if (i.drop == 0) continue;
+        i.c->setBounds (g.removeFromLeft (ui::px (i.w))); g.removeFromLeft (ui::px (i.gap));
     }
-    zoomOut.setBounds (g.removeFromLeft (ui::px (28)));   g.removeFromLeft (ui::px (2));
-    zoomIn.setBounds (g.removeFromLeft (ui::px (28)));    g.removeFromLeft (ui::px (4));
-    fullRange.setBounds (g.removeFromLeft (ui::px (46))); g.removeFromLeft (ui::px (4));
-    freeze.setBounds (g.removeFromLeft (ui::px (62)));    g.removeFromLeft (ui::px (4));
-    anaSettings.setBounds (g.removeFromLeft (ui::px (72)));
 }
 
 void BottomBar::LufsReadout::paint (juce::Graphics& g)

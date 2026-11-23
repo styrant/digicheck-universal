@@ -171,6 +171,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     engine.addTap (&recorder);
     engine.addTap (&scopeTap);
     engine.addTap (&monitorTap);
+    engine.addTap (&fftTap);
     setWantsKeyboardFocus (true);
 
     status.setJustificationType (juce::Justification::topLeft);
@@ -267,6 +268,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     bottom.onFullRange       = [this] { analyzerPanel.getView().resetZoom(); };
     bottom.onFreeze          = [this] { analyzerPanel.getView().toggleFreeze(); };
     bottom.onAnalyzerSettings = [this] { analyzerPanel.toggleSettings(); };
+    analyzerPanel.onStyleChanged = [this] (int st) { bottom.refresh(); saveAll(); if (st == 1) grabKeyboardFocus(); else analyzerPanel.getView().grabKeyboardFocus(); };
     bottom.onSpectrogramPresets = [this] (juce::Component& a) { showSpectrogramPresets (a); };
     bottom.onAnalyzerPresets    = [this] (juce::Component& a) { showAnalyzerPresets (a); };
     analyzerPanel.onStateChanged = [this] { bottom.setAnalyzerState (analyzerPanel.getView().isFrozen(), analyzerPanel.getView().isZoomed()); };
@@ -341,6 +343,7 @@ void MainComponent::onFrame (double t)
     balanceView.onFrame (t);
     scopePage.onFrame (t);
     monitorPage.onFrame (t);
+    analyzerPanel.onFrame (t);
     if (glContext.isAttached()) glContext.triggerRepaint();
 }
 
@@ -415,7 +418,7 @@ void MainComponent::setView (int v)
     engine.setSpectrogramActive (spec);
     if (bal) { refreshBalanceTargets(); grabKeyboardFocus(); }
     if (key || sco || mon) grabKeyboardFocus();
-    if (ana) analyzerPanel.getView().grabKeyboardFocus();
+    if (ana) { if (analyzerPanel.isFft()) grabKeyboardFocus(); else analyzerPanel.getView().grabKeyboardFocus(); }
     bottom.refresh();
     saveAll();
 }
@@ -659,7 +662,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
     {
         if (settings.viewMode == BottomBar::Key) keyPage.togglePlay();
         else if (settings.viewMode == BottomBar::Scope) scopePage.toggleFreeze();
-        else if (ana) analyzerPanel.getView().toggleFreeze();
+        else if (ana) { if (analyzerPanel.isFft()) analyzerPanel.getFftView().toggleFreeze(); else analyzerPanel.getView().toggleFreeze(); }
         else if (! bal) view.togglePause();
         return true;
     }

@@ -138,6 +138,23 @@ int main()
                     + std::to_string (t.l.size()) + " samples, normalised peak " + f2 (pk));
     }
 
+    {
+        // Scroll, smooth: one column further on, the columns are the same ones shifted by exactly one
+        scope::ScopeModel m; m.configure (48000, 1.0); m.setMode (scope::Scroll);
+        std::vector<float> L (48000 * 2), R (48000 * 2);
+        for (size_t i = 0; i < L.size(); ++i) L[i] = R[i] = (float) (std::sin (i * 0.013) * (0.2 + 0.7 * ((i / 997) % 3) / 2.0));
+        m.push (L.data(), R.data(), (int) L.size());
+        const double spc = 48000.0 / 800;                            // 1 s across 800 px
+        std::vector<scope::Column> a, b; double fa = 0, fb = 0;
+        const double end = (double) m.totalWritten() - 1234.5;
+        m.columnsScroll (end, spc, 800, false, a, fa);
+        m.columnsScroll (end + spc, spc, 800, false, b, fb);
+        bool same = true;
+        for (int c = 1; c <= 800; ++c) if (a[(size_t) c].mn != b[(size_t) c - 1].mn || a[(size_t) c].mx != b[(size_t) c - 1].mx) same = false;
+        m.columnsScroll (end + spc * 0.25, spc, 800, false, b, fb);
+        expect (same && a.size() == 801 && std::abs (fb - std::fmod (fa + 0.25, 1.0)) < 1e-6,
+                "Scroll grid: +1 column shifts the columns by exactly one; +1/4 column moves the offset by 0.25 (" + f2 (fa) + " -> " + f2 (fb) + ")");
+    }
     std::printf (failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;
 }

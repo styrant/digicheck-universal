@@ -49,7 +49,9 @@ Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor** but
   - Below 20 Hz: Ext Log shows down to 1 Hz with the normal 20 Hz-20 kHz range; for the other scales pick the
     5 Hz-20 kHz, 10 Hz-20 kHz, 2-200 Hz or 5 Hz-1 kHz range in Settings → Frequency Range. A larger FFT
     (16384) is needed to resolve very low notes: one cycle at 5 Hz lasts 200 ms.
-- **Analyzer:** [Spectrum Analyzer 2](Source/analyzer/LICENSE), a constant-Q filter-bank analyzer (Seven Phases, MIT licence).
+- **Analyzer:** two styles, switched with **Bars | FFT** at the top left of the view.
+  - **FFT:** a smooth spectrum curve in the style of Voxengo SPAN and FabFilter Pro-Q: a filled curve with a bright outline, a peak-hold line (click the display to reset it) and an optional **second curve** (Left, Right, Mid, Side, or in the VST3 version the sidechain) with its own colour and style (line, filled or dashed, with a dark halo so it stays readable over the main curve). The header sets the channel, FFT size (2048-32768), averaging (real time to 3 s), slope (0, 3, 4.5 or 6 dB/oct around 1 kHz; 4.5 makes pink noise and most mixes look flat), fractional-octave smoothing, hold and freeze; **Colours** has presets and a picker for both curves. Hover for frequency, note and level; the wheel scrolls the dB range, Ctrl+wheel zooms it, double-click resets. A tone reads its true level wherever it falls between FFT bins (the Hann window's scalloping is corrected exactly). `fft_test` checks the calibration on every build.
+  - **Bars:** [Spectrum Analyzer 2](Source/analyzer/LICENSE), a constant-Q filter-bank analyzer (Seven Phases, MIT licence).
   - Peak bars, peak hold and RMS average, at 3–24 bands per octave.
   - Wheel zooms, drag pans, and shift+drag zooms to a selection.
   - Hover for the readout (frequency, level, note and cents). Right-click or **Settings** opens its settings panel.
@@ -58,14 +60,15 @@ Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor** but
 
 - **Scope:** a tempo-synced oscilloscope modelled on Scyllascope's design.
   - The window is a musical length: **1/4, 1/2, 1, 2, 4 or 8 bars** at the BPM shown (click to type it; **T** = triplets). Beat and bar lines are drawn behind the wave.
-  - **Free** sweeps left to right and restarts at the left edge after 0.25 s of silence; **Scroll** scrolls instead; **Freeze** (or Space) stops it.
+  - **Free** sweeps left to right and restarts at the left edge after 0.25 s of silence; **Scroll** scrolls instead, at an even speed with sub-pixel steps (the columns sit on a fixed sample grid, and the scroll follows the audio about 40 ms behind so buffer-sized arrivals don't show); **Freeze** (or Space) stops it.
   - **Spectral** colours each slice by its frequency content: red/orange for lows (kicks, bass), yellow/green for mids, purple for highs (hats). **AA** smooths the outline.
   - **Gain** (-24 to +24 dB; Ctrl+wheel) magnifies quiet parts. Anything past 0 dBFS turns the clipping colour, and with negative gain a dashed line marks 0 dBFS.
   - **BP** and its frequency knob show only a band (two cascaded band-passes, Q 1.4), e.g. 60 Hz to see the kick alone.
   - **Side2SC** overlays the Side signal (L−R) on the main wave; **Hold** freezes a ghost copy behind the live wave for comparison.
   - Mouse: the wheel zooms, Shift+wheel scrolls, Alt+wheel changes the length, drag zooms (vertical) and pans (horizontal), double-click shows everything. **Ctrl+drag selects** a region and shows its length, peak, RMS and crest factor. Ctrl+click pins a dB ruler.
   - **Rec** arms the recorder: it starts with the next audio and records one window. Drag the wave icon into your DAW or Explorer to take it as a 24-bit WAV (right-click: Normalize, Trim silence, Snap to grid, Save as…). Recordings go to Documents\DigiCheck Universal\Scope Recordings.
-  - Menu: source (Stereo, Left, Right, Mid, Side, Peak), guide lines, and colour **themes** (Dark, Neon, DigiCheck). Scyllascope-style JSON themes in Documents\DigiCheck Universal\Scope Themes are loaded too.
+  - Menu: source (Stereo, Left, Right, Mid, Side, Peak), guide lines, and colour **themes**: Dark, Neon, DigiCheck, Amber, Phosphor, Ice, Sunset, Mono and Paper (light). Scyllascope-style JSON themes in Documents\DigiCheck Universal\Scope Themes are loaded too.
+  - **Colours** (in the menu): a **spectral palette** independent of the theme (Scyllascope, Heat, Ocean, Rainbow, Pastel, Forest, Mono), and your own colour for the wave, Side2SC / sidechain, hold, background, grid, playhead, clipping and accent (a picker that applies as you drag). **Save current colours as a theme...** writes a Scyllascope-compatible theme file.
   - Reserved for the VST3 version: Sync to the host transport, Sync to Start, sidechain from another track or instance, track name/colour, listening to the BP band, and REAPER's embedded mode. They are shown greyed out.
 
 - **Monitor:** a modular metering page in the spirit of iZotope Insight 2. The chips at the top show and hide modules; each module's gear has its options, the corner button maximises it (or double-click its title), and dragging a title onto another module swaps them. **Full width** (gear menu) makes a module span the row; **Layout** sets 1-3 columns or resets the layout. Everything keeps measuring while the page is hidden, and **Reset** (here or in the bottom bar) restarts both.
@@ -79,7 +82,7 @@ Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor** but
 - The display is synced to the monitor's refresh rate (60/120/144 Hz…). New spectrogram columns pass through a ~30 ms buffer and are released at exactly the display speed, so the scroll is even on every frame.
 - **GPU Rendering (OpenGL)** is on by default (Settings → GPU Rendering). The spectrogram history is an OpenGL texture: each frame uploads only the new columns and scrolls with sub-pixel precision. The rest of the interface, including the Analyzer, is drawn on the GPU too.
 - Turn it off to use the CPU renderer, e.g. if your graphics driver has OpenGL problems.
-- **Frame rate limit** (in Options): caps the whole window, both views, at a chosen rate. For a G-Sync / FreeSync monitor, pick about 3 below its maximum (e.g. 141 for 144 Hz) to stay inside the variable-refresh range. Vsync stays on, so frames never exceed the monitor's refresh rate.
+- **Frame rate limit** (in Options): caps the whole window at a chosen rate; **60 fps by default**, which is smooth and saves the GPU redrawing at 144 or 240 Hz. Frames stay evenly spaced: well below the refresh rate the display draws every k-th refresh (60 on 60/120/240 Hz monitors, an even 72 on 144 Hz) instead of alternating gaps. Choose Off to follow the monitor. For a G-Sync / FreeSync monitor, pick about 3 below its maximum (e.g. 141 for 144 Hz) to stay inside the variable-refresh range. Vsync stays on, so frames never exceed the monitor's refresh rate.
 - The Options panel shows the renderer and the measured frame rate, e.g. `GPU (OpenGL), 141 fps (limit 141)`.
 
 ## Toolbar and windows

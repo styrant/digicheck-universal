@@ -89,6 +89,12 @@ namespace scope
 
         // display: n columns over window time [t0, t1]
         void columns (double t0, double t1, int n, bool bandpassed, bool held, std::vector<Column>& out) const;
+        // Scroll mode, jitter-free: columns on a fixed grid of absolute sample positions (column k covers
+        // samples [k*spc, (k+1)*spc)), ending at the absolute sample `endSample` (may be fractional, e.g. a
+        // smoothly advancing display clock). Returns n + 1 columns; the first starts `frac` of a column
+        // before the left edge, so drawing column j at x = j - frac scrolls by sub-pixel amounts.
+        void columnsScroll (double endSample, double spc, int n, bool bandpassed, std::vector<Column>& out, double& frac) const;
+        std::uint64_t totalWritten() const  { return live.written; }   // absolute sample count (Scroll: ring pos = count % n)
         // the raw samples over [t0, t1] (for drawing when zoomed in to the samples)
         void samples (double t0, double t1, bool bandpassed, bool held, std::vector<float>& main, std::vector<float>& side) const;
         Stats stats (double t0, double t1, bool bandpassed) const;
@@ -117,6 +123,7 @@ namespace scope
 
     private:
         std::size_t positionAt (const Rings& g, double t) const;
+        Column gather (const Rings& g, std::size_t pa, std::size_t cnt, bool bpOn) const;
         void write (float l, float r);
 
         double sr = 48000, window = 2.0, bpHz = 100.0;

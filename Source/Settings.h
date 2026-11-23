@@ -22,7 +22,7 @@ struct Settings
     int    noteRef    = 440;      // 0 = off
     bool   showLufs   = true;
     bool   gpu        = true;     // OpenGL rendering
-    int    fpsCap     = 0;        // frame-rate limit, 0 = follow the monitor
+    int    fpsCap     = 60;       // frame-rate limit, 0 = follow the monitor (60 by default: smooth, and no wasted GPU work)
     int    textSize   = 1;        // 0 small, 1 medium (default), 2 large, 3 custom
     double textScaleCustom = 1.0;
     bool   autoHideBar = true;    // hide the top toolbar in full screen (reveal at the top edge)
@@ -53,8 +53,22 @@ struct Settings
     bool   scopeSide     = false; // Side2SC overlay
     int    scopeSource   = 2;     // 0 left, 1 right, 2 mid, 3 peak
     juce::String scopeTheme = "Dark";
+    int    scopePalette  = 0;     // spectral colours: 0 the theme's, see ScopeTheme::paletteNames()
+    juce::String scopeColours;    // the user's colours on top of the theme ("waveColor=#rrggbb;...")
     bool   scopeRecNormalize = false, scopeRecTrim = true, scopeRecSnap = false;
-    // Monitor (modular metering page)
+    // Analyzer FFT style (SPAN / Pro-Q-like curve)
+    int    anaStyle      = 0;     // 0 bars (Spectrum Analyzer 2), 1 FFT curve
+    int    fftOrder      = 13;    // 11..15: 2048..32768 points
+    int    fftChannel    = 0;     // fft::Channel
+    int    fftSecondary  = 0;     // 0 none, 1 left, 2 right, 3 mid, 4 side, 5 sidechain (VST3)
+    double fftSlope      = 4.5;   // dB per octave, pivot 1 kHz
+    double fftAvgMs      = 300;   // 0 real time
+    int    fftSmooth     = 0;     // 0 off, 1 1/24, 2 1/12, 3 1/6, 4 1/3 octave
+    bool   fftHold       = true;
+    double fftTop        = 6, fftBottom = -90;
+    juce::String fftColour = "#5aa9ff", fftSecColour = "#ff8a3d";
+    int    fftSecStyle   = 0;     // 0 line, 1 filled, 2 dashed
+
     juce::String monitorOrder = "0,1,2,3,4";   // module order: loudness, dynamics, levels, sound field, phase
     int    monitorShown  = 31;    // bit per module
     int    monitorWide   = 3;     // bit per module: spans the whole row (loudness, dynamics)
@@ -125,6 +139,7 @@ struct Settings
         showLufs   = p.getBoolValue ("showLufs", showLufs);
         gpu        = p.getBoolValue ("gpu", gpu);
         fpsCap     = p.getIntValue ("fpsCap", fpsCap);
+        if (p.getIntValue ("settingsVersion", 1) < 2 && fpsCap == 0) fpsCap = 60;   // v2: 60 fps became the default
         textSize   = p.getIntValue ("textSize", textSize);
         textScaleCustom = p.getDoubleValue ("textScaleCustom", textScaleCustom);
         autoHideBar = p.getBoolValue ("autoHideBar", autoHideBar);
@@ -155,9 +170,24 @@ struct Settings
         scopeSide     = p.getBoolValue ("scopeSide", scopeSide);
         scopeSource   = juce::jlimit (0, 3, p.getIntValue ("scopeSource", scopeSource));
         scopeTheme    = p.getValue ("scopeTheme", scopeTheme);
+        scopePalette  = juce::jlimit (0, 7, p.getIntValue ("scopePalette", scopePalette));
+        scopeColours  = p.getValue ("scopeColours", scopeColours);
         scopeRecNormalize = p.getBoolValue ("scopeRecNormalize", scopeRecNormalize);
         scopeRecTrim  = p.getBoolValue ("scopeRecTrim", scopeRecTrim);
         scopeRecSnap  = p.getBoolValue ("scopeRecSnap", scopeRecSnap);
+        anaStyle      = juce::jlimit (0, 1, p.getIntValue ("anaStyle", anaStyle));
+        fftOrder      = juce::jlimit (11, 15, p.getIntValue ("fftOrder", fftOrder));
+        fftChannel    = juce::jlimit (0, 4, p.getIntValue ("fftChannel", fftChannel));
+        fftSecondary  = juce::jlimit (0, 5, p.getIntValue ("fftSecondary", fftSecondary));
+        fftSlope      = juce::jlimit (0.0, 6.0, p.getDoubleValue ("fftSlope", fftSlope));
+        fftAvgMs      = juce::jlimit (0.0, 10000.0, p.getDoubleValue ("fftAvgMs", fftAvgMs));
+        fftSmooth     = juce::jlimit (0, 4, p.getIntValue ("fftSmooth", fftSmooth));
+        fftHold       = p.getBoolValue ("fftHold", fftHold);
+        fftTop        = juce::jlimit (-60.0, 30.0, p.getDoubleValue ("fftTop", fftTop));
+        fftBottom     = juce::jlimit (-150.0, fftTop - 12, p.getDoubleValue ("fftBottom", fftBottom));
+        fftColour     = p.getValue ("fftColour", fftColour);
+        fftSecColour  = p.getValue ("fftSecColour", fftSecColour);
+        fftSecStyle   = juce::jlimit (0, 2, p.getIntValue ("fftSecStyle", fftSecStyle));
         monitorOrder  = p.getValue ("monitorOrder", monitorOrder);
         monitorShown  = p.getIntValue ("monitorShown", monitorShown) & 31;
         monitorWide   = p.getIntValue ("monitorWide", monitorWide) & 31;
@@ -193,6 +223,7 @@ struct Settings
         p.setValue ("noteRef", noteRef);       p.setValue ("source", source);
         p.setValue ("showLufs", showLufs);     p.setValue ("gpu", gpu);
         p.setValue ("fpsCap", fpsCap);
+        p.setValue ("settingsVersion", 2);
         p.setValue ("textSize", textSize);     p.setValue ("textScaleCustom", textScaleCustom);     p.setValue ("autoHideBar", autoHideBar);
         p.setValue ("chL", chL);               p.setValue ("chR", chR);
         p.setValue ("windowState", windowState);
@@ -206,7 +237,12 @@ struct Settings
         p.setValue ("scopeGainDb", scopeGainDb); p.setValue ("scopeSpectral", scopeSpectral); p.setValue ("scopeAA", scopeAA);
         p.setValue ("scopeGuides", scopeGuides); p.setValue ("scopeBP", scopeBP); p.setValue ("scopeBPHz", scopeBPHz);
         p.setValue ("scopeSide", scopeSide); p.setValue ("scopeSource", scopeSource); p.setValue ("scopeTheme", scopeTheme);
+        p.setValue ("scopePalette", scopePalette); p.setValue ("scopeColours", scopeColours);
         p.setValue ("scopeRecNormalize", scopeRecNormalize); p.setValue ("scopeRecTrim", scopeRecTrim); p.setValue ("scopeRecSnap", scopeRecSnap);
+        p.setValue ("anaStyle", anaStyle); p.setValue ("fftOrder", fftOrder); p.setValue ("fftChannel", fftChannel);
+        p.setValue ("fftSecondary", fftSecondary); p.setValue ("fftSlope", fftSlope); p.setValue ("fftAvgMs", fftAvgMs);
+        p.setValue ("fftSmooth", fftSmooth); p.setValue ("fftHold", fftHold); p.setValue ("fftTop", fftTop); p.setValue ("fftBottom", fftBottom);
+        p.setValue ("fftColour", fftColour); p.setValue ("fftSecColour", fftSecColour); p.setValue ("fftSecStyle", fftSecStyle);
         p.setValue ("monitorOrder", monitorOrder); p.setValue ("monitorShown", monitorShown); p.setValue ("monitorWide", monitorWide);
         p.setValue ("monitorMax", monitorMax); p.setValue ("monitorCols", monitorCols); p.setValue ("monitorTarget", monitorTarget);
         p.setValue ("monitorMomMax", monitorMomMax); p.setValue ("monitorMS", monitorMS); p.setValue ("monitorRange", monitorRange);

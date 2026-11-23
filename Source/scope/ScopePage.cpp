@@ -1,5 +1,6 @@
 #include "ScopePage.h"
 #include "../UiScale.h"
+#include "../ColourPicker.h"
 
 namespace
 {
@@ -210,7 +211,6 @@ struct ScopePage::Display : public juce::Component
     bool panning = false;
     std::vector<scope::Column> cols, holdCols;
     std::vector<float> sm, ss, hm, hs;
-    juce::Image img;
 
     double window() const { return page.engine.windowSeconds(); }
     float xOf (double t) const { return (float) ((t - v0) / (v1 - v0) * getWidth()); }
@@ -393,18 +393,29 @@ struct ScopePage::Display : public juce::Component
         const float mainAlpha = side ? 0.7f : 1.0f;        // the main wave is dimmed under Side2SC
         if (samplesPerPx >= 1.0)
         {
-            if (img.getWidth() != pw || img.getHeight() != ph) img = juce::Image (juce::Image::ARGB, pw, ph, true);
-            else img.clear (img.getBounds());
-            page.engine.columns (v0, v1, pw, bpOn, false, cols);
+            // Scroll: columns on a fixed sample grid, one extra, drawn shifted by the sub-pixel remainder
+            const bool smoothScroll = page.engine.getMode() == scope::Scroll && page.engine.totalWritten() > 0;
+            double frac = 0;
+            const int iw = pw + (smoothScroll ? 1 : 0);
+            if (smoothScroll)
+                page.engine.columnsScroll (page.scrollNow - (window() - v1) * sr, samplesPerPx, pw, bpOn, cols, frac);
+            else
+                page.engine.columns (v0, v1, pw, bpOn, false, cols);
             if (hold) page.engine.columns (v0, v1, pw, bpOn, true, holdCols);
+            // drawn straight into the context (no image to upload to the GPU every frame): one rectangle per
+            // device-pixel column, in device-pixel units through a transform; the OpenGL renderer batches them
             {
-                juce::Graphics bd (img);
+                g.saveState();
+                g.reduceClipRegion (getLocalBounds());
+                g.addTransform (juce::AffineTransform::scale (W / (float) pw, H / (float) ph)
+                                    .translated (r.getX() - (float) frac * W / (float) pw, r.getY()));
+                auto& bd = g;
                 const float pmid = ph * 0.5f, phalf = ph * 0.5f - 4.0f * scale;
                 auto py = [&] (float v) { return pmid - v * gl * phalf; };
                 const float clipTop = py (1.0f), clipBot = py (-1.0f);
                 auto layer = [&] (const std::vector<scope::Column>& cs, bool sideLayer, juce::Colour fixed, bool spectral, float alpha, bool clipColour)
                 {
-                    for (int x = 0; x < pw; ++x)
+                    for (int x = 0; x < (int) cs.size() && x < iw; ++x)
                     {
                         const auto& c = cs[(size_t) x];
                         if (! c.valid) continue;
@@ -421,9 +432,8 @@ struct ScopePage::Display : public juce::Component
                 if (hold) layer (holdCols, false, t.hold, false, 0.9f, false);
                 layer (cols, false, t.wave, page.s.scopeSpectral && ! bpOn, mainAlpha, true);
                 if (side) layer (cols, true, t.sideChain, false, t.sideChainAlpha, false);
+                g.restoreState();
             }
-            g.setOpacity (1.0f);                          // drawImage uses the current colour's opacity
-            g.drawImage (img, r);
         }
         else
         {
@@ -557,7 +567,7 @@ struct ScopePage::ZoomBar : public juce::Component
 ScopePage::ScopePage (ScopeTap& t, Settings& st, std::function<void()> ch) : tap (t), s (st), changed (std::move (ch))
 {
     setOpaque (true);
-    theme = ScopeTheme::named (s.scopeTheme);
+    loadTheme();
     lnf = std::make_unique<Lnf>();
     lnf->t = &theme;
     display = std::make_unique<Display> (*this);
@@ -753,15 +763,28 @@ void ScopePage::setActive (bool shown)
 {
     active = shown;
     tap.setActive (shown);
-    if (shown) { theme = ScopeTheme::named (s.scopeTheme); applySettings(); }
+    if (shown) { loadTheme(); applySettings(); }
 }
 
-void ScopePage::onFrame (double)
+void ScopePage::onFrame (double t)
 {
-    if (! active || ! isShowing()) return;
+    if (! active || ! isShowing()) { lastFrameT = 0; return; }
     if (s.bpm != lastBpm || std::abs (tap.sampleRate() - engine.sampleRate()) > 0.5) { configure(); updateButtons(); }
     const auto before = engine.recState();
     tap.drain ([this] (const float* l, const float* r, int n) { engine.push (l, r, n); });
+
+    // the scroll clock: steady steps of (frame time x rate), gently pulled towards the newest audio
+    const double sr = engine.sampleRate(), target = (double) engine.totalWritten() - kScrollLatency * sr;
+    const double dt = lastFrameT > 0 ? juce::jlimit (0.0, 0.1, t - lastFrameT) : 0.0;
+    lastFrameT = t;
+    if (! engine.isFrozen())
+    {
+        scrollNow += dt * sr;
+        const double err = target - scrollNow;
+        if (std::abs (err) > 0.25 * sr) scrollNow = target;          // started, stalled or reset: jump
+        else scrollNow += err * 0.06;                                 // tiny corrections: no visible speed change
+        scrollNow = juce::jmin (scrollNow, (double) engine.totalWritten());
+    }
     if (engine.recState() != before || engine.recState() == scope::ScopeModel::Rec::Recording) updateButtons();
     display->repaint();
 }
@@ -792,18 +815,87 @@ void ScopePage::updateButtons()
     repaint();
 }
 
+void ScopePage::loadTheme()
+{
+    theme = ScopeTheme::named (s.scopeTheme);
+    theme.applyOverrides (s.scopeColours);
+    if (s.scopePalette > 0) theme.spectral = ScopeTheme::palette (s.scopePalette, theme);
+}
+
+namespace
+{
+    juce::String setOverride (const juce::String& all, const juce::String& key, const juce::String& value)
+    {
+        juce::StringArray out;
+        for (auto& kv : juce::StringArray::fromTokens (all, ";", {}))
+            if (kv.isNotEmpty() && kv.upToFirstOccurrenceOf ("=", false, false).trim() != key) out.add (kv);
+        if (value.isNotEmpty()) out.add (key + "=" + value);
+        return out.joinIntoString (";");
+    }
+}
+
+void ScopePage::pickColour (const juce::String& key, const juce::String&, juce::Colour current)
+{
+    auto picker = std::make_unique<LiveColourPicker> (current, [this, key] (juce::Colour c)
+    {
+        s.scopeColours = setOverride (s.scopeColours, key, "#" + c.toDisplayString (true));
+        loadTheme();
+        updateButtons();
+        display->repaint();
+    });
+    const auto c = display->getScreenBounds().getCentre();
+    juce::CallOutBox::launchAsynchronously (std::move (picker), juce::Rectangle<int> (c.x, c.y - 150, 1, 1), nullptr);
+    if (changed) changed();
+}
+
+void ScopePage::saveThemeAs()
+{
+    auto* w = new juce::AlertWindow ("Save theme", "Name for the theme (saved to the Scope Themes folder):", juce::MessageBoxIconType::NoIcon, this);
+    w->addTextEditor ("name", theme.name + " (mine)", {});
+    w->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w] (int r)
+    {
+        const auto name = w->getTextEditorContents ("name").trim();
+        if (r != 1 || name.isEmpty()) return;
+        auto t = theme; t.name = name;
+        ScopeTheme::folder().createDirectory();
+        ScopeTheme::folder().getChildFile (juce::File::createLegalFileName (name) + ".json").replaceWithText (juce::JSON::toString (t.toJson()));
+        s.scopeTheme = name; s.scopeColours = {}; s.scopePalette = 0;
+        loadTheme(); updateButtons();
+        if (changed) changed();
+    }), true);
+}
+
 void ScopePage::showMenu()
 {
-    juce::PopupMenu m, themes, source;
+    juce::PopupMenu m, themes, source, colours, palettes;
     m.setLookAndFeel (lnf.get());
     const char* names[] = { "Left", "Right", "Mid", "Peak" };
     for (int i = 0; i < 4; ++i) source.addItem (100 + i, names[i], true, s.scopeSource == i);
     auto list = ScopeTheme::all();
     for (int i = 0; i < list.size(); ++i) themes.addItem (200 + i, list[i].name, true, list[i].name == theme.name);
     themes.addSeparator();
+    themes.addItem (301, "Save current colours as a theme...");
     themes.addItem (300, "Open themes folder");
+
+    const auto pal = ScopeTheme::paletteNames();
+    for (int i = 0; i < pal.size(); ++i) palettes.addItem (400 + i, pal[i], true, s.scopePalette == i);
+    colours.addSubMenu ("Spectral palette", palettes);
+    colours.addSeparator();
+    struct Key { const char* key; const char* label; juce::Colour ScopeTheme::* c; };
+    static const Key keys[] = { { "waveColor", "Wave (Spectral off)", &ScopeTheme::wave }, { "sideChainColor", "Side2SC / sidechain", &ScopeTheme::sideChain },
+                                { "holdColor", "Hold", &ScopeTheme::hold }, { "scopeBgColor", "Background", &ScopeTheme::scopeBg },
+                                { "gridColor", "Grid", &ScopeTheme::grid }, { "playheadColor", "Playhead", &ScopeTheme::playhead },
+                                { "clippingColor", "Clipping", &ScopeTheme::clipping }, { "accentColor", "Accent", &ScopeTheme::accent } };
+    for (int i = 0; i < (int) std::size (keys); ++i)
+        colours.addItem (500 + i, juce::String (keys[i].label) + "...", true, s.scopeColours.contains (keys[i].key));
+    colours.addSeparator();
+    colours.addItem (600, "Reset to the theme's colours", s.scopeColours.isNotEmpty() || s.scopePalette != 0);
+
     m.addSubMenu ("Source", source);
     m.addSubMenu ("Theme", themes);
+    m.addSubMenu ("Colours", colours);
     m.addItem (1, "Guide lines", true, s.scopeGuides);
     m.addItem (2, "Open recordings folder");
     m.addSeparator();
@@ -812,12 +904,22 @@ void ScopePage::showMenu()
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&menuBtn), [this, list] (int id)
     {
         if (id >= 100 && id < 104) { s.scopeSource = id - 100; engine.setSource (s.scopeSource); engine.reset(); }
-        else if (id >= 200 && id < 200 + list.size()) { theme = list[id - 200]; s.scopeTheme = theme.name; }
+        else if (id >= 200 && id < 200 + list.size()) { s.scopeTheme = list[id - 200].name; s.scopeColours = {}; loadTheme(); }
         else if (id == 300) { ScopeTheme::folder().createDirectory(); ScopeTheme::folder().startAsProcess(); }
+        else if (id == 301) { saveThemeAs(); return; }
+        else if (id >= 400 && id < 410) { s.scopePalette = id - 400; if (s.scopePalette > 0) s.scopeSpectral = true; loadTheme(); }
+        else if (id >= 500 && id < 510)
+        {
+            const auto& k = keys[id - 500];
+            pickColour (k.key, k.label, theme.*(k.c));
+            return;
+        }
+        else if (id == 600) { s.scopeColours = {}; s.scopePalette = 0; loadTheme(); }
         else if (id == 1) s.scopeGuides = ! s.scopeGuides;
         else if (id == 2) { recordingsFolder().createDirectory(); recordingsFolder().startAsProcess(); }
         else return;
         updateButtons();
+        display->repaint();
         if (changed) changed();
     });
 }

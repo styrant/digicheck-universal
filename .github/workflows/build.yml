@@ -115,6 +115,9 @@ jobs:
       - name: Key page playback test (original, synth, mix, seeking; no sound card)
         run: build\player_test_artefacts\Release\player_test.exe
 
+      - name: FFT analyzer test (calibration, channels, sidechain input, averaging, hold, slope, scalloping)
+        run: build\fft_test.exe
+
       - name: Monitor test (levels, correlation per band, balance, width, sound field, PSR / PLR history)
         run: build\monitor_test.exe
 

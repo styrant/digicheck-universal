@@ -486,6 +486,7 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
     juce::Image img;
     long long lastPoint = 0;
     double autoGain = 1.0;
+    std::array<juce::PixelARGB, 256> lut {};
 
     void updateButtons() { for (int k = 0; k < 3; ++k) modeBtns[(size_t) k].setToggleState (st().monitorField == k, juce::dontSendNotification); }
     void clearTrail() { std::fill (inten.begin(), inten.end(), 0.0f); }
@@ -503,7 +504,7 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
         plot = r;
         if (plot.getWidth() > 0 && plot.getHeight() > 0)
         {
-            img = juce::Image (juce::Image::ARGB, plot.getWidth(), plot.getHeight(), true);
+            img = juce::Image (juce::Image::ARGB, plot.getWidth(), plot.getHeight(), true, juce::SoftwareImageType());   // written a row at a time
             inten.assign ((size_t) (plot.getWidth() * plot.getHeight()), 0.0f);
         }
         lastPoint = m().pointsWritten();
@@ -581,15 +582,25 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
                 add (ix, iy, 0.45f); add (ix + 1, iy, 0.2f); add (ix, iy + 1, 0.2f); add (ix + 1, iy + 1, 0.1f);
             }
 
+        // intensity -> teal-white pixels through a 256-entry table of premultiplied pixels, a row at a time
+        if (lut[255].getAlpha() == 0)
+            for (int i = 0; i < 256; ++i)
+            {
+                const float v = i / 255.0f;
+                lut[(size_t) i] = juce::Colour::fromRGBA ((juce::uint8) (160 + 95 * v), 235, (juce::uint8) (220 + 35 * v), (juce::uint8) i).getPixelARGB();
+                lut[(size_t) i].premultiply();
+            }
         juce::Image::BitmapData bd (img, juce::Image::BitmapData::writeOnly);
         for (int y = 0; y < H; ++y)
+        {
+            auto* row = reinterpret_cast<juce::PixelARGB*> (bd.getLinePointer (y));
+            const float* src = inten.data() + (size_t) y * (size_t) W;
             for (int x = 0; x < W; ++x)
             {
-                const float v = inten[(size_t) (y * W + x)];
-                const auto a = (juce::uint8) juce::jlimit (0, 255, (int) (v * 255.0f));
-                // teal-white points, premultiplied
-                bd.setPixelColour (x, y, juce::Colour::fromRGBA ((juce::uint8) (160 + 95 * v), 235, (juce::uint8) (220 + 35 * v), a));
+                const float v = src[x];
+                row[x] = v < 0.004f ? juce::PixelARGB (0, 0, 0, 0) : lut[(size_t) juce::jmin (255, (int) (v * 255.0f))];
             }
+        }
     }
 
     void paintBody (juce::Graphics& g) override

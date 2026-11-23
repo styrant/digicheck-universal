@@ -50,6 +50,9 @@ private:
     void repaintZoomBar();
     void configure();
     void showMenu();
+    void loadTheme();                        // the chosen theme + palette + the user's colours
+    void pickColour (const juce::String& key, const juce::String& label, juce::Colour current);
+    void saveThemeAs();
     void updateButtons();
     void setDivision (int d);
     void exportTo (const juce::File& wav);
@@ -63,6 +66,10 @@ private:
     ScopeTheme theme;
     bool active = false, inputRunning = false;
     double lastBpm = 0;
+    // Scroll: the display's clock in absolute samples. It advances smoothly with the frames and follows the
+    // audio (which arrives in buffer-sized steps) a few ms behind, so the trace moves at an even speed.
+    double scrollNow = 0, lastFrameT = 0;
+    static constexpr double kScrollLatency = 0.04;   // seconds behind the newest sample
 
     std::unique_ptr<Lnf> lnf;
     std::unique_ptr<Display> display;
