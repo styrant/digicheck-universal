@@ -36,6 +36,8 @@ DcuProcessor::DcuProcessor()
 
 DcuProcessor::~DcuProcessor()
 {
+    instancelink::Hub::get().remove (hubId);
+    { const juce::SpinLock::ScopedLockType sl (linkLock); linked.reset(); }
     stopTimer();
     engine.setAnalyzer (nullptr);
 }
@@ -56,6 +58,7 @@ bool DcuProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 void DcuProcessor::prepareToPlay (double sampleRate, int maxBlock)
 {
     sr = sampleRate;
+    linkL.assign ((size_t) juce::jmax (maxBlock, 8192), 0.0f); linkR.assign (linkL.size(), 0.0f);
     engine.prepare (sampleRate);
     scEngine.prepare (sampleRate);
     isolator.prepare (sampleRate);
@@ -93,6 +96,18 @@ void DcuProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
             }
         }
     scLive = scL != nullptr && nowMs() - lastScSignalMs.load() < 2000.0;
+
+    // this track's audio for other instances; and the linked instance's audio, used like the sidechain
+    {
+        const float* L = main.getReadPointer (0); const float* R = nch > 1 ? main.getReadPointer (1) : L;
+        ownRing->write (L, R, total);
+        const juce::SpinLock::ScopedTryLockType sl (linkLock);
+        bool ok = false;
+        if (sl.isLocked() && linked != nullptr && (int) linkL.size() >= total)
+            ok = linked->readLatest (linkL.data(), linkR.data(), total);
+        linkOk = ok;
+        if (ok) { scL = linkL.data(); scR = linkR.data(); scLive = true; }
+    }
 
     // the host's tempo and position
     double ppq = 0, bpmNow = 0, barQn = 4, hostSeconds = 0;
@@ -199,3 +214,39 @@ void DcuProcessor::setStateInformation (const void* data, int size)
 juce::AudioProcessorEditor* DcuProcessor::createEditor() { return new DcuEditor (*this); }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new DcuProcessor(); }
+
+
+//==============================================================================
+// Instance linking
+void DcuProcessor::updateTrackProperties (const TrackProperties& p)
+{
+    if (p.name.has_value()) instancelink::Hub::get().rename (hubId, *p.name);
+}
+
+juce::StringArray DcuProcessor::otherInstances() const
+{
+    juce::StringArray names;
+    for (auto& i : instancelink::Hub::get().list()) if (i.id != hubId) names.addIfNotAlreadyThere (i.name);
+    return names;
+}
+
+void DcuProcessor::setLink (const juce::String& n)
+{
+    core.settings.linkName = n;
+    core.save();
+    resolveLink();
+}
+
+void DcuProcessor::resolveLink()
+{
+    // by track name, so a project reopened (new instance ids) links again
+    const auto want = core.settings.linkName;
+    std::shared_ptr<instancelink::Ring> ring;
+    if (want.isNotEmpty())
+        for (auto& i : instancelink::Hub::get().list()) if (i.id != hubId && i.name == want) { ring = i.ring; break; }
+    if (ring == linked) return;
+    auto old = linked;                          // freed here (message thread), not on the audio thread
+    { const juce::SpinLock::ScopedLockType sl (linkLock); linked = ring; }
+    linkedTo = want;
+    old.reset();
+}

@@ -317,6 +317,7 @@ What the plugin adds:
   - over the **spectrogram** (**SC** button: tint or contour lines, colour and strength)
   - on the **Scope** (filled or outline)
   - as the **FFT** analyzer's second curve
+- **Link** (bottom bar): compare with another track without routing anything. Every DigiCheck Universal instance in the project publishes its track's audio under the track's name; click **Link** and pick another track (say, the bass on the kick's instance). It's then used exactly like a sidechain: the Spectrogram overlay (SC), the Scope's SC overlay and the FFT's second curve (choose *Sidechain*). The button shows the linked track (teal while its audio arrives). *None* goes back to the real sidechain input. The link is saved with the project by track name. The linked audio can be up to one audio block behind, depending on the order the DAW processes the tracks; DAWs that run each plugin in its own process can't link.
 - **Listen** (bottom bar): hear only some bands (Sub, Low, Low-mid, High-mid, High, with movable crossovers), and/or only Mid, Side, Left or Right.
   - Click a band to toggle it; double-click to solo it.
   - The button turns orange while you're listening to part of the signal. **Off** restores everything.

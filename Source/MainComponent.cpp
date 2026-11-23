@@ -700,6 +700,19 @@ void MainComponent::setUpPlugin()
         m.addSubMenu ("Strength", op);
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&anchor));
     };
+    bottom.onLinkMenu = [this] (juce::Component& anchor)
+    {
+        juce::PopupMenu m;
+        const auto others = host->otherInstances();
+        const auto cur = host->linkName();
+        m.addSectionHeader ("Compare with another track");
+        for (auto& n : others) m.addItem (n, true, n == cur, [this, n] { host->setLink (n); settings.specSc = true; saveAll(); });
+        if (others.isEmpty()) m.addItem ("(no other DigiCheck instances in this project)", false, false, [] {});
+        if (cur.isNotEmpty() && ! others.contains (cur)) m.addItem (cur + " (not found)", true, true, [] {});
+        m.addSeparator();
+        m.addItem ("None (use the sidechain input)", true, cur.isEmpty(), [this] { host->setLink ({}); });
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&anchor));
+    };
     updateListen();
 }
 
@@ -723,6 +736,7 @@ void MainComponent::timerCallback()
                 if (auto* tc = dynamic_cast<TempoChart*> (tempoWindow->getContentComponent())) tc->syncFromSettings();
         }
         updateListen();
+        bottom.setLinkState (host->linkName(), host->linkLive());
     }
     balanceView.setInputRunning (inputRunning());
     keyPage.setInputRunning (inputRunning());

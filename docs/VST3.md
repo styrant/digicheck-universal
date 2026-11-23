@@ -70,3 +70,8 @@ and editor.
 - MuScriptor model weights: CC BY-NC 4.0 (non-commercial). They are downloaded by the user, never
   distributed with the app or plugin.
 - NeuralNote (Apache-2.0) and muscriptor.cpp (MIT): notices in `licenses/`.
+
+
+## Instance linking and the reference track
+- **Link:** `instancelink::Hub` (process-wide) lists every instance with its track name (`updateTrackProperties`) and a single-writer ring of its input. A linked instance's latest block replaces the sidechain pointers in `processBlock`, so every sidechain view works unchanged. The pointer to the linked ring is swapped on the message thread under a spin lock that the audio thread only try-locks.
+- **Reference:** `ReferenceTrack` (in `Core`) can replace the plugin's output with the reference at the host's song position (`renderSynced`, Hermite resampling, 10 ms crossfades), after the analysis has seen the mix and before band listening.

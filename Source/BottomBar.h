@@ -62,7 +62,8 @@ public:
     // VST3: Listen (band listening) and the spectrogram's sidechain display; Full screen is hidden
     void setPluginMode (bool on)                                { plugin = on; resized(); }
     void setListenState (bool active, const juce::String& what);
-    std::function<void (juce::Component& anchor)> onListen, onSidechainMenu;
+    std::function<void (juce::Component& anchor)> onListen, onSidechainMenu, onLinkMenu;
+    void setLinkState (const juce::String& name, bool live);   // VST3: the linked instance ("" none)
     std::function<void()> onSpectrogramDsp;                     // scale or channel picked in the bar
 
     void paint (juce::Graphics&) override;
@@ -82,7 +83,7 @@ private:
     AnalysisEngine& engine;
     std::unique_ptr<juce::LookAndFeel> smallLnf;     // smaller text for the corner buttons (declared before them)
 
-    juce::TextButton optionsBtn { "Options" }, viewSpec { "Spectrogram" }, viewAna { "Analyzer" }, viewBal { "Balance" }, viewKey { "Key" }, viewScope { "Scope" }, viewMon { "Monitor" }, viewCustom { "Custom" }, lufsBtn { "LUFS" }, tempoBtn { "Tempo" }, refBtn { "Ref" }, listenBtn { "Listen" }, scBtn { "SC" };
+    juce::TextButton optionsBtn { "Options" }, viewSpec { "Spectrogram" }, viewAna { "Analyzer" }, viewBal { "Balance" }, viewKey { "Key" }, viewScope { "Scope" }, viewMon { "Monitor" }, viewCustom { "Custom" }, lufsBtn { "LUFS" }, tempoBtn { "Tempo" }, refBtn { "Ref" }, listenBtn { "Listen" }, scBtn { "SC" }, linkBtn { "Link" };
     bool plugin = false;
     // spectrogram group
     juce::TextButton specPresets { "Presets" }, pause { "||" }, refDown { "-" }, refUp { "+" }, specSettings { "Settings" };

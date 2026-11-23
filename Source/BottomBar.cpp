@@ -18,7 +18,7 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
 {
     smallLnf = std::make_unique<SmallButtonLnf>();          // per instance: no static look-and-feel outliving the UI
     for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &viewBal, &viewKey, &viewScope, &viewMon, &viewCustom, &helpBtn, &hideBarBtn, &balCurve, &balDiff, &balReset, &lufsBtn, &tempoBtn, &refBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
-                     &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &full, &listenBtn, &scBtn })
+                     &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &full, &listenBtn, &scBtn, &linkBtn })
     {
         addAndMakeVisible (b);
         b->setColour (juce::TextButton::buttonColourId, kButton);
@@ -62,6 +62,9 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
     listenBtn.onClick = [this] { if (onListen) onListen (listenBtn); };
     scBtn.setTooltip ("How the sidechain is drawn on the spectrogram");
     scBtn.onClick = [this] { if (onSidechainMenu) onSidechainMenu (scBtn); };
+    linkBtn.setTooltip ("Link: use another DigiCheck instance's track as the comparison signal (Spectrogram overlay, Scope SC, the FFT's second curve), "
+                        "like a sidechain but with no routing");
+    linkBtn.onClick = [this] { if (onLinkMenu) onLinkMenu (linkBtn); };
     viewSpec.onClick = [this] { if (onViewChange) onViewChange (Spectrogram); };
     viewAna.onClick  = [this] { if (onViewChange) onViewChange (Analyzer); };
     viewBal.onClick  = [this] { if (onViewChange) onViewChange (Balance); };
@@ -367,12 +370,14 @@ void BottomBar::resized()
     tempoBtn.setBounds (r.removeFromLeft (ui::px (56))); r.removeFromLeft (ui::px (4));
     refBtn.setBounds (r.removeFromLeft (ui::px (44))); r.removeFromLeft (ui::px (12));
     listenBtn.setVisible (plugin);
+    linkBtn.setVisible (plugin);
     scBtn.setVisible (plugin && spec);
     full.setVisible (! plugin);
     if (plugin)
     {
         r.removeFromLeft (ui::px (-6));
         listenBtn.setBounds (r.removeFromLeft (ui::px (listenBtn.getButtonText().length() > 8 ? 190 : 60))); r.removeFromLeft (ui::px (6));
+        linkBtn.setBounds (r.removeFromLeft (ui::px (linkBtn.getButtonText().length() > 4 ? 120 : 46))); r.removeFromLeft (ui::px (6));
         if (spec) { scBtn.setBounds (r.removeFromLeft (ui::px (36))); r.removeFromLeft (ui::px (12)); }
     }
 
@@ -502,6 +507,15 @@ void BottomBar::resized()
         if (i.drop == 0) continue;
         i.c->setBounds (g.removeFromLeft (ui::px (i.w))); g.removeFromLeft (ui::px (i.gap));
     }
+}
+
+void BottomBar::setLinkState (const juce::String& name, bool live)
+{
+    const auto text = name.isEmpty() ? juce::String ("Link") : "Link: " + name;
+    linkBtn.setColour (juce::TextButton::buttonColourId, name.isEmpty() ? kButton : (live ? juce::Colour (0xff2f6b6b) : juce::Colour (0xff4a3a2a)));
+    if (text == linkBtn.getButtonText()) return;
+    linkBtn.setButtonText (text);
+    resized();
 }
 
 void BottomBar::setListenState (bool active, const juce::String& what)

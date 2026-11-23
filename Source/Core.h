@@ -89,4 +89,9 @@ struct HostLink
     virtual void setScopeListen (bool on, double hz) = 0;  // hear the Scope's band-pass
     virtual BandIsolatorParams& isolation() = 0;            // band listening (Listen panel)
     virtual juce::String describe() const = 0;              // for the Options panel: host, rate, buses
+    // other DigiCheck instances in the DAW (instance linking): their track names; link one by name ("" none)
+    virtual juce::StringArray otherInstances() const = 0;
+    virtual void setLink (const juce::String& trackName) = 0;
+    virtual juce::String linkName() const = 0;
+    virtual bool linkLive() const = 0;                      // linked and its audio is arriving
 };

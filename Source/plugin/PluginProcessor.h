@@ -14,6 +14,7 @@
 #include <JuceHeader.h>
 #include "../Core.h"
 #include "../listen/BandIsolator.h"
+#include "InstanceLink.h"
 
 class DcuProcessor : public juce::AudioProcessor, public HostLink, private juce::Timer
 {
@@ -52,6 +53,11 @@ public:
     void setScopeListen (bool on, double hz) override { iso.bandpass = on; iso.bandpassHz = (float) hz; }
     BandIsolatorParams& isolation() override         { return iso; }
     juce::String describe() const override;
+    juce::StringArray otherInstances() const override;
+    void setLink (const juce::String& trackName) override;
+    juce::String linkName() const override           { return core.settings.linkName; }
+    bool linkLive() const override                   { return linkOk.load(); }
+    void updateTrackProperties (const TrackProperties&) override;
 
     Core& getCore()                                  { return core; }
     AnalysisEngine& getEngine()                      { return engine; }
@@ -62,6 +68,7 @@ private:
     // the Monitor keeps measuring while the window is closed (and restarts with playback if asked to)
     void timerCallback() override
     {
+        resolveLink();
         const bool p = playing.load();
         if (getActiveEditor() == nullptr)
         {
@@ -71,6 +78,16 @@ private:
         wasPlaying = p;
     }
     bool wasPlaying = false;
+    // instance linking: this instance's audio for the others, and the one linked to (swapped under linkLock;
+    // the audio thread only try-locks it)
+    std::shared_ptr<instancelink::Ring> ownRing = std::make_shared<instancelink::Ring>();
+    int hubId = instancelink::Hub::get().add (ownRing);
+    std::shared_ptr<instancelink::Ring> linked;
+    juce::String linkedTo;
+    juce::SpinLock linkLock;
+    std::vector<float> linkL, linkR;
+    std::atomic<bool> linkOk { false };
+    void resolveLink();
     std::unique_ptr<juce::PropertiesFile> global;
     juce::PropertySet state;                         // this instance's settings, saved in the project
     Core core { state, true };                       // before the engines: the taps outlive their DSP threads

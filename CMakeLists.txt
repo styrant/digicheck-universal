@@ -178,6 +178,7 @@ if(DCU_BUILD_VST3)
     target_sources(DigiCheckUniversal PRIVATE
         Source/plugin/PluginProcessor.cpp
         Source/plugin/PluginEditor.cpp
+        Source/plugin/InstanceLink.cpp
         ${DCU_SHARED_SOURCES})
     target_compile_definitions(DigiCheckUniversal PUBLIC
         JUCE_WEB_BROWSER=0
