@@ -401,7 +401,13 @@ struct ScopePage::Display : public juce::Component
             double frac = 0;
             const int iw = pw + (smoothScroll ? 1 : 0);
             if (smoothScroll)
+            {
                 page.engine.columnsScroll (page.scrollNow - (window() - v1) * sr, samplesPerPx, pw, bpOn, cols, frac);
+                // whole device pixels only: drawn at sub-pixel offsets, thin peaks were anti-aliased a little
+                // differently every frame and shimmered. On the fixed grid each column keeps its exact content
+                // and just moves over (steps alternate by at most one pixel)
+                frac = 0;
+            }
             else
                 page.engine.columns (v0, v1, pw, bpOn, false, cols);
             if (hold) page.engine.columns (v0, v1, pw, bpOn, true, holdCols);
