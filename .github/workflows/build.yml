@@ -144,7 +144,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $p = Start-Process -FilePath "build\Spectroscope_artefacts\Release\Spectroscope.exe" -ArgumentList "--layout-check", "layout" -Wait -PassThru
+          $out = Join-Path $PWD "layout"
+          $p = Start-Process -FilePath "build\Spectroscope_artefacts\Release\Spectroscope.exe" -ArgumentList "--layout-check", "`"$out`"" -WorkingDirectory $PWD -Wait -PassThru
+          Write-Host "exit code $($p.ExitCode)"
+          if (Test-Path layout\progress.log) { Get-Content layout\progress.log | Select-Object -Last 5 }
+          if (-not (Test-Path layout\layout_report.txt)) { Write-Host "::error title=Layout check::the app wrote no report"; exit 1 }
           Get-Content layout\layout_report.txt
           $prev = gh run list --workflow build.yml --branch main --status success --limit 1 --json databaseId --jq ".[0].databaseId"
           if ($prev) { gh run download $prev -n layout-check -D prev_layout 2>$null }

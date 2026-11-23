@@ -180,13 +180,16 @@ private:
         juce::MessageManager::callAsync ([this, folder]
         {
             auto* mc = window->content.get();
-            mc->blockSavingForTest();                   // the user's window size, page and settings stay as they were
+            mc->blockSavingForTest();
+            mc->getSettings().checkUpdates = false;                   // the user's window size, page and settings stay as they were
             auto& st = mc->getSettings();
             st.gpu = false; mc->applyRendererForTest();
             st.showLufs = true; st.hidePanel = false; st.helpMode = false; st.textSize = 1;
             mc->startSourceByKey ("test");
             const juce::File dir = juce::File::getCurrentWorkingDirectory().getChildFile (folder);
             dir.createDirectory();
+            auto log = [dir] (const juce::String& t) { dir.getChildFile ("progress.log").appendText (t + "\n"); };
+            log ("start " + juce::String (ProjectInfo::versionString));
             layoutcheck::Result res;
             struct Size { int w, h; };
             const Size sizes[] = { { 1920, 1050 }, { 1300, 760 }, { 1024, 640 } };
@@ -202,6 +205,7 @@ private:
                     mc->resized();
                     for (auto* c : mc->getChildren()) c->resized();
                     const auto name = juce::String (pages[v]) + " " + juce::String (sz.w) + "x" + juce::String (sz.h);
+                    log (name);
                     layoutcheck::inspect (*mc, name, res);
                     if (auto s = dir.getChildFile (name + ".png").createOutputStream())
                         juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), *s);

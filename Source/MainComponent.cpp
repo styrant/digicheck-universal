@@ -371,6 +371,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
 MainComponent::~MainComponent()
 {
     juce::Desktop::getInstance().removeGlobalMouseListener (&outsideClick);
+    if (updateThread != nullptr) updateThread->stopThread (6000);
     glContext.detach();
     saveAll();
     if (device != nullptr) { device->stop(); engine.setAnalyzer (nullptr); }
@@ -965,7 +966,7 @@ struct MainComponent::UpdateCheck : public juce::Thread
         juce::String name;
         if (auto in = juce::URL ("https://api.github.com/repos/styrant/digicheck-universal/releases/tags/latest")
                           .createInputStream (juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
-                                                  .withConnectionTimeoutMs (8000).withExtraHeaders ("Accept: application/vnd.github+json\r\nUser-Agent: DigiCheck-Universal")))
+                                                  .withConnectionTimeoutMs (5000).withExtraHeaders ("Accept: application/vnd.github+json\r\nUser-Agent: DigiCheck-Universal")))
             name = juce::JSON::parse (in->readEntireStreamAsString()).getProperty ("name", {}).toString();
         const auto ver = name.fromLastOccurrenceOf ("(", false, false).upToFirstOccurrenceOf (")", false, false).trim();
         juce::MessageManager::callAsync ([o = owner, ver] { if (o != nullptr) o->onUpdateResult (ver); });
@@ -975,6 +976,7 @@ struct MainComponent::UpdateCheck : public juce::Thread
 
 void MainComponent::checkForUpdates()
 {
+    if (! settings.checkUpdates) return;
     if (updateThread != nullptr && updateThread->isThreadRunning()) return;
     updateThread = std::make_unique<UpdateCheck> (juce::Component::SafePointer<MainComponent> (this));
     updateThread->startThread (juce::Thread::Priority::low);
