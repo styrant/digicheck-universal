@@ -104,6 +104,8 @@ set(DCU_SHARED_SOURCES
     Source/listen/BandIsolator.cpp
     Source/listen/ListenPanel.cpp
     Source/ClipboardImage.cpp
+    Source/reference/ReferenceTrack.cpp
+    Source/reference/ReferencePanel.cpp
     Source/MainComponent.cpp            # the main view: the app window and the plugin editor both show it
     Source/AudioEngine.cpp              # the standalone's audio input (the plugin never creates one)
     Source/LoopbackCapture.cpp)

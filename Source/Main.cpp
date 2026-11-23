@@ -180,6 +180,7 @@ private:
         juce::MessageManager::callAsync ([this, folder]
         {
             auto* mc = window->content.get();
+            mc->blockSavingForTest();                   // the user's window size, page and settings stay as they were
             auto& st = mc->getSettings();
             st.gpu = false; mc->applyRendererForTest();
             st.showLufs = true; st.hidePanel = false; st.helpMode = false; st.textSize = 1;

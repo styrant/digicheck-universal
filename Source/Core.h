@@ -21,6 +21,7 @@
 #include "transcribe/TranscriptionPlayer.h"
 #include "listen/BandIsolator.h"
 #include "monitor/MonitorModel.h"
+#include "reference/ReferenceTrack.h"
 
 struct Core
 {
@@ -71,6 +72,8 @@ struct Core
     TranscriptionPlayer keyPlayer;
     PlaybackOutput keyOutput { keyPlayer };
     TargetLibrary targetLibrary;
+    ReferenceTrack reference;
+    PlaybackOutput refOutput { reference };   // the app plays the reference here (the plugin: on its output)
 };
 
 // What the editor can ask of the plugin it lives in (nullptr in the standalone app)

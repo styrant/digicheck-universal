@@ -39,6 +39,9 @@ public:
     void setUpdateAvailable (const juce::String& version);
     void setTempoOpen (bool);
     void setOptionsOpen (bool);
+    void setReferenceState (bool panelOpen, bool loaded, bool listening);
+    juce::Component& getRefButton() noexcept { return refBtn; }
+    std::function<void()> onToggleReference;
     void onFrame();                          // called on each (capped) display frame
     juce::Component& getOptionsButton() noexcept { return optionsBtn; }
     void setAnalyzerState (bool frozen, bool zoomed);
@@ -79,7 +82,7 @@ private:
     AnalysisEngine& engine;
     std::unique_ptr<juce::LookAndFeel> smallLnf;     // smaller text for the corner buttons (declared before them)
 
-    juce::TextButton optionsBtn { "Options" }, viewSpec { "Spectrogram" }, viewAna { "Analyzer" }, viewBal { "Balance" }, viewKey { "Key" }, viewScope { "Scope" }, viewMon { "Monitor" }, viewCustom { "Custom" }, lufsBtn { "LUFS" }, tempoBtn { "Tempo" }, listenBtn { "Listen" }, scBtn { "SC" };
+    juce::TextButton optionsBtn { "Options" }, viewSpec { "Spectrogram" }, viewAna { "Analyzer" }, viewBal { "Balance" }, viewKey { "Key" }, viewScope { "Scope" }, viewMon { "Monitor" }, viewCustom { "Custom" }, lufsBtn { "LUFS" }, tempoBtn { "Tempo" }, refBtn { "Ref" }, listenBtn { "Listen" }, scBtn { "SC" };
     bool plugin = false;
     // spectrogram group
     juce::TextButton specPresets { "Presets" }, pause { "||" }, refDown { "-" }, refUp { "+" }, specSettings { "Settings" };

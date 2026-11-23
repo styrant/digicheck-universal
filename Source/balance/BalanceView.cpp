@@ -53,6 +53,13 @@ BalanceView::BalanceView (LiveBalance& l, TargetLibrary& lib) : live (l), librar
     };
 }
 
+const std::vector<double>* BalanceView::referenceCurve()
+{
+    if (! refShown || reference == nullptr || ! reference->ready() || reference->tonalRaw().size() != (size_t) tonal::kBins) return nullptr;
+    if (refSmoothedFor != smoothing) { refCurve = tonal::smoothDbBell (reference->tonalRaw(), tonal::smoothingOctaves (smoothing)); refSmoothedFor = smoothing; }
+    return &refCurve;
+}
+
 const std::vector<double>* BalanceView::snapshot()
 {
     if (snapRaw.size() != (size_t) tonal::kBins) return nullptr;
@@ -81,7 +88,7 @@ void BalanceView::setInputRunning (bool r)       { if (r != running) { running =
 void BalanceView::setSmoothing (int i)
 {
     if (i == smoothing) return;
-    smoothing = i; smoothedFor = -2;
+    smoothing = i; smoothedFor = -2; refSmoothedFor = -1;
     live.setSmoothing (i);
     invalidateStatic();
 }
@@ -401,6 +408,19 @@ void BalanceView::paintCurveLive (juce::Graphics& g)
                                        : "measured over " + (shownSeconds < 2 ? juce::String (shownSeconds, 1) : juce::String (juce::roundToInt (shownSeconds))) + " s of audio",
                     head, juce::Justification::centredRight);
 
+    if (const auto* rc = referenceCurve())
+    {
+        juce::Path p;
+        bool first = true;
+        for (auto [x, k] : columns)
+        {
+            const float y = yOf (at (*rc, k) - baseAt (k));
+            if (std::exchange (first, false)) p.startNewSubPath (x, y); else p.lineTo (x, y);
+        }
+        g.setColour (juce::Colour (0xffff9f43).withAlpha (0.9f)); g.strokePath (p, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved));
+        g.setFont (juce::FontOptions (ui::fs (11.5f)));
+        g.drawText ("reference: " + reference->name(), plot.reduced (6).removeFromBottom (ui::px (16)), juce::Justification::bottomRight);
+    }
     if (const auto* snap = snapshot())
     {
         juce::Path p;
@@ -451,6 +471,11 @@ void BalanceView::paintCurveLive (juce::Graphics& g)
             const double o = v > t->high[(size_t) k] ? v - t->high[(size_t) k] : (v < t->low[(size_t) k] ? v - t->low[(size_t) k] : 0.0);
             txt << "   " << (d >= 0 ? "+" : "") << juce::String (d, 1) << " dB vs target"
                 << (std::abs (o) > 1e-9 ? "   (" + juce::String (o > 0 ? "+" : "") + juce::String (o, 1) + " dB outside the range)" : juce::String ("   in range"));
+        }
+        if (const auto* rc = referenceCurve(); rc != nullptr && shownValid)
+        {
+            const double d = shownCurve[(size_t) k] - (*rc)[(size_t) k];
+            txt << "   reference " << (d >= 0 ? "+" : "") << juce::String (d, 1) << " dB";
         }
         if (const auto* snap = snapshot(); snap != nullptr && shownValid)
         {

@@ -204,6 +204,18 @@ struct MonitorPage::Module : public juce::Component, public juce::TooltipClient
         g.setColour (kPanel); g.fillRoundedRectangle (r, 6.0f);
         g.setColour (page.dragTarget == id ? kOn : kPanelLine); g.drawRoundedRectangle (r, 6.0f, page.dragTarget == id ? 2.0f : 1.0f);
         text (g, kModuleNames[id], header.toFloat(), ui::fs (14.5f), kHeaderText);
+        if (const auto* ref = page.shownReference(); ref != nullptr && id == Loudness)
+        {
+            // the reference track's loudness, in its colour, at the right of the header
+            const auto& rs = ref->stats();
+            auto area = header.withLeft (header.getCentreX() + ui::px (60)).withRight (maxR.getX() - ui::px (8)).toFloat();
+            juce::String t = "Ref  I " + num (rs.integrated, 1) + "  LRA " + juce::String (rs.lra, 1) + "  TP " + num (rs.truePeak, 1);
+            const double mine = m().loudness().getIntegrated();
+            if (mine > -70 && rs.integrated > -70) t << "   (you " << (mine - rs.integrated >= 0 ? "+" : "") << juce::String (mine - rs.integrated, 1) << " LU)";
+            g.setColour (juce::Colour (0xffff9f43));
+            g.setFont (juce::FontOptions (ui::fs (12.0f)));
+            g.drawFittedText (t, area.toNearestInt(), juce::Justification::centredRight, 1, 0.8f);
+        }
         // gear
         {
             auto c = gearR.toFloat().getCentre(); const float R = gearR.getHeight() * 0.32f;
@@ -1807,6 +1819,8 @@ struct MonitorPage::FileMeasure : public juce::Thread
     double seconds = 0, sampleRate = 48000, hold = 1.5, rmsT = 0.3;
     bool gate = true, failed = false;
 };
+
+void MonitorPage::setReferenceShown (bool on) { refShown = on; repaint(); for (auto& m : modules) m->repaint(); }
 
 double MonitorPage::measureProgress() const { return measuring != nullptr ? measuring->progress.load() : 0.0; }
 

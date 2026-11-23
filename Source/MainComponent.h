@@ -13,6 +13,7 @@
 #include "scope/ScopePage.h"
 #include "monitor/MonitorPage.h"
 #include "Core.h"
+#include "reference/ReferencePanel.h"
 
 class MainComponent : public juce::Component, private juce::Timer, private juce::OpenGLRenderer
 {
@@ -52,6 +53,7 @@ public:
     MonitorPage& getMonitorPage() { return monitorPage; }
     AnalyzerPanel& getAnalyzerPanel() { return analyzerPanel; }
     void refreshBottomBarForTest() { bottom.refresh(); }
+    void blockSavingForTest()       { core.saveBlocked = true; }       // checks that resize the window and change pages
 
 private:
     void timerCallback() override;
@@ -162,6 +164,9 @@ private:
     int dragDivider = -1;
     juce::Rectangle<int> contentArea;
     void notePaneClick (juce::Component&);
+    std::unique_ptr<ReferencePanel> refPanel;
+    void setReferenceVisible (bool);
+    void referenceChanged();
     // Ctrl+C: the page (Custom: Ctrl+Shift+C the focused pane) as an image on the clipboard and in the Screenshots folder
     void copyViewImage (bool paneOnly);
     void showToast (const juce::String& text);

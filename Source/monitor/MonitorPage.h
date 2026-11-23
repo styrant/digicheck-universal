@@ -21,6 +21,7 @@
 #include "../FifoTap.h"
 #include "../Settings.h"
 #include "MonitorModel.h"
+#include "../reference/ReferenceTrack.h"
 
 class MonitorPage : public juce::Component, public juce::FileDragAndDropTarget
 {
@@ -62,6 +63,9 @@ public:
 
     // Report: the results (live or file) as a PNG of the page plus a text file, or CSV
     void exportReport();
+    void setReference (const ReferenceTrack* r)  { reference = r; }
+    void setReferenceShown (bool on);
+    const ReferenceTrack* shownReference() const { return refShown && reference != nullptr && reference->ready() ? reference : nullptr; }
     juce::String reportText (bool csv);
     void loadForTest (const juce::File& f);      // self-test: runs a file through the meters and holds them
 
@@ -112,6 +116,8 @@ private:
     juce::TextButton pauseBtn { "Pause" };
     double lastFrame = 0, histPos = 0;
 
+    const ReferenceTrack* reference = nullptr;
+    bool refShown = false;
     std::unique_ptr<monitor::MonitorModel> fileModel;
     juce::String fileName;
     double fileSeconds = 0;

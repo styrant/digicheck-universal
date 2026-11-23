@@ -16,7 +16,7 @@ Tip: press **?** at the bottom right (or F1). While it's on, resting the mouse o
 7. [Scope](#7-scope)
 8. [Monitor (loudness and stereo metering)](#8-monitor-loudness-and-stereo-metering)
 9. [Custom page](#9-custom-page)
-10. [Loudness readout, Tempo and presets](#10-loudness-readout-tempo-and-presets)
+10. [Loudness readout, Tempo, Reference and presets](#10-loudness-readout-tempo-reference-and-presets)
 11. [Full screen, display and text size](#11-full-screen-display-and-text-size)
 12. [The VST3 plugin](#12-the-vst3-plugin)
 13. [Target Builder](#13-target-builder)
@@ -251,13 +251,22 @@ Good to know:
 
 ---
 
-## 10. Loudness readout, Tempo and presets
+## 10. Loudness readout, Tempo, Reference and presets
 
 - **LUFS boxes** (bottom right): short-term, integrated and true peak.
   - Loudness is white below −14 LUFS, green −14 to −9, yellow −9 to −6, red above.
   - True peak is white below −1 dBTP, yellow −1 to 0, red above 0.
   - **Reset** restarts them, together with the Monitor.
 - **Tempo** (**T**): note values from 2/1 to 1/128 in milliseconds, with triplet and dotted columns and a **Tap** button. Click a value to copy it. In the plugin it follows the project's tempo.
+- **Ref** (reference track): compare your mix with a finished song you like.
+  1. Click **Ref**, then **Load reference...** (WAV, AIFF, FLAC, MP3...). It's measured once, in a few seconds, and comes back the next time you start (in the plugin: with the project).
+  2. The panel shows its integrated loudness, LRA, true peak and PLR next to your mix's integrated loudness, with the difference in LU.
+  3. It's drawn in **orange**: on the **Balance** curve (the hover readout adds "reference ±x dB"), on the **FFT analyzer** (its average spectrum, at matched loudness when *Match loudness* is on) and in the **Monitor**'s Loudness header. *Show in* turns each on or off.
+  4. **Listening:**
+     - **Plugin:** *Mix | Reference* switches what the plugin outputs. The reference plays in step with your DAW's transport (from the song position), with a 10 ms fade so it never clicks. The analysis keeps measuring your mix.
+     - **App:** **Play** plays the reference through Windows' default output from the position on the slider. Mute your DAW to compare.
+     - **Match loudness** (on by default) plays the reference at your mix's integrated loudness, so you compare the sound, not the level.
+  5. **Clear** removes it. The Ref button turns brown while a reference is loaded, and orange while you're hearing it.
 - **Presets** (**P**):
   - The spectrogram has built-in views (Default, Bass focus, High contrast) and your own saved views.
   - The Bars analyzer has factory presets, your own, and import of Spectrum Analyzer .fxp/.fxb files.

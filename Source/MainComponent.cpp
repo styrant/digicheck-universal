@@ -312,6 +312,15 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     bottom.onUpdateLayout    = [this] { if (settings.customName.isNotEmpty()) saveLayoutAs (settings.customName); };
     refreshSavedLayouts();
     bottom.onToggleHelp      = [this] { setHelpMode (! settings.helpMode); };
+    refPanel = std::make_unique<ReferencePanel> (core.reference, settings, device != nullptr ? &core.refOutput : nullptr, [this] { referenceChanged(); });
+    addChildComponent (*refPanel);
+    bottom.onToggleReference = [this] { setReferenceVisible (! refPanel->isVisible()); };
+    balanceView.setReference (&core.reference);
+    analyzerPanel.getFftView().setReference (&core.reference);
+    monitorPage.setReference (&core.reference);
+    if (settings.refFile.isNotEmpty() && ! core.reference.ready() && ! core.reference.isLoading() && juce::File (settings.refFile).existsAsFile())
+        refPanel->loadFile (juce::File (settings.refFile));          // the last reference comes back (the plugin: this project's)
+    referenceChanged();
     addChildComponent (toast);
     toast.setJustificationType (juce::Justification::centred);
     toast.setColour (juce::Label::backgroundColourId, juce::Colour (0xf0181a1f));
@@ -417,6 +426,9 @@ void MainComponent::OutsideClick::mouseDown (const juce::MouseEvent& e)
     auto& o = owner;
     auto* c = e.eventComponent;
     if (c != nullptr) o.notePaneClick (*c);
+    if (c != nullptr && o.refPanel != nullptr && o.refPanel->isVisible() && c->getTopLevelComponent() == o.getTopLevelComponent()
+        && c != o.refPanel.get() && ! o.refPanel->isParentOf (c) && c != &o.bottom.getRefButton())
+        o.setReferenceVisible (false);
     if (! o.options.isVisible() || c == nullptr) return;
     if (c->getTopLevelComponent() != o.getTopLevelComponent()) return;          // pop-up menus are separate windows
     if (c == &o.options || o.options.isParentOf (c)) return;
@@ -457,7 +469,7 @@ void MainComponent::applyTextScale()
 
 void MainComponent::setOptionsVisible (bool show)
 {
-    if (show) { updateStatus(); layoutOptions(); options.toFront (false); }
+    if (show) { updateStatus(); layoutOptions(); options.toFront (false); if (refPanel != nullptr && refPanel->isVisible()) setReferenceVisible (false); }
     options.setVisible (show);
     bottom.setOptionsOpen (show);
     if (! show) grabKeyboardFocus();
@@ -716,6 +728,9 @@ void MainComponent::timerCallback()
     scopePage.setInputRunning (inputRunning());
     monitorPage.pump();                          // keeps measuring when display frames stall (minimised)
     if (toast.isVisible() && juce::Time::getMillisecondCounterHiRes() * 0.001 > toastUntil) toast.setVisible (false);
+    // the reference plays at the mix's integrated loudness (since Reset)
+    core.reference.mixLufs = (float) monitorPage.liveModel().loudness().getIntegrated();
+    if (core.reference.ready()) bottom.setReferenceState (refPanel->isVisible(), true, core.reference.listen.load() || core.reference.isPlaying());
     if (fullscreen && barHidden)
     {
         // the hidden bar peeks back while the mouse is at the bottom edge or over it (or a menu from it is open)
@@ -1076,6 +1091,32 @@ void MainComponent::resetDefaults()
     });
 }
 
+void MainComponent::setReferenceVisible (bool show)
+{
+    if (show)
+    {
+        setOptionsVisible (false);
+        const int w = juce::jmin (ui::px (470), getWidth() - 16), h = ReferencePanel::preferredHeight();
+        const auto b = bottom.getRefButton().getBounds().translated (bottom.getX(), bottom.getY());
+        refPanel->setBounds (juce::jlimit (8, juce::jmax (8, getWidth() - w - 8), b.getX() - 20), bottom.getY() - h - 6, w, h);
+        refPanel->refresh();
+        refPanel->toFront (false);
+    }
+    refPanel->setVisible (show);
+    referenceChanged();
+}
+
+// the reference loaded, cleared, or shown somewhere else: the views follow
+void MainComponent::referenceChanged()
+{
+    auto& r = core.reference;
+    balanceView.setReferenceShown (r.ready() && settings.refShowBalance);
+    analyzerPanel.getFftView().setReferenceShown (r.ready() && settings.refShowFft);
+    monitorPage.setReferenceShown (r.ready() && settings.refShowMonitor);
+    bottom.setReferenceState (refPanel != nullptr && refPanel->isVisible(), r.ready(), r.listen.load() || r.isPlaying());
+    saveAll();
+}
+
 // Custom page: a click in a pane makes it the focused pane (the bottom bar shows its controls)
 void MainComponent::notePaneClick (juce::Component& c)
 {
@@ -1261,6 +1302,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
     if (k == juce::KeyPress::escapeKey)
     {
         if (options.isVisible()) setOptionsVisible (false);
+        else if (refPanel != nullptr && refPanel->isVisible()) setReferenceVisible (false);
         else if (fullscreen) toggleFullscreen();
         else view.clearCursor();
         return true;

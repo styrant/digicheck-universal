@@ -318,6 +318,21 @@ void FftView::paint (juce::Graphics& g)
         g.strokePath (curvePath (holdDb, false), juce::PathStrokeType (1.0f));
     }
     if (sec && s.fftSecStyle != 1) drawSecondary();
+    refDb.clear();
+    if (refShown && reference != nullptr && reference->ready())
+    {
+        // the reference's long-term spectrum (orange): its loudness-matched level when matching is on
+        auto pw = reference->fftPower (engine.order(), engine.binHz(), engine.bins());
+        if (! pw.empty())
+        {
+            const float pg = juce::Decibels::decibelsToGain (reference->matchGainDb() * 2.0f, -200.0f);   // power gain
+            if (std::abs (pg - 1.0f) > 1e-4f) for (auto& v : pw) v *= pg;
+            engine.curve (pw, edges, s.fftSlope, smooth, refDb);
+            auto p = curvePath (refDb, false);
+            g.setColour (kBgBottom.withAlpha (0.6f)); g.strokePath (p, juce::PathStrokeType (3.5f));
+            g.setColour (juce::Colour (0xffff9f43)); g.strokePath (p, juce::PathStrokeType (1.6f));
+        }
+    }
     if (! snapPower.empty() && snapPower.size() != engine.power (0).size()) snapPower.clear();   // FFT size changed
     if (! snapPower.empty())
     {
@@ -355,6 +370,7 @@ void FftView::paint (juce::Graphics& g)
         juce::String t = (hz >= 1000 ? juce::String (hz / 1000, 2) + " kHz" : juce::String (hz, hz < 100 ? 1 : 0) + " Hz") + "   " + noteName (hz, s.noteRef)
                          + "   " + juce::String (mainDb[(size_t) i], 1) + " dB";
         if (sec && i < (int) secDb.size()) t << "   " << juce::String (secDb[(size_t) i], 1) << " dB";
+        if (i < (int) refDb.size()) t << "   ref " << juce::String (refDb[(size_t) i], 1);
         if (i < (int) snapDb.size()) t << "   (snapshot " << (mainDb[(size_t) i] >= snapDb[(size_t) i] ? "+" : "") << juce::String (mainDb[(size_t) i] - snapDb[(size_t) i], 1) << ")";
         g.setFont (juce::FontOptions (ui::fs (12.0f)));
         const int w = ui::px (snapDb.empty() ? 360 : 460);

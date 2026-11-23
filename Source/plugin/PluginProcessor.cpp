@@ -95,7 +95,7 @@ void DcuProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     scLive = scL != nullptr && nowMs() - lastScSignalMs.load() < 2000.0;
 
     // the host's tempo and position
-    double ppq = 0, bpmNow = 0, barQn = 4;
+    double ppq = 0, bpmNow = 0, barQn = 4, hostSeconds = 0;
     bool isPlaying = false, havePpq = false;
     if (auto* ph = getPlayHead())
         if (auto pos = ph->getPosition())
@@ -103,6 +103,7 @@ void DcuProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
             if (auto b = pos->getBpm()) bpmNow = *b;
             isPlaying = pos->getIsPlaying();
             if (auto p = pos->getPpqPosition()) { ppq = *p; havePpq = true; }
+            if (auto t = pos->getTimeInSeconds()) hostSeconds = *t;
             if (auto ts = pos->getTimeSignature(); ts && ts->denominator > 0) barQn = 4.0 * ts->numerator / ts->denominator;
         }
     bpm = bpmNow; playing = isPlaying;
@@ -135,6 +136,15 @@ void DcuProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
 
         core.scopeTap.pushAll (L, R, sl, sr2, phase.data(), n, sr);
         core.fftTap.pushAll (L, R, sl, sr2, nullptr, n, sr);
+    }
+
+    // the reference track instead of the mix (Ref > Reference), in step with the transport, after the analysis
+    // has seen the mix; band listening below then applies to whichever is heard
+    if (nch > 1) core.reference.renderSynced (main.getWritePointer (0), main.getWritePointer (1), total, sr, hostSeconds, isPlaying);
+    else
+    {
+        float* m = main.getWritePointer (0);
+        core.reference.renderSynced (m, m, total, sr, hostSeconds, isPlaying);
     }
 
     // band listening on the output (main bus; the input and output share these channels). The isolator

@@ -16,6 +16,7 @@
 #include <JuceHeader.h>
 #include "LiveBalance.h"
 #include "TargetLibrary.h"
+#include "../reference/ReferenceTrack.h"
 
 class BalanceView : public juce::Component, private juce::Timer
 {
@@ -24,7 +25,9 @@ public:
 
     void setTargetIndex (int index);              // -1: none
     void setDifferenceMode (bool d);
-    void setSmoothing (int index);                // tonal::smoothingOctaves: the target's range is smoothed to match
+    void setSmoothing (int index);
+    void setReference (const ReferenceTrack* r)   { reference = r; }
+    void setReferenceShown (bool on)              { if (on != refShown) { refShown = on; refSmoothedFor = -1; repaint(); } }                // tonal::smoothingOctaves: the target's range is smoothed to match
     void setInputRunning (bool r);
     void setActive (bool a);
     void onFrame (double vblankSeconds);          // from the display frame clock
@@ -75,6 +78,12 @@ private:
     std::vector<double> snapRaw, snapCurve;
     int snapSmoothedFor = -1;
     const std::vector<double>* snapshot();
+    // the reference track's curve (orange), smoothed like the live one
+    const ReferenceTrack* reference = nullptr;
+    bool refShown = false;
+    std::vector<double> refCurve;
+    int refSmoothedFor = -1;
+    const std::vector<double>* referenceCurve();
 
     // optional paint timing (SPECTROSCOPE_PAINT_LOG=1)
     double paintMsSum = 0;

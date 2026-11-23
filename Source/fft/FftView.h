@@ -14,6 +14,7 @@
 #include "../FifoTap.h"
 #include "../Settings.h"
 #include "FftAnalyzer.h"
+#include "../reference/ReferenceTrack.h"
 
 class FftView : public juce::Component
 {
@@ -40,6 +41,8 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
     fft::FftAnalyzer& model() { return engine; }
+    void setReference (ReferenceTrack* r)  { reference = r; }
+    void setReferenceShown (bool on)       { refShown = on; repaint(); }
     void loadForTest (const juce::File& f, const juce::File* sidechainFile = nullptr);  // self-test: runs files through it and freezes
 
 private:
@@ -61,6 +64,9 @@ private:
     bool active = false, frozen = false;
     double lastT = 0;
     juce::Rectangle<int> plot, header;
+    ReferenceTrack* reference = nullptr;
+    bool refShown = false;
+    std::vector<float> refDb;
     std::vector<float> edges, mainDb, holdDb, secDb, snapPower, snapDb;   // snapPower: the Snapshot's spectrum (empty: none)
     int hoverX = -1, hoverY = -1, headerInset = 0;
 

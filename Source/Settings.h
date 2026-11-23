@@ -41,7 +41,10 @@ struct Settings
     juce::String customName;      // the saved layout last loaded or saved ("" none)
     bool   helpMode = false;
     bool   checkUpdates = true;
-    bool   colourSafe = false;    // colour-blind-friendly meter colours (ui::colourSafe)   // look for a newer Latest build at start-up      // bottom bar "?": descriptions when hovering over controls
+    bool   colourSafe = false;
+    // reference track (Ref): the file (reloaded at start), where it's drawn, loudness matching
+    juce::String refFile;
+    bool   refShowBalance = true, refShowFft = true, refShowMonitor = true, refMatch = true;    // colour-blind-friendly meter colours (ui::colourSafe)   // look for a newer Latest build at start-up      // bottom bar "?": descriptions when hovering over controls
     juce::String balanceTarget;   // name of the tonal balance target
     int    balanceWindow = 3;     // 0: realtime, 1: 1 s, 2: 3 s, 3: 10 s, 4: 30 s, 5: since reset
     int    balanceMode   = 0;     // 0 curve, 1 difference
@@ -266,6 +269,11 @@ struct Settings
         helpMode = p.getBoolValue ("helpMode", helpMode);
         checkUpdates = p.getBoolValue ("checkUpdates", checkUpdates);
         colourSafe = p.getBoolValue ("colourSafe", colourSafe);
+        refFile = p.getValue ("refFile", refFile);
+        refShowBalance = p.getBoolValue ("refShowBalance", refShowBalance);
+        refShowFft = p.getBoolValue ("refShowFft", refShowFft);
+        refShowMonitor = p.getBoolValue ("refShowMonitor", refShowMonitor);
+        refMatch = p.getBoolValue ("refMatch", refMatch);
         customFocus = juce::jlimit (-1, 5, p.getIntValue ("customFocus", customFocus));
         customName = p.getValue ("customName", customName);
         monitorShown  = p.getIntValue ("monitorShown", monitorShown) & 63;
@@ -347,6 +355,8 @@ struct Settings
         p.setValue ("customSplitA", customSplitA); p.setValue ("customSplitB", customSplitB);
         p.setValue ("customMonOrder", customMonOrder); p.setValue ("customMonShown", customMonShown); p.setValue ("customMonWide", customMonWide);
         p.setValue ("customMonMax", customMonMax); p.setValue ("customMonCols", customMonCols); p.setValue ("helpMode", helpMode); p.setValue ("checkUpdates", checkUpdates); p.setValue ("colourSafe", colourSafe);
+        p.setValue ("refFile", refFile); p.setValue ("refShowBalance", refShowBalance); p.setValue ("refShowFft", refShowFft);
+        p.setValue ("refShowMonitor", refShowMonitor); p.setValue ("refMatch", refMatch);
         p.setValue ("customFocus", customFocus); p.setValue ("customName", customName); p.setValue ("monitorShown", monitorShown); p.setValue ("monitorWide", monitorWide);
         p.setValue ("monitorMax", monitorMax); p.setValue ("monitorCols", monitorCols); p.setValue ("monitorTarget", monitorTarget);
         p.setValue ("monitorMomMax", monitorMomMax); p.setValue ("monitorMS", monitorMS); p.setValue ("monitorRange", monitorRange);

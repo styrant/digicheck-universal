@@ -17,7 +17,7 @@ namespace
 BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor& proc) : s (st), engine (e)
 {
     smallLnf = std::make_unique<SmallButtonLnf>();          // per instance: no static look-and-feel outliving the UI
-    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &viewBal, &viewKey, &viewScope, &viewMon, &viewCustom, &helpBtn, &hideBarBtn, &balCurve, &balDiff, &balReset, &lufsBtn, &tempoBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
+    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &viewBal, &viewKey, &viewScope, &viewMon, &viewCustom, &helpBtn, &hideBarBtn, &balCurve, &balDiff, &balReset, &lufsBtn, &tempoBtn, &refBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
                      &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &full, &listenBtn, &scBtn })
     {
         addAndMakeVisible (b);
@@ -117,6 +117,9 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
     lufsBtn.onClick = [this] { if (onToggleLufs) onToggleLufs(); };
     tempoBtn.setTooltip ("BPM to milliseconds calculator (T)");
     tempoBtn.onClick = [this] { if (onToggleTempo) onToggleTempo(); };
+    refBtn.setTooltip ("Reference track: load a song to compare with your mix (loudness, Balance and FFT curves, A/B listening)");
+    refBtn.setClickingTogglesState (false);
+    refBtn.onClick = [this] { if (onToggleReference) onToggleReference(); };
 
     specPresets.setTooltip ("Spectrogram presets: built-in views and your own (P)");
     anaPresets.setTooltip ("Analyzer presets (P)");
@@ -286,6 +289,13 @@ std::array<int, 4> BottomBar::customSlots (const Settings& st)
 }
 
 void BottomBar::setBarHidden (bool h) { hideBarBtn.setButtonText (h ? "Show bar" : "Hide bar"); }
+void BottomBar::setReferenceState (bool open, bool loaded, bool listening)
+{
+    refBtn.setToggleState (open, juce::dontSendNotification);
+    refBtn.setColour (juce::TextButton::buttonColourId, listening ? juce::Colour (0xffff9f43) : (loaded ? juce::Colour (0xff6b4a22) : kButton));
+    refBtn.setColour (juce::TextButton::textColourOffId, listening ? juce::Colours::black : juce::Colours::white);
+}
+
 void BottomBar::setUpdateAvailable (const juce::String& v)
 {
     updateBtn.setButtonText (v + " available");
@@ -354,7 +364,8 @@ void BottomBar::resized()
     viewMon.setBounds (r.removeFromLeft (ui::px (70)));
     viewCustom.setBounds (r.removeFromLeft (ui::px (68))); r.removeFromLeft (ui::px (10));
     lufsBtn.setBounds (r.removeFromLeft (ui::px (48))); r.removeFromLeft (ui::px (4));
-    tempoBtn.setBounds (r.removeFromLeft (ui::px (56))); r.removeFromLeft (ui::px (12));
+    tempoBtn.setBounds (r.removeFromLeft (ui::px (56))); r.removeFromLeft (ui::px (4));
+    refBtn.setBounds (r.removeFromLeft (ui::px (44))); r.removeFromLeft (ui::px (12));
     listenBtn.setVisible (plugin);
     scBtn.setVisible (plugin && spec);
     full.setVisible (! plugin);
@@ -389,7 +400,7 @@ void BottomBar::resized()
         const int withCombos = compact + ui::px (64 + 4 + 122 + 4 + 84 + 10);
         auto lufsFor = [&] (int group) { return juce::jmin (ui::px (450), juce::jmin (r.getWidth() / 2, r.getWidth() - group - ui::px (16))); };
         const int minGroup = (view == Analyzer && s.anaStyle == 0 && lufsFor (withCombos) >= ui::px (330)) ? withCombos : compact;
-        const int lufsW = juce::jmax (ui::px (view == Balance || cust ? 180 : 240), lufsFor (minGroup));
+        const int lufsW = juce::jmax (ui::px (view == Analyzer && s.anaStyle == 0 ? 200 : 160), lufsFor (minGroup));
         lufs.setBounds (r.removeFromRight (lufsW).expanded (0, 2));
         r.removeFromRight (ui::px (12));
     }
@@ -447,8 +458,11 @@ void BottomBar::resized()
     {
         // Order: Presets | Pause | Scale | Channel | Ref - + | Settings. When space is short, Settings goes first,
         // then the Ref -/+ buttons (the mouse wheel and Up/Down still change it), then the Ref readout.
-        const int core = 66 + 6 + 34 + 8 + 88 + 4 + 62;
         const int avail = r.getWidth();
+        // very narrow: the channel box goes, then the scale box (both are in Settings too)
+        const bool roomChan = avail >= ui::px (66 + 6 + 34 + 8 + 88 + 4 + 62), roomScale = avail >= ui::px (66 + 6 + 34 + 8 + 88);
+        specChannel.setVisible (roomChan); specScale.setVisible (roomScale);
+        const int core = 66 + 6 + 34 + (roomScale ? 8 + 88 : 0) + (roomChan ? 4 + 62 : 0);
         const bool roomRef = avail >= ui::px (core + 6 + 62);
         const bool roomRefButtons = avail >= ui::px (core + 8 + 92 + 4 + 30 + 4 + 30);
         const bool roomSettings = avail >= ui::px (core + 8 + 92 + 4 + 30 + 4 + 30 + 10 + 72);
@@ -457,8 +471,8 @@ void BottomBar::resized()
         auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
         specPresets.setBounds (g.removeFromLeft (ui::px (66))); g.removeFromLeft (ui::px (6));
         pause.setBounds (g.removeFromLeft (ui::px (34)));       g.removeFromLeft (ui::px (8));
-        specScale.setBounds (g.removeFromLeft (ui::px (88)));   g.removeFromLeft (ui::px (4));
-        specChannel.setBounds (g.removeFromLeft (ui::px (62)));
+        if (roomScale) { specScale.setBounds (g.removeFromLeft (ui::px (88))); g.removeFromLeft (ui::px (4)); }
+        if (roomChan) specChannel.setBounds (g.removeFromLeft (ui::px (62)));
         // the readout: "Ref: -20 dB" with its buttons, just "-20 dB" when space is short
         ref.setText ((roomRefButtons ? "Ref: " : "") + juce::String (s.refLevel, 0) + " dB", juce::dontSendNotification);
         ref.setTooltip ("Reference level (mouse wheel over the spectrogram, Up / Down)");
