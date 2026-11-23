@@ -85,6 +85,17 @@ int main()
         expect ("... but PLR keeps the click (true peak since reset)", later.getPLR(), 20.0, 1.0);
     }
 
+    {
+        // gate: 10 s at -36 then 10 s at -16 dBFS. Program-gated (default) about -16; ungated (BS.1770-1) the
+        // plain mean: 10*log10((10^-3.6 + 10^-1.6)/2) = -18.97 LUFS. LRA ends: the two levels
+        const double q = std::pow (10.0, -36.0 / 20.0), l = std::pow (10.0, -16.0 / 20.0);
+        auto g = run (48000, 2, 20, [&] (double t) { const float v = (float) ((t < 10 ? q : l) * std::sin (tw * 1000 * t)); return std::make_pair (v, v); });
+        expect ("program gate: integrated", g.getIntegrated(), -16.0, 0.2);
+        g.setProgramGate (false);
+        expect ("gate off (BS.1770-1): integrated is the plain mean", g.getIntegrated(), -18.97, 0.2);
+        expect ("LRA low end (10th percentile) near the quiet part", g.getRangeLow(), -36.0, 1.5);
+        expect ("LRA high end (95th percentile) at the loud part", g.getRangeHigh(), -16.0, 0.5);
+    }
     std::printf (failures ? "%d FAILURES\n" : "all loudness checks passed\n", failures);
     return failures ? 1 : 0;
 }

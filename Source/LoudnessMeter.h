@@ -27,6 +27,13 @@ public:
     // Peak to Loudness Ratio: true peak since reset minus integrated loudness
     double getPLR() const noexcept { const double p = getTruePeak(); return (integrated > kNone && p > kNone) ? p - integrated : kNone; }
     int blocksSeen() const noexcept { return subCount; }             // 100 ms steps since reset
+    // Gate for the integrated loudness: true = BS.1770-2/3/4 (absolute -70 LUFS and relative -10 LU gates,
+    // the default), false = BS.1770-1 (no gating: every 400 ms block counts, silence too)
+    void setProgramGate (bool on) noexcept { if (on != programGate) { programGate = on; updateIntegrated(); } }
+    bool isProgramGated() const noexcept   { return programGate; }
+    // the loudness range's ends (the 10th and 95th percentiles of the short-term loudness), LUFS
+    double getRangeLow() const noexcept  { return lraLo; }
+    double getRangeHigh() const noexcept { return lraHi; }
 
 private:
     struct Biquad
@@ -45,6 +52,9 @@ private:
     std::vector<double> subBlocks;              // ring of the last 30 sub-block energies (100 ms each)
     int subCount = 0;
     std::vector<double> gatedBlocks;            // 400 ms block energies above the absolute gate
+    double allSum = 0; long long allCount = 0;  // every 400 ms block (ungated integrated loudness)
+    bool programGate = true;
+    double lraLo = kNone, lraHi = kNone;
     double shortTerm = kNone, integrated = kNone, momentary = kNone, momentaryMax = kNone, shortTermMax = kNone, lra = 0;
 
     // loudness range: histogram of short-term values above -70 LUFS in 0.1 LU steps

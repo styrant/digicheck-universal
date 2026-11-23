@@ -61,6 +61,8 @@ void LoudnessMeter::reset()
     subFill = 0; subCount = 0;
     subBlocks.assign (30, 0.0);
     gatedBlocks.clear();
+    allSum = 0; allCount = 0;
+    lraLo = lraHi = kNone;
     shortTerm = integrated = momentary = momentaryMax = shortTermMax = kNone;
     lra = 0;
     stHist.assign ((size_t) kHistBins, 0);
@@ -126,7 +128,9 @@ void LoudnessMeter::endSubBlock()
         z /= 4;
         momentary = lufs (z);
         momentaryMax = std::max (momentaryMax, momentary);
-        if (lufs (z) > -70.0) { gatedBlocks.push_back (z); updateIntegrated(); }
+        allSum += z; ++allCount;
+        if (lufs (z) > -70.0) gatedBlocks.push_back (z);
+        updateIntegrated();
     }
     if (subCount >= 30)
     {
@@ -146,6 +150,12 @@ void LoudnessMeter::endSubBlock()
 
 void LoudnessMeter::updateIntegrated()
 {
+    if (! programGate)
+    {
+        integrated = allCount > 0 && allSum > 0 ? -0.691 + 10.0 * std::log10 (allSum / (double) allCount) : kNone;
+        return;
+    }
+    if (gatedBlocks.empty()) { integrated = kNone; return; }
     double sum = 0;
     for (double z : gatedBlocks) sum += z;
     const double relGate = -0.691 + 10.0 * std::log10 (sum / (double) gatedBlocks.size()) - 10.0;
@@ -183,5 +193,6 @@ void LoudnessMeter::updateRange()
         }
         return kHistLo + kHistBins * kHistStep;
     };
-    lra = std::max (0.0, percentile (0.95) - percentile (0.10));
+    lraLo = percentile (0.10); lraHi = percentile (0.95);
+    lra = std::max (0.0, lraHi - lraLo);
 }

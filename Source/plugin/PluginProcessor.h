@@ -59,7 +59,18 @@ public:
     std::atomic<bool> stateRestored { false };       // the editor rebuilds its views when it sees this
 
 private:
-    void timerCallback() override { if (getActiveEditor() == nullptr) core.pumpMonitor(); }   // the Monitor keeps measuring
+    // the Monitor keeps measuring while the window is closed (and restarts with playback if asked to)
+    void timerCallback() override
+    {
+        const bool p = playing.load();
+        if (getActiveEditor() == nullptr)
+        {
+            if (p && ! wasPlaying && core.settings.monitorResetOnPlay) { core.monitorModel.reset(); engine.resetLoudness(); }
+            core.pumpMonitor();
+        }
+        wasPlaying = p;
+    }
+    bool wasPlaying = false;
     std::unique_ptr<juce::PropertiesFile> global;
     juce::PropertySet state;                         // this instance's settings, saved in the project
     Core core { state, true };                       // before the engines: the taps outlive their DSP threads

@@ -25,7 +25,7 @@
 class MonitorPage : public juce::Component
 {
 public:
-    enum ModuleId { Loudness = 0, Dynamics = 1, Levels = 2, SoundField = 3, Phase = 4, NumModules = 5 };
+    enum ModuleId { Loudness = 0, Dynamics = 1, Levels = 2, SoundField = 3, Phase = 4, History = 5, NumModules = 6 };
 
     // sharedModel: measurements kept elsewhere (the plugin's Core, which keeps measuring while the window is
     // closed); nullptr: the page's own
@@ -45,7 +45,7 @@ public:
     monitor::MonitorModel& model()               { return engine; }
     void loadForTest (const juce::File& f);      // self-test: runs a file through the meters and holds them
 
-    struct Module; struct LoudnessModule; struct DynamicsModule; struct LevelsModule; struct FieldModule; struct PhaseModule;
+    struct Module; struct LoudnessModule; struct DynamicsModule; struct LevelsModule; struct FieldModule; struct PhaseModule; struct HistoryModule;
 
     // layout (used by the modules)
     void toggleMax (int id);
@@ -56,6 +56,13 @@ public:
     void dragModule (int id, juce::Point<int> pagePos);
     void dropModule (int id, juce::Point<int> pagePos);
     Settings& settings()                         { return s; }
+    void applyTargetPreset (int index);          // a loudness standard: its target, tolerance, peak target and gate
+    void showTargetsPanel (juce::Rectangle<int> anchor, juce::Component* from);
+    void applyGate();
+    void applyLevelOptions();                    // peak hold and RMS times
+    std::function<bool()> hostPlaying;           // VST3: the transport (Reset when playback starts)
+    float textScaleFor (int id) const;           // the module's Text size (1 = the Monitor's default)
+    void setTextScale (int id, float k);
     void changed()                               { if (onChanged) onChanged(); }
 
 private:
@@ -72,7 +79,8 @@ private:
     monitor::MonitorModel ownModel;
     monitor::MonitorModel& engine;
     const bool shared;
-    bool active = false, held = false;
+    bool active = false, held = false, paused = false, lastPlaying = false;
+    juce::TextButton pauseBtn { "Pause" };
     double lastFrame = 0;
 
     std::array<std::unique_ptr<Module>, NumModules> modules;

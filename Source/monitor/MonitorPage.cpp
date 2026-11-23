@@ -9,19 +9,105 @@ namespace
                        kDim (0xff8a8f98), kFaint (0xff5a5f68), kGrid (0xff24272d), kButton (0xff3a3c41), kOn (0xff4c8dff);
     const juce::Colour kGood (0xff4cd07d), kWarn (0xffffd23f), kBad (0xffff4d6a), kQuiet (0xffbfc5cf), kTeal (0xff3ec7c7);
 
-    struct Target { const char* name; double lufs, tp; };
+    // loudness targets: the common streaming ones, then Insight 2's broadcast list (public standards)
+    struct Target { const char* name; double lufs, tol, tp; bool programGate; };
     const Target kTargets[] = {
-        { "Streaming (Spotify, YouTube, Tidal)", -14, -1 },
-        { "Apple Music", -16, -1 },
-        { "Podcast", -16, -1 },
-        { "EBU R128 broadcast", -23, -1 },
-        { "ATSC A/85 broadcast", -24, -2 },
-        { "Loud master (club, CD)", -9, -0.3 },
-        { "No target", 0, 0 } };
-    constexpr int kNoTarget = 6;
+        { "Streaming (Spotify, YouTube, Tidal)", -14, 1.0, -1.0, true },
+        { "Apple Music", -16, 1.0, -1.0, true },
+        { "Podcast / AES TD1006 (OTT)", -16, 2.0, -1.0, true },
+        { "EBU R128 (Europe)", -23, 0.5, -1.0, true },
+        { "ATSC A/85 (USA, Canada)", -24, 2.0, -2.0, true },
+        { "Loud master (club, CD)", -9, 1.0, -0.3, true },
+        { "EBU R128 DPP (UK)", -23, 0.5, -3.0, true },
+        { "EBU R128 (South Africa)", -23, 1.0, -2.0, true },
+        { "AGCOM 219/09/CSP (Italy)", -24, 0.5, -2.0, true },
+        { "ARIB TR-B32 (Japan)", -24, 2.0, -1.0, true },
+        { "OP-59 (Australia, New Zealand)", -24, 1.0, -2.0, true },
+        { "Portaria 354 (Brazil)", -23, 0.5, -2.0, true },
+        { "BS.1770-1 (ungated)", -24, 2.0, -2.0, false },
+        { "BS.1770-2/3/4", -24, 2.0, -2.0, true },
+        { "Netflix (program gate; Netflix asks for dialogue gating)", -27, 0.5, -2.0, true } };
+    constexpr int kNumTargets = (int) std::size (kTargets), kCustomTarget = kNumTargets, kNoTarget = kNumTargets + 1;
+    juce::String targetName (int i)
+    {
+        return i == kCustomTarget ? juce::String ("Custom") : (i >= kNoTarget || i < 0 ? juce::String ("No target") : juce::String (kTargets[i].name));
+    }
 
-    const char* kModuleNames[MonitorPage::NumModules] = { "Loudness", "Dynamics", "Levels", "Sound Field", "Phase" };
-    const float kModuleWeight[MonitorPage::NumModules] = { 0.62f, 1.0f, 1.0f, 1.35f, 1.0f };
+    // the loudness bars' scale: 0 dB linear, 1 dB non-linear, 2 BS.1771, 3 EBU +9, 4 EBU +18
+    struct LoudScale { double lo, hi; bool nonLinear; double relLo, relHi; };
+    // the Targets panel (Insight's): loudness target with its tolerance, peak target, LRA range, gate.
+    // Any change makes the preset "Custom".
+    struct TargetsPanel : public juce::Component
+    {
+        TargetsPanel (Settings& st, std::function<void()> ch) : s (st), changed (std::move (ch))
+        {
+            auto setup = [this] (juce::Slider& sl, double lo, double hi, double step, double v, const juce::String& suffix)
+            {
+                sl.setSliderStyle (juce::Slider::LinearHorizontal);
+                sl.setTextBoxStyle (juce::Slider::TextBoxRight, false, 78, 22);
+                sl.setRange (lo, hi, step); sl.setValue (v, juce::dontSendNotification); sl.setTextValueSuffix (suffix);
+                sl.onValueChange = [this] { edited(); };
+                addAndMakeVisible (sl);
+            };
+            setup (loud, -40, -5, 0.5, s.monitorTargetLufs, " LUFS");
+            setup (tol, 0, 5, 0.5, s.monitorTolerance, " LU");
+            setup (peak, -12, 0, 0.1, s.monitorPeakTarget, " dBTP");
+            lra.setSliderStyle (juce::Slider::TwoValueHorizontal);
+            lra.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+            lra.setRange (0, 30, 1);
+            lra.setMinAndMaxValues (s.monitorLraLo, s.monitorLraHi, juce::dontSendNotification);
+            lra.onValueChange = [this] { edited(); };
+            addAndMakeVisible (lra);
+            for (int i = 0; i < 2; ++i)
+            {
+                auto& b = gate[(size_t) i];
+                b.setButtonText (i == 0 ? "Off (BS.1770-1)" : "Program (BS.1770-2/3/4)");
+                b.setClickingTogglesState (false);
+                b.setConnectedEdges (i == 0 ? juce::Button::ConnectedOnRight : juce::Button::ConnectedOnLeft);
+                b.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff4c8dff));
+                b.onClick = [this, i] { s.monitorGate = i; edited(); };
+                addAndMakeVisible (b);
+            }
+            update();
+            setSize (440, 236);
+        }
+        void edited()
+        {
+            s.monitorTargetLufs = loud.getValue(); s.monitorTolerance = tol.getValue(); s.monitorPeakTarget = peak.getValue();
+            s.monitorLraLo = lra.getMinValue(); s.monitorLraHi = lra.getMaxValue();
+            s.monitorTarget = kCustomTarget;
+            update();
+            if (changed) changed();
+        }
+        void update() { for (int i = 0; i < 2; ++i) gate[(size_t) i].setToggleState (s.monitorGate == i, juce::dontSendNotification); repaint(); }
+        void paint (juce::Graphics& g) override
+        {
+            g.fillAll (juce::Colour (0xff1b1d22));
+            g.setColour (juce::Colours::white.withAlpha (0.75f)); g.setFont (juce::FontOptions (13.0f));
+            for (auto& [y, t] : rows) g.drawText (t, 12, y, 110, 24, juce::Justification::centredLeft);
+            g.setColour (juce::Colours::white);
+            g.drawText (juce::String (s.monitorLraLo, 0) + " - " + juce::String (s.monitorLraHi, 0) + " LU", getWidth() - 90, rows[3].first, 80, 24, juce::Justification::centredRight);
+            g.setColour (juce::Colours::white.withAlpha (0.45f)); g.setFont (juce::FontOptions (11.5f));
+            g.drawText ("Any change makes the preset Custom", 12, getHeight() - 22, getWidth() - 24, 18, juce::Justification::centredLeft);
+        }
+        void resized() override
+        {
+            int y = 10; rows.clear();
+            auto row = [&] (const char* name, juce::Component& c, int rightPad = 0) { rows.push_back ({ y, name }); c.setBounds (120, y, getWidth() - 132 - rightPad, 24); y += 32; };
+            row ("Loudness target", loud); row ("Tolerance", tol); row ("Peak target", peak); row ("LRA range", lra, 92);
+            rows.push_back ({ y, "Gate" });
+            gate[0].setBounds (120, y, (getWidth() - 132) / 2, 26); gate[1].setBounds (120 + (getWidth() - 132) / 2, y, (getWidth() - 132) / 2, 26);
+        }
+        Settings& s;
+        std::function<void()> changed;
+        juce::Slider loud, tol, peak, lra;
+        std::array<juce::TextButton, 2> gate;
+        std::vector<std::pair<int, const char*>> rows;
+    };
+
+    const LoudScale kLoudScales[] = { { -60, 0, false, 0, 0 }, { -60, 0, true, 0, 0 }, { -45, -14, false, -21, 9 }, { -41, -14, false, -18, 9 }, { -59, -5, false, -36, 18 } };
+    const char* kModuleNames[MonitorPage::NumModules] = { "Loudness", "Dynamics", "Levels", "Sound Field", "Phase", "History" };
+    const float kModuleWeight[MonitorPage::NumModules] = { 0.62f, 1.0f, 1.0f, 1.35f, 1.0f, 0.9f };
 
     juce::String num (double v, int dec = 1) { return v <= -199 || ! std::isfinite (v) ? juce::String ("-inf") : (v > 0 && dec > 0 ? "+" : "") + juce::String (v, dec); }
     juce::String plain (double v, int dec = 1) { return v <= -199 || ! std::isfinite (v) ? juce::String ("-inf") : juce::String (v, dec); }
@@ -35,10 +121,17 @@ namespace
 
     juce::Colour corrColour (double c) { return c < 0 ? kBad : (c < 0.3 ? kWarn : kGood); }
 
+    // text size of the module being painted: 15 % above the app's text size by default, times the
+    // module's own Text size (its gear menu). Set by Module::paint.
+    float gTextMul = 1.15f;
+    constexpr float kTextSizes[] = { 0.85f, 1.0f, 1.15f, 1.3f, 1.5f, 1.75f, 2.0f };
+
     void text (juce::Graphics& g, const juce::String& t, juce::Rectangle<float> r, float size, juce::Colour c,
                juce::Justification j = juce::Justification::centred, bool bold = false)
     {
         g.setColour (c);
+        // labels grow freely; big readouts (already sized to their panel) stay inside their own box
+        size = juce::jmin (size * gTextMul, juce::jmax (size, r.getHeight() * (size > 18.0f ? 1.0f : 1.6f)));
         g.setFont (juce::FontOptions (size, bold ? juce::Font::bold : juce::Font::plain));
         g.drawText (t, r, j, false);
     }
@@ -63,8 +156,11 @@ struct MonitorPage::Module : public juce::Component
     Settings& st() { return page.settings(); }
     const MonitorModel& m() { return page.model(); }
 
+    float textScale() { return 1.15f * page.textScaleFor (id); }
+
     void paint (juce::Graphics& g) override
     {
+        gTextMul = textScale();
         auto r = getLocalBounds().toFloat().reduced (0.5f);
         g.setColour (kPanel); g.fillRoundedRectangle (r, 6.0f);
         g.setColour (page.dragTarget == id ? kOn : kPanelLine); g.drawRoundedRectangle (r, 6.0f, page.dragTarget == id ? 2.0f : 1.0f);
@@ -112,7 +208,7 @@ struct MonitorPage::Module : public juce::Component
     void resized() override
     {
         auto r = getLocalBounds();
-        header = r.removeFromTop (ui::px (28));
+        header = r.removeFromTop (juce::roundToInt (ui::px (28) * juce::jmax (1.0f, textScale() * 0.9f)));
         auto h = header.reduced (6, 3);
         gearR = h.removeFromLeft (h.getHeight());
         closeR = h.removeFromRight (h.getHeight());
@@ -126,6 +222,11 @@ struct MonitorPage::Module : public juce::Component
         juce::PopupMenu menu;
         addMenuItems (menu);
         if (menu.getNumItems() > 0) menu.addSeparator();
+        juce::PopupMenu sizes;
+        for (float k : kTextSizes)
+            sizes.addItem (juce::String (juce::roundToInt (k * 100)) + " %" + (k == 1.0f ? "  (default)" : ""), true, std::abs (page.textScaleFor (id) - k) < 0.01f,
+                           [this, k] { page.setTextScale (id, k); });
+        menu.addSubMenu ("Text size", sizes);
         menu.addItem ("Full width", ! page.isMaxed (id), page.isWide (id), [this] { page.setWide (id, ! page.isWide (id)); });
         menu.addItem (page.isMaxed (id) ? "Restore" : "Maximise", [this] { page.toggleMax (id); });
         menu.addItem ("Hide", [this] { page.setShown (id, false); });
@@ -156,21 +257,89 @@ struct MonitorPage::Module : public juce::Component
 };
 
 //==============================================================================
-// Loudness: short-term | integrated | momentary, then LRA, true peak and the target
+// Loudness, after Insight 2. Two layouts by height: compact (the readouts only) and, when there's room
+// (or maximised), three vertical bars (Short Term, Integrated with the LRA bar beside it, Momentary)
+// with the readouts under them. Colours: Integrated green within the target's tolerance, red above it;
+// Short Term / Momentary yellow above the target; True Peak red above the peak target; LRA red outside
+// the LRA target range. The Targets panel (button by the preset list) sets all of them and the gate.
 struct MonitorPage::LoudnessModule : public MonitorPage::Module
 {
     using Module::Module;
-    juce::Rectangle<int> momLabel, targetR;
+    juce::Rectangle<int> momLabel, targetR, targetsBtnR;
 
-    juce::Colour colourFor (double lufs)
+    bool hasTarget() { return st().monitorTarget != kNoTarget; }
+    double target()  { return st().monitorTargetLufs; }
+    juce::Colour integratedColour (double v)
     {
-        if (lufs <= -70) return kFaint;
-        if (st().monitorTarget == kNoTarget) return kHeaderText;
-        const double d = lufs - kTargets[st().monitorTarget].lufs;
-        return d > 3 ? kBad : (d > 1 ? kWarn : (d >= -1 ? kGood : kQuiet));
+        if (v <= -70) return kFaint;
+        if (! hasTarget()) return kHeaderText;
+        const double d = v - target(), tol = st().monitorTolerance;
+        return d > tol ? kBad : (d >= -tol ? kGood : kQuiet);
+    }
+    juce::Colour levelColour (double v)            // short-term, momentary
+    {
+        if (v <= -70) return kFaint;
+        if (! hasTarget()) return kHeaderText;
+        return v > target() + st().monitorTolerance ? kWarn : kHeaderText;
+    }
+    // the bar scale (absolute LUFS, or LU relative to the target)
+    const LoudScale& scale() { return kLoudScales[juce::jlimit (0, 4, st().monitorLoudRange)]; }
+    bool relative() { return st().monitorRelative && hasTarget(); }
+    double lo() { const auto& c = scale(); return relative() && c.relHi > c.relLo ? target() + c.relLo : c.lo; }
+    double hi() { const auto& c = scale(); return relative() && c.relHi > c.relLo ? target() + c.relHi : c.hi; }
+    float frac (double v)
+    {
+        const double l = lo(), h = hi();
+        const double f = juce::jlimit (0.0, 1.0, (v - l) / (h - l));
+        return (float) (scale().nonLinear ? std::pow (f, 1.6) : f);
     }
 
     void paintBody (juce::Graphics& g) override
+    {
+        if (body.getHeight() >= 240 * gTextMul / 1.15f) paintBars (g); else paintCompact (g);
+    }
+
+    // the readout row: LRA | True Peak | [Targets] preset
+    void paintFooter (juce::Graphics& g, juce::Rectangle<float> row, float f)
+    {
+        const auto& L = m().loudness();
+        const float w = row.getWidth() / 3;
+        auto pair = [&] (juce::Rectangle<float> b, const juce::String& name, const juce::String& v, const juce::String& unit, juce::Colour c)
+        {
+            auto half = b.removeFromLeft (b.getWidth() * 0.45f);
+            text (g, name, half, f * 0.8f, kDim, juce::Justification::centredRight);
+            text (g, "  " + v, b.removeFromLeft (f * 3.6f * gTextMul), f * 1.15f, c, juce::Justification::centredLeft, true);
+            text (g, unit, b, f * 0.75f, kFaint, juce::Justification::centredLeft);
+        };
+        const double lra = L.getLoudnessRange();
+        const bool lraOut = hasTarget() && (lra < st().monitorLraLo || lra > st().monitorLraHi) && L.blocksSeen() > 30;
+        pair (row.removeFromLeft (w), "LRA", juce::String (lra, 1), "LU", lraOut ? kBad : kHeaderText);
+        const double tp = L.getTruePeak();
+        pair (row.removeFromLeft (w), "True Peak", num (tp, 1), "dBTP", hasTarget() && tp > st().monitorPeakTarget ? kBad : kHeaderText);
+        auto t = row.reduced (4, juce::jmax (1.0f, (row.getHeight() - f * 1.9f * gTextMul) * 0.5f)).toNearestInt();
+        targetsBtnR = t.removeFromLeft (t.getHeight());
+        t.removeFromLeft (3);
+        targetR = t;
+        g.setColour (kButton.withAlpha (0.6f));
+        g.fillRoundedRectangle (targetsBtnR.toFloat(), 4); g.fillRoundedRectangle (targetR.toFloat(), 4);
+        {   // the Targets button: three sliders
+            auto b = targetsBtnR.toFloat().reduced (targetsBtnR.getHeight() * 0.26f);
+            g.setColour (kHeaderText);
+            for (int k = 0; k < 3; ++k)
+            {
+                const float x = b.getX() + b.getWidth() * (0.15f + 0.35f * k);
+                g.drawLine (x, b.getY(), x, b.getBottom(), 1.2f);
+                const float y = b.getY() + b.getHeight() * (k == 1 ? 0.7f : 0.3f);
+                g.fillRect (x - 2.5f, y - 1.5f, 5.0f, 3.0f);
+            }
+        }
+        const auto name = targetName (st().monitorTarget).upToFirstOccurrenceOf (" (", false, false);
+        const auto tt = hasTarget() ? name + "  " + juce::String (target(), 1) + " LUFS" + (st().monitorGate == 0 ? "  (ungated)" : "")
+                                    : juce::String ("No target");
+        text (g, tt + juce::String::fromUTF8 ("  \xe2\x96\xbe"), targetR.toFloat(), f * 0.82f, kHeaderText);
+    }
+
+    void paintCompact (juce::Graphics& g)
     {
         const auto& L = m().loudness();
         auto r = body.toFloat();
@@ -178,68 +347,128 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
         const float big = juce::jlimit (18.0f, 72.0f, H * 0.46f), mid = big * 0.7f, label = juce::jlimit (10.5f, 14.0f, H * 0.13f);
         auto top = r.removeFromTop (H * 0.70f);
         const float w3 = top.getWidth() / 3;
-        auto block = [&] (juce::Rectangle<float> b, const juce::String& title, double v, float size, const juce::String& unit)
+        auto block = [&] (juce::Rectangle<float> b, const juce::String& title, double v, float size, const juce::String& unit, juce::Colour c)
         {
-            text (g, title, b.removeFromTop (label * 1.5f), label, kDim);
+            text (g, title, b.removeFromTop (label * 1.5f * gTextMul), label, kDim);
             auto vr = b.withSizeKeepingCentre (b.getWidth(), size * 1.15f);
             const auto s = plain (v, 1);
-            g.setFont (juce::FontOptions (size)); const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), s);
-            text (g, s, vr, size, colourFor (v));
-            text (g, unit, { vr.getCentreX() + tw * 0.5f + 3, vr.getBottom() - label * 2.2f, 60, label * 1.4f }, label * 0.9f, kFaint, juce::Justification::left);
+            g.setFont (juce::FontOptions (juce::jmin (size * gTextMul, juce::jmax (size, vr.getHeight())))); const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), s);
+            text (g, s, vr, size, c);
+            text (g, unit, { vr.getCentreX() + tw * 0.5f + 3, vr.getBottom() - label * 2.2f, 80, label * 1.4f }, label * 0.9f, kFaint, juce::Justification::left);
         };
-        block (top.removeFromLeft (w3), "Short Term", L.getShortTerm(), mid, "LUFS");
+        block (top.removeFromLeft (w3), "Short Term", L.getShortTerm(), mid, "LUFS", levelColour (L.getShortTerm()));
         auto right = top.removeFromRight (w3);
-        block (top, "Integrated", L.getIntegrated(), big, "LUFS");
-        block (right, st().monitorMomMax ? "Momentary Max" : "Momentary", st().monitorMomMax ? L.getMomentaryMax() : L.getMomentary(), mid, "LUFS");
-        momLabel = right.removeFromTop (label * 1.5f).toNearestInt();
+        block (top, "Integrated", L.getIntegrated(), big, "LUFS", integratedColour (L.getIntegrated()));
+        const double mom = st().monitorMomMax ? L.getMomentaryMax() : L.getMomentary();
+        block (right, st().monitorMomMax ? "Momentary Max" : "Momentary", mom, mid, "LUFS", levelColour (mom));
+        momLabel = right.removeFromTop (label * 1.5f * gTextMul).toNearestInt();
+        paintFooter (g, r.reduced (0, 2), juce::jlimit (12.0f, 18.0f, H * 0.17f));
+    }
 
-        // bottom row: LRA | True Peak | target
-        auto row = r.reduced (0, 2);
-        const float f = juce::jlimit (12.0f, 18.0f, H * 0.17f);
-        const float w = row.getWidth() / 3;
-        auto pair = [&] (juce::Rectangle<float> b, const juce::String& name, const juce::String& v, const juce::String& unit, juce::Colour c)
+    void paintBars (juce::Graphics& g)
+    {
+        const auto& L = m().loudness();
+        auto r = body.toFloat();
+        const float f = 14.0f;
+        auto footer = r.removeFromBottom (f * 2.4f * gTextMul);
+        g.setColour (kPanelLine); g.drawHorizontalLine ((int) footer.getY(), r.getX(), r.getRight());
+        paintFooter (g, footer.reduced (0, 4), f);
+        const float numH = juce::jlimit (34.0f, 70.0f, r.getHeight() * 0.16f);
+        auto numbers = r.removeFromBottom (numH * gTextMul / 1.15f + f * 1.6f * gTextMul);
+        const float colW = r.getWidth() / 3;
+        const float barW = juce::jlimit (28.0f, 90.0f, colW * 0.24f);
+        const double tgt = target();
+        auto lab = [&] (double v) { const double x = relative() ? v - tgt : v; return (relative() && x > 0 ? "+" : "") + juce::String ((int) std::lround (x)); };
+        // scale marks: every 3 dB near the top, then wider
+        std::vector<double> marks;
+        if (scale().nonLinear || st().monitorLoudRange == 0) marks = { 0, -3, -6, -10, -15, -20, -30, -40, -50 };
+        else for (double v = std::ceil (hi() / 3) * 3; v >= lo(); v -= (hi() - lo() > 40 ? 6 : 3)) marks.push_back (v);
+
+        struct Bar { const char* name; double v; juce::Colour over; double shown; const char* unit; };
+        const double mom = L.getMomentary(), momMax = L.getMomentaryMax();
+        const Bar bars[3] = { { "Short Term", L.getShortTerm(), kWarn, L.getShortTerm(), "LUFS" },
+                              { "Integrated", L.getIntegrated(), kBad, L.getIntegrated(), "LUFS" },
+                              { "Momentary", mom, kWarn, momMax, "Max\nLUFS" } };
+        for (int i = 0; i < 3; ++i)
         {
-            auto half = b.removeFromLeft (b.getWidth() * 0.45f);
-            text (g, name, half, f * 0.8f, kDim, juce::Justification::centredRight);
-            text (g, "  " + v, b.removeFromLeft (f * 3.6f), f * 1.15f, c, juce::Justification::centredLeft, true);
-            text (g, unit, b, f * 0.75f, kFaint, juce::Justification::centredLeft);
-        };
-        pair (row.removeFromLeft (w), "LRA", juce::String (L.getLoudnessRange(), 1), "LU", kHeaderText);
-        const double tp = L.getTruePeak();
-        const bool tpOver = st().monitorTarget != kNoTarget && tp > kTargets[st().monitorTarget].tp;
-        pair (row.removeFromLeft (w), "True Peak", num (tp, 1), "dBTP", tpOver ? kBad : kHeaderText);
-        targetR = row.reduced (4, juce::jmax (1.0f, (row.getHeight() - f * 1.9f) * 0.5f)).toNearestInt();
-        g.setColour (kButton.withAlpha (0.6f)); g.fillRoundedRectangle (targetR.toFloat(), 4);
-        const auto& t = kTargets[st().monitorTarget];
-        const auto tt = st().monitorTarget == kNoTarget ? juce::String ("Target: none")
-                                                        : juce::String (t.name).upToFirstOccurrenceOf (" (", false, false) + "  " + juce::String (t.lufs, 0) + " LUFS";
-        text (g, tt + juce::String::fromUTF8 ("  \xe2\x96\xbe"), targetR.toFloat(), f * 0.82f, kHeaderText);
+            auto col = juce::Rectangle<float> (r.getX() + i * colW, r.getY(), colW, r.getHeight());
+            auto area = col.withSizeKeepingCentre (barW + 50 * gTextMul, col.getHeight());
+            auto bar = area.removeFromLeft (barW).withTrimmedTop (6).withTrimmedBottom (4);
+            auto sc = area.withTrimmedLeft (6);
+            auto yOf = [&] (double v) { return bar.getBottom() - frac (v) * bar.getHeight(); };
+            // background: dark, tinted above the target
+            g.setColour (juce::Colour (0xff1d2024)); g.fillRect (bar);
+            if (hasTarget()) { g.setColour (bars[i].over.withAlpha (0.08f)); g.fillRect (bar.withBottom (yOf (tgt))); }
+            const double v = bars[i].v;
+            if (v > lo() && v > -70)
+            {
+                const float y = yOf (v);
+                const float yt = hasTarget() ? yOf (tgt + (i == 1 ? st().monitorTolerance : 0)) : bar.getY();
+                g.setColour (kGood); g.fillRect (bar.withTop (juce::jmax (y, yt)));
+                if (y < yt) { g.setColour (bars[i].over); g.fillRect (bar.withTop (y).withBottom (yt)); }
+            }
+            // target tick and the LRA bar (on the Integrated meter)
+            if (hasTarget()) { g.setColour (juce::Colours::white.withAlpha (0.8f)); g.fillRect (bar.getX() - 5, yOf (tgt) - 1, 4.0f, 2.0f); }
+            if (i == 1 && L.getRangeLow() > -70 && L.getRangeHigh() > L.getRangeLow())
+            {
+                g.setColour (juce::Colours::white);
+                g.fillRect (juce::Rectangle<float>::leftTopRightBottom (bar.getX() - 4, yOf (L.getRangeHigh()), bar.getX() - 1, yOf (L.getRangeLow())));
+            }
+            for (double mk : marks)
+            {
+                if (mk > hi() + 0.01 || mk < lo() - 0.01) continue;
+                text (g, lab (mk), { sc.getX(), yOf (mk) - 7, sc.getWidth(), 14 }, 10.5f, kDim, juce::Justification::left);
+            }
+            text (g, relative() ? "LU" : "-Inf", { sc.getX(), bar.getBottom() - 7, sc.getWidth(), 14 }, 10.5f, kFaint, juce::Justification::left);
+
+            // the readout under the bar
+            auto nb = juce::Rectangle<float> (col.getX(), numbers.getY(), colW, numbers.getHeight());
+            text (g, bars[i].name, nb.removeFromTop (f * 1.4f * gTextMul), 12.0f, kDim);
+            const double shown = bars[i].shown;
+            const auto c = i == 1 ? integratedColour (shown) : levelColour (shown);
+            const auto str = relative() && shown > -70 ? num (shown - tgt, 1) : plain (shown, 1);
+            g.setFont (juce::FontOptions (numH * gTextMul / 1.15f));
+            const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), str);
+            text (g, str, nb, numH, c);
+            const auto unit = relative() ? juce::String (i == 2 ? "Max\nLU" : "LU") : juce::String (bars[i].unit);
+            g.setColour (kFaint); g.setFont (juce::FontOptions (11.0f * gTextMul));
+            g.drawFittedText (unit, juce::Rectangle<float> (nb.getCentreX() + tw * 0.5f + 3, nb.getCentreY() - 2, 60, nb.getHeight() * 0.45f).toNearestInt(),
+                              juce::Justification::topLeft, 2);
+            if (i == 2) momLabel = nb.toNearestInt();
+        }
     }
 
     void targetMenu()
     {
         juce::PopupMenu menu;
-        for (int i = 0; i < (int) std::size (kTargets); ++i)
+        for (int i = 0; i < kNumTargets; ++i)
         {
             const auto& t = kTargets[i];
-            const juce::String label = i == kNoTarget ? juce::String ("No target")
-                                                      : juce::String (t.name) + "   " + juce::String (t.lufs, 0) + " LUFS, " + juce::String (t.tp, 1) + " dBTP";
-            menu.addItem (label, true, st().monitorTarget == i, [this, i] { st().monitorTarget = i; page.changed(); repaint(); });
+            menu.addItem (juce::String (t.name) + "   " + juce::String (t.lufs, 0) + " LUFS, " + juce::String (t.tp, 1) + " dBTP", true, st().monitorTarget == i,
+                          [this, i] { page.applyTargetPreset (i); });
         }
+        menu.addSeparator();
+        menu.addItem ("Custom (Targets panel)", true, st().monitorTarget == kCustomTarget, [this] { page.showTargetsPanel (targetsBtnR, this); });
+        menu.addItem ("No target", true, st().monitorTarget == kNoTarget, [this] { page.applyTargetPreset (kNoTarget); });
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (localAreaToGlobal (targetR)));
     }
 
     void addMenuItems (juce::PopupMenu& menu) override
     {
-        juce::PopupMenu targets;
-        for (int i = 0; i < (int) std::size (kTargets); ++i)
-            targets.addItem (kTargets[i].name, true, st().monitorTarget == i, [this, i] { st().monitorTarget = i; page.changed(); repaint(); });
-        menu.addSubMenu ("Target", targets);
-        menu.addItem ("Momentary shows its maximum", true, st().monitorMomMax, [this] { st().monitorMomMax = ! st().monitorMomMax; page.changed(); });
+        menu.addItem ("Targets...", [this] { page.showTargetsPanel (targetsBtnR, this); });
+        menu.addItem ("Momentary shows its maximum (compact view)", true, st().monitorMomMax, [this] { st().monitorMomMax = ! st().monitorMomMax; page.changed(); });
+        juce::PopupMenu range;
+        const char* names[] = { "dB (linear)", "dB (non-linear)", "BS.1771", "EBU +9", "EBU +18" };
+        for (int i = 0; i < 5; ++i) range.addItem (names[i], true, st().monitorLoudRange == i, [this, i] { st().monitorLoudRange = i; page.changed(); });
+        menu.addSubMenu ("Bar range", range);
+        menu.addItem ("Scale relative to the target (LU)", hasTarget(), st().monitorRelative, [this] { st().monitorRelative = ! st().monitorRelative; page.changed(); });
+        menu.addItem ("Reset when playback starts (VST3)", true, st().monitorResetOnPlay, [this] { st().monitorResetOnPlay = ! st().monitorResetOnPlay; page.changed(); });
+        menu.addSectionHeader ("Tall enough (or maximised): the meter bars");
     }
 
     void mouseDown (const juce::MouseEvent& e) override
     {
+        if (! e.mods.isPopupMenu() && targetsBtnR.contains (e.getPosition())) { page.showTargetsPanel (targetsBtnR, this); return; }
         if (! e.mods.isPopupMenu() && targetR.contains (e.getPosition())) { targetMenu(); return; }
         if (! e.mods.isPopupMenu() && momLabel.contains (e.getPosition())) { st().monitorMomMax = ! st().monitorMomMax; page.changed(); return; }
         Module::mouseDown (e);
@@ -261,19 +490,19 @@ struct MonitorPage::DynamicsModule : public MonitorPage::Module
         const bool havePsr = psr > MonitorModel::kNone, havePlr = plr > MonitorModel::kNone;
 
         // left: the two numbers
-        auto left = r.removeFromLeft (juce::jlimit (150.0f, 280.0f, r.getWidth() * 0.26f));
+        auto left = r.removeFromLeft (juce::jlimit (150.0f, 380.0f, r.getWidth() * 0.26f * juce::jmax (1.0f, gTextMul / 1.15f)));
         r.removeFromLeft (ui::pxf (12));
         const float H = left.getHeight();
         const float big = juce::jlimit (18.0f, 54.0f, H * 0.30f), small = juce::jlimit (10.0f, 13.5f, H * 0.09f);
         auto readout = [&] (juce::Rectangle<float> b, const char* name, const char* what, double v, bool have)
         {
-            auto head = b.removeFromTop (small * 1.6f);
-            text (g, name, head.removeFromLeft (big * 1.5f), small * 1.15f, kHeaderText, juce::Justification::centredLeft, true);
+            auto head = b.removeFromTop (small * 1.6f * gTextMul);
+            text (g, name, head.removeFromLeft (juce::jmax (big * 1.5f, small * 3.2f * gTextMul)), small * 1.15f, kHeaderText, juce::Justification::centredLeft, true);
             text (g, what, head, small * 0.9f, kDim, juce::Justification::centredLeft);
             auto vr = b.removeFromTop (big * 1.1f);
             const auto& z = zoneOf (have ? v : 0);
             text (g, have ? juce::String (v, 1) : juce::String ("--"), vr.removeFromLeft (big * 2.4f), big, have ? z.c : kFaint, juce::Justification::centredLeft);
-            text (g, "dB", vr.removeFromLeft (small * 2.2f).withTrimmedTop (big * 0.35f), small, kFaint, juce::Justification::centredLeft);
+            text (g, "dB", vr.removeFromLeft (small * 2.2f * gTextMul).withTrimmedTop (big * 0.35f), small, kFaint, juce::Justification::centredLeft);
             if (have) text (g, z.name, vr.withTrimmedTop (big * 0.3f), small * 1.05f, z.c, juce::Justification::centredLeft, true);
         };
         readout (left.removeFromTop (H * 0.46f), "PSR", "peak to short-term", psr, havePsr);
@@ -283,7 +512,7 @@ struct MonitorPage::DynamicsModule : public MonitorPage::Module
                   left, small * 0.9f, kDim, juce::Justification::centredLeft);
 
         // right top: the zoned scale with PSR, the loud-parts range and PLR
-        auto scale = r.removeFromTop (juce::jlimit (26.0f, 44.0f, r.getHeight() * 0.22f));
+        auto scale = r.removeFromTop (juce::jlimit (26.0f, 44.0f, r.getHeight() * 0.22f) * juce::jmax (1.0f, gTextMul / 1.15f));
         r.removeFromTop (ui::pxf (8));
         auto bar = scale.removeFromTop (scale.getHeight() * 0.55f);
         auto xOf = [&] (double v) { return bar.getX() + (float) (juce::jlimit (0.0, kScaleMax, v) / kScaleMax) * bar.getWidth(); };
@@ -349,11 +578,11 @@ struct MonitorPage::DynamicsModule : public MonitorPage::Module
                 if (! started) { p.startNewSubPath (x, yL (e.shortTerm)); started = true; } else p.lineTo (x, yL (e.shortTerm));
             }
             g.setColour (juce::Colours::white.withAlpha (0.7f)); g.strokePath (p, juce::PathStrokeType (1.3f));
-            text (g, "short-term LUFS", { hist.getRight() - 110, hist.getY() + 2, 106, 13 }, ui::fs (10), kDim, juce::Justification::right);
+            text (g, "short-term LUFS", { hist.getRight() - 220, hist.getY() + 2, 216, 13 }, ui::fs (10), kDim, juce::Justification::right);
         }
         text (g, juce::String (juce::roundToInt (secs < 60 ? secs : secs / 60)) + (secs < 60 ? " s" : " min"),
-              { hist.getX() + 4, hist.getY() + 2, 60, 13 }, ui::fs (10), kFaint, juce::Justification::left);
-        text (g, "PSR dB", { hist.getX() + 4, hist.getBottom() - 15, 60, 13 }, ui::fs (10), kFaint, juce::Justification::left);
+              { hist.getX() + 4, hist.getY() + 2, 120, 13 }, ui::fs (10), kFaint, juce::Justification::left);
+        text (g, "PSR dB", { hist.getX() + 4, hist.getBottom() - 15, 120, 13 }, ui::fs (10), kFaint, juce::Justification::left);
     }
 
     void addMenuItems (juce::PopupMenu& menu) override
@@ -385,10 +614,10 @@ struct MonitorPage::LevelsModule : public MonitorPage::Module
         const int n = st().monitorMS ? 4 : 2;
         const char* names[] = { "L", "R", "M", "S" };
         auto r = body.toFloat();
-        const float numbersH = juce::jlimit (26.0f, 36.0f, r.getHeight() * 0.18f);
+        const float numbersH = juce::jlimit (26.0f, 36.0f, r.getHeight() * 0.18f) * gTextMul;
         auto numbers = r.removeFromTop (numbersH);
-        auto labels = r.removeFromBottom (ui::pxf (18));
-        const float scaleW = ui::pxf (34);
+        auto labels = r.removeFromBottom (ui::pxf (18) * gTextMul);
+        const float scaleW = ui::pxf (34) * gTextMul;
         auto meters = r.reduced (scaleW, 0);
         const float gap = juce::jmin (meters.getWidth() * 0.08f, ui::pxf (40));
         const float bw = juce::jmin ((meters.getWidth() - gap * (n - 1)) / n, ui::pxf (140));
@@ -440,17 +669,37 @@ struct MonitorPage::LevelsModule : public MonitorPage::Module
             text (g, plain (maxPk, 1), nr.removeFromTop (numbersH * 0.5f), ui::fs (12.5f), maxPk > -0.1 ? kBad : kHeaderText, juce::Justification::centred, true);
             text (g, plain (rms, 1), nr, ui::fs (12), kDim);
         }
+        // the peak target (Loudness > Targets) as a red dashed line across the meters
+        if (st().monitorTarget != kNoTarget && st().monitorPeakTarget < 0 && st().monitorPeakTarget > lo())
+        {
+            const float y = yOf (st().monitorPeakTarget);
+            g.setColour (kBad.withAlpha (0.85f));
+            for (float x = x0 - 4; x < x0 + total + 4; x += 7) g.drawLine (x, y, juce::jmin (x0 + total + 4, x + 4), y, 1.2f);
+        }
     }
 
     void addMenuItems (juce::PopupMenu& menu) override
     {
         menu.addItem ("Show Mid and Side", true, st().monitorMS, [this] { st().monitorMS = ! st().monitorMS; page.changed(); });
+        juce::PopupMenu hold, rms;
+        const char* holds[] = { "0.25 s", "0.5 s", "1.5 s", "5 s", "Until reset (double-click the meters)" };
+        for (int i = 0; i < 5; ++i) hold.addItem (holds[i], true, st().monitorHoldTime == i, [this, i] { st().monitorHoldTime = i; page.applyLevelOptions(); page.changed(); });
+        const char* rmsN[] = { "50 ms", "300 ms (usual)", "1 s", "3 s" };
+        for (int i = 0; i < 4; ++i) rms.addItem (rmsN[i], true, st().monitorRmsTime == i, [this, i] { st().monitorRmsTime = i; page.applyLevelOptions(); page.changed(); });
+        menu.addSubMenu ("Peak hold time", hold);
+        menu.addSubMenu ("RMS integration time", rms);
         menu.addItem ("RMS +3 dB (AES17: a sine reads its peak)", true, st().monitorAes, [this] { st().monitorAes = ! st().monitorAes; page.changed(); });
         juce::PopupMenu range;
         const char* names[] = { "-60 dB", "-40 dB", "-90 dB" };
         for (int i = 0; i < 3; ++i) range.addItem (names[i], true, st().monitorRange == i, [this, i] { st().monitorRange = i; page.changed(); });
         menu.addSubMenu ("Scale", range);
         menu.addSectionHeader ("Click the numbers to reset the maxima");
+    }
+
+    void mouseDoubleClick (const juce::MouseEvent& e) override
+    {
+        if (body.contains (e.getPosition())) { page.model().resetPeakHold(); return; }
+        Module::mouseDoubleClick (e);
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -481,15 +730,37 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
         updateButtons();
     }
     std::array<juce::TextButton, 3> modeBtns;
-    juce::Rectangle<int> plot, corrBar;
-    std::vector<float> inten;
+    juce::Rectangle<int> plot, corrBar, balanceBar;
+    std::vector<float> inten, clipInt;
     juce::Image img;
     long long lastPoint = 0;
     double autoGain = 1.0;
     std::array<juce::PixelARGB, 256> lut {};
+    struct Tap { int dx, dy; float w; };
+    std::vector<Tap> kernel;
+    int kernelRadius = 0, kernelFor = -1;
+    void rebuildKernel()
+    {
+        // radius from the view's size: about 1 px per 250 px of view, at least a 2 x 2 dot
+        const float size = (float) juce::jmin (plot.getWidth(), plot.getHeight());
+        const float r = juce::jmax (0.75f, size / 250.0f);
+        const float gain = st().monitorPoints == 0 ? 0.6f : (st().monitorPoints == 2 ? 1.7f : 1.0f);
+        const int key = juce::roundToInt (r * 100) * 10 + st().monitorPoints;
+        if (key == kernelFor) return;
+        kernelFor = key;
+        kernelRadius = (int) std::ceil (r);
+        kernel.clear();
+        for (int dy = -kernelRadius; dy <= kernelRadius; ++dy)
+            for (int dx = -kernelRadius; dx <= kernelRadius; ++dx)
+            {
+                const float d = std::sqrt ((float) (dx * dx + dy * dy));
+                const float w = juce::jlimit (0.0f, 1.0f, r + 0.5f - d);          // an anti-aliased disc
+                if (w > 0) kernel.push_back ({ dx, dy, w * 0.5f * gain });
+            }
+    }
 
     void updateButtons() { for (int k = 0; k < 3; ++k) modeBtns[(size_t) k].setToggleState (st().monitorField == k, juce::dontSendNotification); }
-    void clearTrail() { std::fill (inten.begin(), inten.end(), 0.0f); }
+    void clearTrail() { std::fill (inten.begin(), inten.end(), 0.0f); std::fill (clipInt.begin(), clipInt.end(), 0.0f); }
 
     void layoutBody() override
     {
@@ -498,7 +769,9 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
         const int bw = juce::jmin (ui::px (110), btns.getWidth() / 3);
         auto row = btns.withSizeKeepingCentre (bw * 3, btns.getHeight());
         for (auto& b : modeBtns) b.setBounds (row.removeFromLeft (bw));
-        r.removeFromBottom (ui::px (6));
+        r.removeFromBottom (ui::px (4));
+        balanceBar = r.removeFromBottom (ui::px (14));
+        r.removeFromBottom (ui::px (4));
         corrBar = r.removeFromRight (ui::px (34));
         r.removeFromRight (ui::px (6));
         plot = r;
@@ -533,6 +806,8 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
         const int W = img.getWidth(), H = img.getHeight();
         const float fade = (float) std::exp (-dt / 0.14);
         for (auto& v : inten) v *= fade;
+        if (clipInt.size() != inten.size()) clipInt.assign (inten.size(), 0.0f);
+        for (auto& v : clipInt) v *= fade;
 
         const long long now = m().pointsWritten();
         if (lastPoint > now) lastPoint = 0;                       // the model was reset or reconfigured
@@ -554,6 +829,9 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
             const double want = juce::jlimit (1.0, 40.0, 0.8 / pk);
             autoGain += (want - autoGain) * juce::jmin (1.0, dt * (want < autoGain ? 8.0 : 1.5));
         }
+        // the points grow with the view (one pixel looks faint on a big display), a little brighter each
+        rebuildKernel();
+        const int R = kernelRadius;
         const auto pa = polarArea().translated ((float) -plot.getX(), (float) -plot.getY());
         const auto la = lissArea().translated ((float) -plot.getX(), (float) -plot.getY());
         if (mode != 1)
@@ -577,17 +855,17 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
                     px = la.getCentreX() + (float) x * s; py = la.getCentreY() - (float) y * s;
                 }
                 const int ix = (int) px, iy = (int) py;
-                if (ix < 0 || iy < 0 || ix + 1 >= W || iy + 1 >= H) continue;
-                auto add = [&] (int x, int y, float a) { auto& v = inten[(size_t) (y * W + x)]; v = juce::jmin (1.0f, v + a); };
-                add (ix, iy, 0.45f); add (ix + 1, iy, 0.2f); add (ix, iy + 1, 0.2f); add (ix + 1, iy + 1, 0.1f);
+                if (ix < R || iy < R || ix + R + 1 >= W || iy + R + 1 >= H) continue;
+                auto& buf = (std::abs (l) >= 0.999 || std::abs (r) >= 0.999) ? clipInt : inten;   // clipped samples: red
+                for (const auto& k : kernel) { auto& v = buf[(size_t) ((iy + k.dy) * W + ix + k.dx)]; v = juce::jmin (1.0f, v + k.w); }
             }
 
         // intensity -> teal-white pixels through a 256-entry table of premultiplied pixels, a row at a time
         if (lut[255].getAlpha() == 0)
             for (int i = 0; i < 256; ++i)
             {
-                const float v = i / 255.0f;
-                lut[(size_t) i] = juce::Colour::fromRGBA ((juce::uint8) (160 + 95 * v), 235, (juce::uint8) (220 + 35 * v), (juce::uint8) i).getPixelARGB();
+                const float v = i / 255.0f, a = std::pow (v, 0.6f);                     // lift the faint ones
+                lut[(size_t) i] = juce::Colour::fromRGBA ((juce::uint8) (160 + 95 * v), 235, (juce::uint8) (220 + 35 * v), (juce::uint8) juce::roundToInt (a * 255)).getPixelARGB();
                 lut[(size_t) i].premultiply();
             }
         juce::Image::BitmapData bd (img, juce::Image::BitmapData::writeOnly);
@@ -595,10 +873,16 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
         {
             auto* row = reinterpret_cast<juce::PixelARGB*> (bd.getLinePointer (y));
             const float* src = inten.data() + (size_t) y * (size_t) W;
+            const float* cl = clipInt.data() + (size_t) y * (size_t) W;
             for (int x = 0; x < W; ++x)
             {
-                const float v = src[x];
-                row[x] = v < 0.004f ? juce::PixelARGB (0, 0, 0, 0) : lut[(size_t) juce::jmin (255, (int) (v * 255.0f))];
+                const float v = src[x], c = cl[x];
+                if (c >= 0.02f && c >= v * 0.5f)
+                {
+                    const auto a = (juce::uint8) juce::jmin (255, (int) (std::pow (c, 0.6f) * 255.0f));
+                    juce::PixelARGB px (a, 255, 70, 90); px.premultiply(); row[x] = px;
+                }
+                else row[x] = v < 0.004f ? juce::PixelARGB (0, 0, 0, 0) : lut[(size_t) juce::jmin (255, (int) (v * 255.0f))];
             }
         }
     }
@@ -674,8 +958,21 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
         // width and balance
         const double bal = m().balanceDb();
         const auto balS = std::abs (bal) < 0.05 ? juce::String ("C") : (bal < 0 ? "L " : "R ") + juce::String (std::abs (bal), 1) + " dB";
-        text (g, "Width " + juce::String (juce::roundToInt (m().width() * 100)) + "%", { (float) plot.getX(), (float) plot.getY(), 120, 14 }, ui::fs (11), kDim, juce::Justification::left);
-        text (g, "Balance " + balS, { (float) plot.getRight() - 140, (float) plot.getY(), 140, 14 }, ui::fs (11), kDim, juce::Justification::right);
+        text (g, "Width " + juce::String (juce::roundToInt (m().width() * 100)) + "%", { (float) plot.getX(), (float) plot.getY(), 200, 14 }, ui::fs (11), kDim, juce::Justification::left);
+        text (g, "Balance " + balS, { (float) plot.getRight() - 220, (float) plot.getY(), 220, 14 }, ui::fs (11), kDim, juce::Justification::right);
+
+        // balance bar (Insight's, under the scope): where the level sits between L and R, +-12 dB
+        {
+            auto b = balanceBar.toFloat().withTrimmedRight ((float) corrBar.getWidth() + 6);
+            g.setColour (kBg); g.fillRoundedRectangle (b, 3);
+            text (g, "L", b.removeFromLeft (12), 9.5f, kFaint); text (g, "R", b.removeFromRight (12), 9.5f, kFaint);
+            const float cx = b.getCentreX();
+            g.setColour (kGrid); g.drawVerticalLine ((int) cx, b.getY(), b.getBottom());
+            const float x = cx + (float) juce::jlimit (-1.0, 1.0, m().balanceDb() / 12.0) * b.getWidth() * 0.5f;
+            g.setColour (kTeal);
+            g.fillRect (juce::Rectangle<float>::leftTopRightBottom (juce::jmin (cx, x), b.getY() + 3, juce::jmax (cx, x) + 1, b.getBottom() - 3));
+            g.fillRect (x - 1.5f, b.getY(), 3.0f, b.getHeight());
+        }
 
         // correlation bar, Insight-style: +1 at the top, -1 at the bottom
         auto cb = corrBar.toFloat();
@@ -696,6 +993,10 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
     {
         const char* names[] = { "Polar sample", "Polar level", "Lissajous" };
         for (int k = 0; k < 3; ++k) menu.addItem (names[k], true, st().monitorField == k, [this, k] { st().monitorField = k; page.changed(); updateButtons(); clearTrail(); });
+        juce::PopupMenu pts;
+        const char* bright[] = { "Subtle", "Normal", "Bright" };
+        for (int k = 0; k < 3; ++k) pts.addItem (bright[k], true, st().monitorPoints == k, [this, k] { st().monitorPoints = k; page.changed(); });
+        menu.addSubMenu ("Point brightness", pts);
     }
 };
 
@@ -731,7 +1032,7 @@ struct MonitorPage::PhaseModule : public MonitorPage::Module
     {
         auto r = body.toFloat();
         const float H = r.getHeight();
-        const float numW = juce::jlimit (70.0f, 120.0f, r.getWidth() * 0.16f);
+        const float numW = juce::jlimit (70.0f, 120.0f, r.getWidth() * 0.16f) * gTextMul;
         const double c = m().correlation();
         const bool live = m().level (0).rms + m().level (1).rms > 1e-5;
 
@@ -756,14 +1057,14 @@ struct MonitorPage::PhaseModule : public MonitorPage::Module
             auto lab = row.removeFromLeft (numW);
             text (g, names[b], lab.removeFromLeft (lab.getWidth() * 0.42f), ui::fs (12), on ? kHeaderText : kFaint, juce::Justification::centredLeft, true);
             text (g, ranges[b], lab, ui::fs (9.5f), kFaint, juce::Justification::centredLeft);
-            auto val = row.removeFromRight (ui::pxf (44));
+            auto val = row.removeFromRight (ui::pxf (44) * gTextMul);
             text (g, on ? num (v, 2) : juce::String ("--"), val, ui::fs (12), on ? corrColour (v) : kFaint, juce::Justification::centredRight);
             meter (g, row.reduced (6, 1), v, -3, -3, on, false);
         }
         r.removeFromTop (ui::pxf (6));
 
         // warning / balance and width line
-        auto info = r.removeFromTop (ui::pxf (18));
+        auto info = r.removeFromTop (ui::pxf (18) * gTextMul);
         juce::String warn;
         if (live && m().bandActive (0) && m().bandCorrelation (0) < 0) warn = "Lows out of phase: the bass will cancel in mono";
         else if (live && c < 0)                                          warn = "Negative correlation: check mono compatibility";
@@ -811,6 +1112,121 @@ struct MonitorPage::PhaseModule : public MonitorPage::Module
 };
 
 //==============================================================================
+// History (Insight's): Momentary, Short-term and Integrated loudness over time, the target as a red dashed
+// line, the Integrated trace red where it's above the target; hover for the values at that moment
+struct MonitorPage::HistoryModule : public MonitorPage::Module
+{
+    using Module::Module;
+    int hoverX = -1;
+    juce::Rectangle<float> plotR;
+
+    double seconds() { const double l[] = { 30, 60, 300, 600 }; return l[juce::jlimit (0, 3, st().monitorHistLen)]; }
+    bool hasTarget() { return st().monitorTarget != kNoTarget; }
+
+    void paintBody (juce::Graphics& g) override
+    {
+        auto r = body.toFloat();
+        const float axisW = 34 * gTextMul;
+        auto axis = r.removeFromLeft (axisW);
+        auto bottom = r.removeFromBottom (14 * gTextMul);
+        plotR = r;
+        g.setColour (kBg.withAlpha (0.5f)); g.fillRoundedRectangle (r, 4);
+        const bool rel = st().monitorRelative && hasTarget();
+        const double tgt = st().monitorTargetLufs;
+        const double hi = rel ? tgt + 9 : 0, lo = rel ? tgt - 27 : -54;
+        auto yOf = [&] (double v) { return r.getBottom() - (float) juce::jlimit (0.0, 1.0, (v - lo) / (hi - lo)) * r.getHeight(); };
+        for (double v = hi; v >= lo - 0.01; v -= (hi - lo) / 6)
+        {
+            g.setColour (kGrid); g.drawHorizontalLine ((int) yOf (v), r.getX(), r.getRight());
+            const double shown = rel ? v - tgt : v;
+            text (g, (rel && shown > 0 ? "+" : "") + juce::String ((int) std::lround (shown)), { axis.getX(), yOf (v) - 7, axisW - 4, 14 }, 10.5f, kDim, juce::Justification::right);
+        }
+        text (g, rel ? "LU" : "LUFS", { axis.getX(), r.getY(), axisW - 4, 12 }, 9.5f, kFaint, juce::Justification::right);
+        const double secs = seconds();
+        for (int k = 0; k <= 6; ++k)
+        {
+            const float x = r.getRight() - r.getWidth() * k / 6.0f;
+            const double ago = secs * k / 6.0;
+            g.setColour (kGrid.withAlpha (0.6f)); g.drawVerticalLine ((int) x, r.getY(), r.getBottom());
+            const auto t = ago >= 60 ? juce::String ((int) ago / 60) + ":" + juce::String ((int) ago % 60).paddedLeft ('0', 2) : juce::String ((int) ago) + " s";
+            text (g, k == 0 ? juce::String ("now") : "-" + t, { x - 30, bottom.getY(), 60, bottom.getHeight() }, 10.0f, kFaint);
+        }
+        if (hasTarget())
+        {
+            const float y = yOf (tgt);
+            g.setColour (kBad.withAlpha (0.8f));
+            for (float x = r.getX(); x < r.getRight(); x += 9) g.drawLine (x, y, juce::jmin (r.getRight(), x + 5), y, 1.2f);
+        }
+        const int entries = juce::jmin (m().historySize(), (int) (secs * 10));
+        const float dx = r.getWidth() / (float) (secs * 10);
+        auto trace = [&] (int which, juce::Colour c, float width)
+        {
+            juce::Path p, over; bool on = false, onOver = false;
+            for (int k = entries - 1; k >= 0; --k)
+            {
+                const auto& e = m().history (k);
+                const float v = which == 0 ? e.momentary : (which == 1 ? e.shortTerm : e.integrated);
+                const float x = r.getRight() - (k + 0.5f) * dx;
+                if (v < -100) { on = onOver = false; continue; }
+                const float y = yOf (v);
+                if (! on) { p.startNewSubPath (x, y); on = true; } else p.lineTo (x, y);
+                if (which == 2 && hasTarget() && v > tgt + st().monitorTolerance)
+                { if (! onOver) { over.startNewSubPath (x, y); onOver = true; } else over.lineTo (x, y); }
+                else onOver = false;
+            }
+            g.setColour (c); g.strokePath (p, juce::PathStrokeType (width));
+            if (which == 2) { g.setColour (kBad); g.strokePath (over, juce::PathStrokeType (width + 0.5f)); }
+        };
+        g.saveState(); g.reduceClipRegion (r.toNearestInt());
+        if (st().monitorHistTraces & 1) trace (0, juce::Colour (0xff8a8f98).withAlpha (0.7f), 1.0f);
+        if (st().monitorHistTraces & 2) trace (1, kHeaderText, 1.6f);
+        if (st().monitorHistTraces & 4) trace (2, kOn, 2.2f);
+        g.restoreState();
+        // legend
+        auto lg = juce::Rectangle<float> (r.getX() + 8, r.getY() + 4, 330 * gTextMul, 14 * gTextMul);
+        auto item = [&] (juce::Colour c, const char* t, bool on)
+        {
+            if (! on) return;
+            g.setColour (c); g.fillRect (lg.removeFromLeft (14).withSizeKeepingCentre (14, 3));
+            text (g, t, lg.removeFromLeft (92 * gTextMul), 11.0f, kDim, juce::Justification::centredLeft);
+        };
+        item (juce::Colour (0xff8a8f98), " Momentary", st().monitorHistTraces & 1);
+        item (kHeaderText, " Short-term", st().monitorHistTraces & 2);
+        item (kOn, " Integrated", st().monitorHistTraces & 4);
+        // hover: the values then
+        if (hoverX >= r.getX() && hoverX < r.getRight())
+        {
+            const int k = (int) ((r.getRight() - hoverX) / dx);
+            if (k >= 0 && k < entries)
+            {
+                const auto& e = m().history (k);
+                g.setColour (juce::Colours::white.withAlpha (0.3f)); g.drawVerticalLine (hoverX, r.getY(), r.getBottom());
+                auto v = [&] (float x) { return x < -100 ? juce::String ("-inf") : (rel ? num (x - tgt, 1) : juce::String (x, 1)); };
+                const auto t = "-" + juce::String (k / 10.0, 1) + " s    M " + v (e.momentary) + "   S " + v (e.shortTerm) + "   I " + v (e.integrated);
+                const float w = 300 * gTextMul;
+                auto box = juce::Rectangle<float> (juce::jlimit (r.getX(), r.getRight() - w, (float) hoverX + 10), r.getY() + 22 * gTextMul, w, 20 * gTextMul);
+                g.setColour (juce::Colour (0xe0101215)); g.fillRoundedRectangle (box, 4);
+                text (g, t, box.reduced (8, 0), 11.5f, kHeaderText, juce::Justification::centredLeft);
+            }
+        }
+    }
+    void mouseMove (const juce::MouseEvent& e) override { hoverX = e.x; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override   { hoverX = -1; repaint(); }
+
+    void addMenuItems (juce::PopupMenu& menu) override
+    {
+        const char* traces[] = { "Momentary trace", "Short-term trace", "Integrated trace" };
+        for (int i = 0; i < 3; ++i)
+            menu.addItem (traces[i], true, (st().monitorHistTraces >> i) & 1, [this, i] { st().monitorHistTraces ^= 1 << i; page.changed(); });
+        juce::PopupMenu len;
+        const char* names[] = { "30 seconds", "1 minute", "5 minutes", "10 minutes" };
+        for (int i = 0; i < 4; ++i) len.addItem (names[i], true, st().monitorHistLen == i, [this, i] { st().monitorHistLen = i; page.changed(); });
+        menu.addSubMenu ("Length", len);
+        menu.addItem ("Relative to the target (LU)", st().monitorTarget != kNoTarget, st().monitorRelative, [this] { st().monitorRelative = ! st().monitorRelative; page.changed(); });
+    }
+};
+
+//==============================================================================
 MonitorPage::MonitorPage (FifoTap& t, Settings& st, std::function<void()> settingsChanged, std::function<void()> resetLoudness,
                           monitor::MonitorModel* sharedModel)
     : tap (t), s (st), onChanged (std::move (settingsChanged)), onResetLoudness (std::move (resetLoudness)),
@@ -824,6 +1240,14 @@ MonitorPage::MonitorPage (FifoTap& t, Settings& st, std::function<void()> settin
     modules[Levels]     = std::make_unique<LevelsModule> (*this, Levels);
     modules[SoundField] = std::make_unique<FieldModule> (*this, SoundField);
     modules[Phase]      = std::make_unique<PhaseModule> (*this, Phase);
+    modules[History]    = std::make_unique<HistoryModule> (*this, History);
+    if (s.monitorTarget >= 0 && s.monitorTarget < kNumTargets)        // keep the values in step with the preset
+    {
+        const auto& t = kTargets[s.monitorTarget];
+        s.monitorTargetLufs = t.lufs; s.monitorTolerance = t.tol; s.monitorPeakTarget = t.tp; s.monitorGate = t.programGate ? 1 : 0;
+    }
+    applyGate();
+    applyLevelOptions();
     for (auto& m : modules) addChildComponent (*m);
 
     for (int i = 0; i < NumModules; ++i)
@@ -838,7 +1262,11 @@ MonitorPage::MonitorPage (FifoTap& t, Settings& st, std::function<void()> settin
         c.onClick = [this, i] { setShown (i, ! (s.monitorShown & (1 << i))); };
         addAndMakeVisible (c);
     }
-    for (auto* b : { &layoutBtn, &resetBtn })
+    pauseBtn.setClickingTogglesState (true);
+    pauseBtn.setColour (juce::TextButton::buttonOnColourId, kWarn.darker (0.2f));
+    pauseBtn.setTooltip ("Pause: freeze every module (the measurements keep their values; audio that comes in meanwhile is skipped)");
+    pauseBtn.onClick = [this] { paused = pauseBtn.getToggleState(); };
+    for (auto* b : { &layoutBtn, &resetBtn, &pauseBtn })
     {
         b->setColour (juce::TextButton::buttonColourId, kButton);
         addAndMakeVisible (b);
@@ -860,7 +1288,13 @@ void MonitorPage::setActive (bool shown)
 
 void MonitorPage::pump()
 {
-    if (held) { tap.drain ([] (const float*, const float*, int) {}); return; }
+    if (hostPlaying)                                  // VST3: Reset when playback starts
+    {
+        const bool p = hostPlaying();
+        if (p && ! lastPlaying && s.monitorResetOnPlay) resetMeasurements();
+        lastPlaying = p;
+    }
+    if (held || paused) { tap.drain ([] (const float*, const float*, int) {}); return; }
     const double sr = tap.sampleRate();
     if (std::abs (sr - engine.sampleRate()) > 0.5) engine.configure (sr);
     tap.drain ([this] (const float* l, const float* r, int n) { engine.push (l, r, n); });
@@ -873,7 +1307,7 @@ void MonitorPage::onFrame (double t)
     lastFrame = t;
     if (! active || ! isShowing()) return;
     for (auto& m : modules)
-        if (m->isVisible()) { if (! held) m->advance (dt); m->repaint(); }
+        if (m->isVisible()) { if (! held && ! paused) m->advance (dt); m->repaint(); }
 }
 
 void MonitorPage::resetMeasurements()
@@ -895,7 +1329,7 @@ void MonitorPage::paint (juce::Graphics& g)
 {
     g.fillAll (kBg);
     text (g, "Monitor", titleArea.toFloat(), ui::fs (20), kHeaderText, juce::Justification::centredLeft, true);
-    if ((s.monitorShown & 31) == 0)
+    if ((s.monitorShown & 63) == 0)
         text (g, "All modules are hidden. Turn them on with the buttons above.", getLocalBounds().withTrimmedTop (toolbar.getBottom()).toFloat(), ui::fs (14), kDim);
 }
 
@@ -906,6 +1340,8 @@ void MonitorPage::resized()
     auto tb = toolbar;
     titleArea = tb.removeFromLeft (ui::px (110));
     resetBtn.setBounds (tb.removeFromRight (ui::px (64)));
+    tb.removeFromRight (ui::px (6));
+    pauseBtn.setBounds (tb.removeFromRight (ui::px (64)));
     tb.removeFromRight (ui::px (6));
     layoutBtn.setBounds (tb.removeFromRight (ui::px (72)));
     const int cw = juce::jmin (ui::px (104), (tb.getWidth() - ui::px (12)) / NumModules);
@@ -935,6 +1371,53 @@ void MonitorPage::setOrder (const std::vector<int>& o)
 {
     juce::StringArray a; for (int v : o) a.add (juce::String (v));
     s.monitorOrder = a.joinIntoString (",");
+}
+
+void MonitorPage::applyTargetPreset (int i)
+{
+    s.monitorTarget = i;
+    if (i >= 0 && i < kNumTargets)
+    {
+        const auto& t = kTargets[i];
+        s.monitorTargetLufs = t.lufs; s.monitorTolerance = t.tol; s.monitorPeakTarget = t.tp; s.monitorGate = t.programGate ? 1 : 0;
+        s.monitorLraLo = 0; s.monitorLraHi = i == kNumTargets - 1 ? 7 : 30;      // Netflix: LRA 7 LU or less
+    }
+    applyGate();
+    repaint();
+    for (auto& m : modules) m->repaint();
+    changed();
+}
+
+void MonitorPage::applyGate() { engine.setProgramGate (s.monitorGate == 1); }
+
+void MonitorPage::applyLevelOptions()
+{
+    const double holds[] = { 0.25, 0.5, 1.5, 5.0, -1.0 }, rms[] = { 0.05, 0.3, 1.0, 3.0 };
+    engine.setHoldTime (holds[juce::jlimit (0, 4, s.monitorHoldTime)]);
+    engine.setRmsTime (rms[juce::jlimit (0, 3, s.monitorRmsTime)]);
+}
+
+void MonitorPage::showTargetsPanel (juce::Rectangle<int> anchor, juce::Component* from)
+{
+    auto panel = std::make_unique<TargetsPanel> (s, [this] { applyGate(); for (auto& m : modules) m->repaint(); changed(); });
+    juce::CallOutBox::launchAsynchronously (std::move (panel), from != nullptr ? from->localAreaToGlobal (anchor) : getScreenBounds(), nullptr);
+}
+
+float MonitorPage::textScaleFor (int id) const
+{
+    auto t = juce::StringArray::fromTokens (s.monitorText, ",", {});
+    return id < t.size() ? juce::jlimit (0.5f, 3.0f, t[id].getFloatValue() > 0 ? t[id].getFloatValue() : 1.0f) : 1.0f;
+}
+
+void MonitorPage::setTextScale (int id, float k)
+{
+    auto t = juce::StringArray::fromTokens (s.monitorText, ",", {});
+    while (t.size() < NumModules) t.add ("1");
+    t.set (id, juce::String (k, 2));
+    s.monitorText = t.joinIntoString (",");
+    modules[(size_t) id]->resized();
+    modules[(size_t) id]->repaint();
+    changed();
 }
 
 bool MonitorPage::isWide (int id) const { return (s.monitorWide >> id) & 1; }
@@ -1048,10 +1531,10 @@ void MonitorPage::showLayoutMenu()
     const char* names[] = { "Automatic", "1", "2", "3" };
     for (int i = 0; i < 4; ++i) cols.addItem (names[i], true, s.monitorCols == i, [this, i] { s.monitorCols = i; layoutModules(); changed(); });
     menu.addSubMenu ("Columns", cols);
-    menu.addItem ("Show all modules", (s.monitorShown & 31) != 31, false, [this] { s.monitorShown = 31; s.monitorMax = -1; updateChips(); layoutModules(); repaint(); changed(); });
+    menu.addItem ("Show all modules", (s.monitorShown & 63) != 63, false, [this] { s.monitorShown = 63; s.monitorMax = -1; updateChips(); layoutModules(); repaint(); changed(); });
     menu.addItem ("Reset layout", [this]
     {
-        s.monitorOrder = "0,1,2,3,4"; s.monitorShown = 31; s.monitorWide = 3; s.monitorMax = -1; s.monitorCols = 0;
+        s.monitorOrder = "0,1,2,3,4,5"; s.monitorShown = 63; s.monitorWide = 35; s.monitorMax = -1; s.monitorCols = 0;
         updateChips(); layoutModules(); repaint(); changed();
     });
     menu.addSeparator();

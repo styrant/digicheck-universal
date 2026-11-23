@@ -80,6 +80,18 @@ struct Settings
     double specScOpacity = 0.75;
     int    editorW = 1300, editorH = 760;
     // Monitor (modular metering page)
+    juce::String monitorText = "1,1,1,1,1,1";    // text size per module (x the Monitor's default)
+    // loudness targets (Insight-style): preset index (see MonitorPage.cpp kTargets), or Custom / none
+    double monitorTargetLufs = -14, monitorTolerance = 1, monitorPeakTarget = -1, monitorLraLo = 0, monitorLraHi = 30;
+    int    monitorGate   = 1;     // 0 off (BS.1770-1), 1 program (BS.1770-2/3/4)
+    int    monitorLoudRange = 1;  // loudness bars: 0 dB linear, 1 dB non-linear, 2 BS.1771, 3 EBU +9, 4 EBU +18
+    bool   monitorRelative = false;   // loudness bars and History in LU relative to the target
+    bool   monitorResetOnPlay = false; // VST3: restart the loudness when playback starts
+    int    monitorHoldTime = 2;   // levels peak hold: 0 0.25 s, 1 0.5 s, 2 1.5 s, 3 5 s, 4 until reset
+    int    monitorRmsTime = 1;    // levels RMS integration: 0 50 ms, 1 300 ms, 2 1 s, 3 3 s
+    int    monitorHistTraces = 7; // History: bit 0 momentary, 1 short-term, 2 integrated
+    int    monitorHistLen = 1;    // History: 0 30 s, 1 1 min, 2 5 min, 3 10 min
+    int    monitorPoints = 1;     // Sound Field point brightness: 0 subtle, 1 normal, 2 bright
     juce::String monitorOrder = "0,1,2,3,4";   // module order: loudness, dynamics, levels, sound field, phase
     int    monitorShown  = 31;    // bit per module
     int    monitorWide   = 3;     // bit per module: spans the whole row (loudness, dynamics)
@@ -209,12 +221,27 @@ struct Settings
         fftColour     = p.getValue ("fftColour", fftColour);
         fftSecColour  = p.getValue ("fftSecColour", fftSecColour);
         fftSecStyle   = juce::jlimit (0, 2, p.getIntValue ("fftSecStyle", fftSecStyle));
+        monitorText   = p.getValue ("monitorText", monitorText);
+        monitorTargetLufs = juce::jlimit (-40.0, -5.0, p.getDoubleValue ("monitorTargetLufs", monitorTargetLufs));
+        monitorTolerance  = juce::jlimit (0.0, 5.0, p.getDoubleValue ("monitorTolerance", monitorTolerance));
+        monitorPeakTarget = juce::jlimit (-12.0, 0.0, p.getDoubleValue ("monitorPeakTarget", monitorPeakTarget));
+        monitorLraLo  = juce::jlimit (0.0, 30.0, p.getDoubleValue ("monitorLraLo", monitorLraLo));
+        monitorLraHi  = juce::jlimit (monitorLraLo, 30.0, p.getDoubleValue ("monitorLraHi", monitorLraHi));
+        monitorGate   = juce::jlimit (0, 1, p.getIntValue ("monitorGate", monitorGate));
+        monitorLoudRange = juce::jlimit (0, 4, p.getIntValue ("monitorLoudRange", monitorLoudRange));
+        monitorRelative = p.getBoolValue ("monitorRelative", monitorRelative);
+        monitorResetOnPlay = p.getBoolValue ("monitorResetOnPlay", monitorResetOnPlay);
+        monitorHoldTime = juce::jlimit (0, 4, p.getIntValue ("monitorHoldTime", monitorHoldTime));
+        monitorRmsTime = juce::jlimit (0, 3, p.getIntValue ("monitorRmsTime", monitorRmsTime));
+        monitorHistTraces = p.getIntValue ("monitorHistTraces", monitorHistTraces) & 7;
+        monitorHistLen = juce::jlimit (0, 3, p.getIntValue ("monitorHistLen", monitorHistLen));
+        monitorPoints = juce::jlimit (0, 2, p.getIntValue ("monitorPoints", monitorPoints));
         monitorOrder  = p.getValue ("monitorOrder", monitorOrder);
-        monitorShown  = p.getIntValue ("monitorShown", monitorShown) & 31;
-        monitorWide   = p.getIntValue ("monitorWide", monitorWide) & 31;
-        monitorMax    = juce::jlimit (-1, 4, p.getIntValue ("monitorMax", monitorMax));
+        monitorShown  = p.getIntValue ("monitorShown", monitorShown) & 63;
+        monitorWide   = p.getIntValue ("monitorWide", monitorWide) & 63;
+        monitorMax    = juce::jlimit (-1, 5, p.getIntValue ("monitorMax", monitorMax));
         monitorCols   = juce::jlimit (0, 3, p.getIntValue ("monitorCols", monitorCols));
-        monitorTarget = juce::jlimit (0, 6, p.getIntValue ("monitorTarget", monitorTarget));
+        monitorTarget = juce::jlimit (0, 16, p.getIntValue ("monitorTarget", monitorTarget));
         monitorMomMax = p.getBoolValue ("monitorMomMax", monitorMomMax);
         monitorMS     = p.getBoolValue ("monitorMS", monitorMS);
         monitorRange  = juce::jlimit (0, 2, p.getIntValue ("monitorRange", monitorRange));
@@ -222,6 +249,11 @@ struct Settings
         monitorField  = juce::jlimit (0, 2, p.getIntValue ("monitorField", monitorField));
         monitorHistory = juce::jlimit (0, 2, p.getIntValue ("monitorHistory", monitorHistory));
         monitorDynLoud = p.getBoolValue ("monitorDynLoud", monitorDynLoud);
+        if (p.getIntValue ("settingsVersion", 1) < 3)        // v3: the History module (shown, full width), more targets
+        {
+            monitorShown |= 32; monitorWide |= 32;
+            if (monitorTarget == 6) monitorTarget = 16;      // "No target" moved to the end of the list
+        }
         bpm        = p.getDoubleValue ("bpm", bpm);
         tempoTriplets = p.getBoolValue ("tempoTriplets", tempoTriplets);
         tempoDotted   = p.getBoolValue ("tempoDotted", tempoDotted);
@@ -244,7 +276,7 @@ struct Settings
         p.setValue ("noteRef", noteRef);       p.setValue ("source", source);
         p.setValue ("showLufs", showLufs);     p.setValue ("gpu", gpu);
         p.setValue ("fpsCap", fpsCap);
-        p.setValue ("settingsVersion", 2);
+        p.setValue ("settingsVersion", 3);
         p.setValue ("textSize", textSize);     p.setValue ("textScaleCustom", textScaleCustom);     p.setValue ("autoHideBar", autoHideBar);
         p.setValue ("chL", chL);               p.setValue ("chR", chR);
         p.setValue ("windowState", windowState);
@@ -268,6 +300,12 @@ struct Settings
         p.setValue ("fftSecondary", fftSecondary); p.setValue ("fftSlope", fftSlope); p.setValue ("fftAvgMs", fftAvgMs);
         p.setValue ("fftSmooth", fftSmooth); p.setValue ("fftHold", fftHold); p.setValue ("fftTop", fftTop); p.setValue ("fftBottom", fftBottom);
         p.setValue ("fftColour", fftColour); p.setValue ("fftSecColour", fftSecColour); p.setValue ("fftSecStyle", fftSecStyle);
+        p.setValue ("monitorText", monitorText);
+        p.setValue ("monitorTargetLufs", monitorTargetLufs); p.setValue ("monitorTolerance", monitorTolerance); p.setValue ("monitorPeakTarget", monitorPeakTarget);
+        p.setValue ("monitorLraLo", monitorLraLo); p.setValue ("monitorLraHi", monitorLraHi); p.setValue ("monitorGate", monitorGate);
+        p.setValue ("monitorLoudRange", monitorLoudRange); p.setValue ("monitorRelative", monitorRelative); p.setValue ("monitorResetOnPlay", monitorResetOnPlay);
+        p.setValue ("monitorHoldTime", monitorHoldTime); p.setValue ("monitorRmsTime", monitorRmsTime);
+        p.setValue ("monitorHistTraces", monitorHistTraces); p.setValue ("monitorHistLen", monitorHistLen); p.setValue ("monitorPoints", monitorPoints);
         p.setValue ("monitorOrder", monitorOrder); p.setValue ("monitorShown", monitorShown); p.setValue ("monitorWide", monitorWide);
         p.setValue ("monitorMax", monitorMax); p.setValue ("monitorCols", monitorCols); p.setValue ("monitorTarget", monitorTarget);
         p.setValue ("monitorMomMax", monitorMomMax); p.setValue ("monitorMS", monitorMS); p.setValue ("monitorRange", monitorRange);

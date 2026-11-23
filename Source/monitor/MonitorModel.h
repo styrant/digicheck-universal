@@ -48,6 +48,11 @@ public:
     double sampleRate() const noexcept { return sr; }
 
     const LoudnessMeter& loudness() const noexcept { return loud; }
+    void setProgramGate (bool on) noexcept { loud.setProgramGate (on); }
+    // levels: peak hold time (seconds, < 0 = until reset) and RMS integration time
+    void setHoldTime (double s) noexcept   { holdTime = s; }
+    void setRmsTime (double s) noexcept    { rmsTime = s; rmsK = 1.0 - std::exp (-1.0 / (sr * s)); }
+    void resetPeakHold() noexcept          { for (auto& l : lv) l.hold = 0; }
 
     // levels (linear amplitude): peak meter (instant attack, held 1.5 s, then falling 20 dB/s), RMS (300 ms)
     struct Level { double peak = 0, hold = 0, rms = 0, maxPeak = 0, maxRms = 0; int clips = 0; };
@@ -73,7 +78,7 @@ public:
     double polarLevel (int bin) const noexcept { return std::sqrt (polar[(size_t) bin]); }
 
     // history: one entry every 100 ms
-    struct Entry { float shortTerm, momentary, psr, correlation, truePeak; };
+    struct Entry { float shortTerm, momentary, psr, correlation, truePeak, integrated; };
     static constexpr int kHistory = 6000;                            // 10 minutes
     int historySize() const noexcept { return (int) std::min<long long> (histCount, kHistory); }
     const Entry& history (int ago) const noexcept { return hist[(size_t) ((histCount - 1 - ago) % kHistory)]; } // 0 = newest
@@ -91,7 +96,7 @@ private:
     LoudnessMeter loud;
     std::array<Level, 4> lv {};
     std::array<double, 4> rmsSq {}, holdLeft {};
-    double peakFall = 0.999, rmsK = 0.001;
+    double peakFall = 0.999, rmsK = 0.001, holdTime = 1.5, rmsTime = 0.3;
 
     Correlator corrFast, corrSlow;
     std::array<Correlator, 3> bands;

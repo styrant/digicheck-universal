@@ -1,5 +1,6 @@
 #include "MonitorModel.h"
 #include <algorithm>
+#include <cstdint>
 
 namespace monitor
 {
@@ -25,7 +26,7 @@ void MonitorModel::configure (double sampleRate)
     loud.configure (sr, 2);
     peakFall = std::pow (10.0, -20.0 / 20.0 / sr);             // 20 dB/s
     polarK = 1.0 / (sr * 0.3);                                 // energy per direction, 300 ms
-    rmsK = 1.0 - std::exp (-1.0 / (sr * 0.3));
+    rmsK = 1.0 - std::exp (-1.0 / (sr * rmsTime));
     corrFast.setTime (sr, 0.3);
     corrSlow.setTime (sr, 3.0);
     for (auto& b : bands) b.setTime (sr, 0.4);
@@ -49,7 +50,7 @@ void MonitorModel::reset()
     loud.reset();
     for (auto& l : lv) { l.maxPeak = l.maxRms = 0; l.clips = 0; }
     corrMin = 1.0; corrSeen = 0;
-    hist.assign ((size_t) kHistory, Entry { -200, -200, -1, 0, -200 });
+    hist.assign ((size_t) kHistory, Entry { -200, -200, -1, 0, -200, -200 });
     histCount = 0; lastBlocks = 0;
     psrLow = psrHigh = kNone;
 }
@@ -69,7 +70,7 @@ void MonitorModel::push (const float* l, const float* r, int n)
 void MonitorModel::block (const float* l, const float* r, int n)
 {
     loud.process (l, r, n);
-    const int holdSamples = (int) (sr * 1.5);
+    const int holdSamples = holdTime < 0 ? INT32_MAX : (int) (sr * holdTime);
 
     for (int i = 0; i < n; ++i)
     {
@@ -130,7 +131,7 @@ void MonitorModel::step100ms()
     auto f = [] (double v) { return (float) (v > -200 ? v : -200); };
     const double psr = loud.getPSR();
     Entry e { f (loud.getShortTerm()), f (loud.getMomentary()), psr > kNone ? (float) psr : -1.0f,
-              (float) corrFast.value(), f (loud.getRecentTruePeak()) };
+              (float) corrFast.value(), f (loud.getRecentTruePeak()), f (loud.getIntegrated()) };
     hist[(size_t) (histCount % kHistory)] = e;
     ++histCount;
     // extremes of PSR only while the music is near its loudest (ignores fades, breaks and silence)

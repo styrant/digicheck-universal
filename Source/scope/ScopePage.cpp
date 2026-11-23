@@ -1,5 +1,6 @@
 #include "ScopePage.h"
 #include "../UiScale.h"
+#include "../FrameClock.h"
 #include "../ColourPicker.h"
 #include "../Core.h"
 
@@ -837,17 +838,27 @@ void ScopePage::onFrame (double t)
         engine.push (l, r, sl, sr, ph, n);
     });
 
-    // the scroll clock: steady steps of (frame time x rate), gently pulled towards the newest audio
+    // the scroll clock: steady steps of (frame time x rate), the frame time snapped to whole refresh
+    // intervals (vblank timestamps jitter). The audio arrives in chunks (~40 ms from the DSP thread), so
+    // the distance to the newest sample saw-tooths; only its smoothed value pulls the clock, very gently,
+    // so the speed never visibly changes.
     const double sr = engine.sampleRate(), target = (double) engine.totalWritten() - kScrollLatency * sr;
-    const double dt = lastFrameT > 0 ? juce::jlimit (0.0, 0.1, t - lastFrameT) : 0.0;
+    double dt = lastFrameT > 0 ? juce::jlimit (0.0, 0.1, t - lastFrameT) : 0.0;
     lastFrameT = t;
+    if (const double R = frameclock::clock().refresh; R > 0.002 && dt > 0) dt = juce::jmax (1.0, std::round (dt / R)) * R;
     if (! engine.isFrozen())
     {
         scrollNow += dt * sr;
         const double err = target - scrollNow;
-        if (std::abs (err) > 0.25 * sr) scrollNow = target;          // started, stalled or reset: jump
-        else scrollNow += err * 0.06;                                 // tiny corrections: no visible speed change
+        if (std::abs (err) > 0.25 * sr) { scrollNow = target; scrollErr = 0; }   // started, stalled or reset: jump
+        else
+        {
+            scrollErr += 0.03 * (err - scrollErr);
+            scrollNow += scrollErr * 0.015;
+        }
         scrollNow = juce::jmin (scrollNow, (double) engine.totalWritten());
+        static const bool paceLog = std::getenv ("SPECTROSCOPE_SCOPE_PACE") != nullptr;
+        if (paceLog) std::fprintf (stderr, "SCOPEPACE %.5f %.1f %.1f\n", t, scrollNow, target - scrollNow);
     }
     if (engine.recState() != before || engine.recState() == scope::ScopeModel::Rec::Recording) updateButtons();
     display->repaint();

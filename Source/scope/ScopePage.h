@@ -71,8 +71,8 @@ private:
     double lastBpm = 0;
     // Scroll: the display's clock in absolute samples. It advances smoothly with the frames and follows the
     // audio (which arrives in buffer-sized steps) a few ms behind, so the trace moves at an even speed.
-    double scrollNow = 0, lastFrameT = 0;
-    static constexpr double kScrollLatency = 0.04;   // seconds behind the newest sample
+    double scrollNow = 0, lastFrameT = 0, scrollErr = 0;
+    static constexpr double kScrollLatency = 0.08;   // seconds behind the newest sample (more than one audio chunk)
 
     std::unique_ptr<Lnf> lnf;
     std::unique_ptr<Display> display;

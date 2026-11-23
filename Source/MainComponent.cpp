@@ -564,6 +564,7 @@ void MainComponent::setUpPlugin()
     view.setSidechainEngine (host->sidechainEngine());
     scopePage.setHost (host);
     analyzerPanel.getFftView().setSidechainAvailable (true);
+    monitorPage.hostPlaying = [this] { return host->hostPlaying(); };
     if (host->hostBpm() > 0) { settings.bpm = host->hostBpm(); lastHostBpm = settings.bpm; scopePage.applySettings(); }
 
     bottom.onListen = [this] (juce::Component& anchor)
