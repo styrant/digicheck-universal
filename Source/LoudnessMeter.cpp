@@ -61,7 +61,12 @@ void LoudnessMeter::reset()
     subFill = 0; subCount = 0;
     subBlocks.assign (30, 0.0);
     gatedBlocks.clear();
-    shortTerm = integrated = kNone;
+    shortTerm = integrated = momentary = momentaryMax = shortTermMax = kNone;
+    lra = 0;
+    stHist.assign ((size_t) kHistBins, 0);
+    stEnergySum = 0; stCount = 0;
+    tpBlocks.assign (30, 0.0);
+    tpSub = 0; tpCh[0] = tpCh[1] = 0;
     for (auto& h : hist) std::fill (h.begin(), h.end(), 0.0f);
     histPos = 0;
     truePeakMax = 0;
@@ -92,7 +97,9 @@ void LoudnessMeter::process (const float* L, const float* R, int n)
         {
             const double y = rlb[c].run (pre[c].run (in[c]));
             subSum[c] += y * y;
-            truePeakMax = std::max (truePeakMax, truePeakOf (c, in[c]));
+            const double tp = truePeakOf (c, in[c]);
+            tpSub = std::max (tpSub, tp);
+            tpCh[c] = std::max (tpCh[c], tp);
         }
         histPos = (histPos + 1) % (taps + 1);
         if (++subFill >= subLen) endSubBlock();
@@ -105,6 +112,9 @@ void LoudnessMeter::endSubBlock()
     for (int c = 0; c < nch; ++c) { e += subSum[c] / subFill; subSum[c] = 0; }     // channel weights 1.0 (L, R)
     subFill = 0;
     subBlocks[(size_t) (subCount % 30)] = e;
+    tpBlocks[(size_t) (subCount % 30)] = tpSub;
+    truePeakMax = std::max (truePeakMax, tpSub);
+    tpSub = 0;
     ++subCount;
 
     auto lufs = [] (double z) { return z > 0 ? -0.691 + 10.0 * std::log10 (z) : kNone; };
@@ -114,6 +124,8 @@ void LoudnessMeter::endSubBlock()
         double z = 0;
         for (int k = 0; k < 4; ++k) z += subBlocks[(size_t) ((subCount - 1 - k) % 30)];
         z /= 4;
+        momentary = lufs (z);
+        momentaryMax = std::max (momentaryMax, momentary);
         if (lufs (z) > -70.0) { gatedBlocks.push_back (z); updateIntegrated(); }
     }
     if (subCount >= 30)
@@ -121,6 +133,14 @@ void LoudnessMeter::endSubBlock()
         double z = 0;
         for (double v : subBlocks) z += v;
         shortTerm = lufs (z / 30);
+        shortTermMax = std::max (shortTermMax, shortTerm);
+        if (shortTerm > kHistLo)                 // loudness range input: one short-term value every 100 ms
+        {
+            const int b = std::clamp ((int) ((shortTerm - kHistLo) / kHistStep), 0, kHistBins - 1);
+            ++stHist[(size_t) b];
+            stEnergySum += z / 30; ++stCount;
+            if (subCount % 10 == 0) updateRange();     // once a second is plenty
+        }
     }
 }
 
@@ -133,4 +153,35 @@ void LoudnessMeter::updateIntegrated()
     double s2 = 0; size_t n2 = 0;
     for (double z : gatedBlocks) if (z > zGate) { s2 += z; ++n2; }
     integrated = n2 > 0 ? -0.691 + 10.0 * std::log10 (s2 / (double) n2) : kNone;
+}
+
+double LoudnessMeter::getRecentTruePeak() const noexcept
+{
+    double m = tpSub;
+    for (double v : tpBlocks) m = std::max (m, v);
+    return m > 0 ? 20.0 * std::log10 (m) : kNone;
+}
+
+// EBU Tech 3342: short-term values above -70 LUFS, then above (their power mean - 20 LU); LRA is the
+// spread between the 10th and the 95th percentile of what's left.
+void LoudnessMeter::updateRange()
+{
+    if (stCount < 2) { lra = 0; return; }
+    const double rel = -0.691 + 10.0 * std::log10 (stEnergySum / (double) stCount) - 20.0;
+    const int first = std::clamp ((int) std::ceil ((rel - kHistLo) / kHistStep), 0, kHistBins);
+    long long n = 0;
+    for (int b = first; b < kHistBins; ++b) n += stHist[(size_t) b];
+    if (n < 2) { lra = 0; return; }
+    auto percentile = [&] (double p)
+    {
+        const long long want = (long long) std::floor (p * (double) (n - 1));
+        long long acc = 0;
+        for (int b = first; b < kHistBins; ++b)
+        {
+            acc += stHist[(size_t) b];
+            if (acc > want) return kHistLo + (b + 0.5) * kHistStep;
+        }
+        return kHistLo + kHistBins * kHistStep;
+    };
+    lra = std::max (0.0, percentile (0.95) - percentile (0.10));
 }

@@ -75,6 +75,12 @@ and editor.
     - `ScopeTap` becomes per instance (one FIFO each; it already has no globals). `ScopeModel` takes the
       host's sample rate in `prepareToPlay`.
 
+11. **Monitor page.** `MonitorPage` takes a `FifoTap` and a `Settings`, like the Scope, so it can be an
+    editor's content. Per instance: the tap and the model (each track gets its own loudness, PSR / PLR and
+    phase). The layout (order, shown, wide, columns) is a global preference. In the plugin, Reset should
+    also follow the host: restart the integrated loudness when playback starts from the beginning (as
+    Insight does), using the same `AudioPlayHead` information as the Scope's Sync.
+
 ## Licences relevant to a plugin
 
 - VST3 SDK: MIT licensed since 2025 (bundled with JUCE).

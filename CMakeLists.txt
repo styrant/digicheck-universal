@@ -93,7 +93,9 @@ set(DCU_SHARED_SOURCES
     Source/transcribe/NoteFilter.cpp
     Source/scope/ScopeModel.cpp
     Source/scope/ScopeTheme.cpp
-    Source/scope/ScopePage.cpp)
+    Source/scope/ScopePage.cpp
+    Source/monitor/MonitorModel.cpp
+    Source/monitor/MonitorPage.cpp)
 
 target_sources(Spectroscope PRIVATE
     Source/Main.cpp
@@ -148,6 +150,7 @@ add_executable(analyzer_dsp_test tests/analyzer_dsp_test.cpp)   # Spectrum Analy
 add_executable(key_test tests/key_test.cpp Source/key/KeyNet.cpp Source/key/KeyCqt.cpp)   # key finder vs PyTorch / librosa
 add_executable(balance_test tests/balance_test.cpp Source/balance/TonalAnalysis.cpp)       # tonal balance measurement
 add_executable(harmony_test tests/harmony_test.cpp Source/transcribe/Harmony.cpp Source/transcribe/Resample.cpp Source/transcribe/NoteFilter.cpp)   # chords, melody, key, resampling
+add_executable(monitor_test tests/monitor_test.cpp Source/monitor/MonitorModel.cpp Source/LoudnessMeter.cpp)   # the Monitor page's meters
 add_executable(scope_test tests/scope_test.cpp Source/scope/ScopeModel.cpp)                  # the oscilloscope engine
 add_executable(transcribe_test tests/transcribe_test.cpp Source/transcribe/Harmony.cpp Source/transcribe/Resample.cpp)  # the engine end to end
 target_link_libraries(transcribe_test PRIVATE dcu_transcribe)

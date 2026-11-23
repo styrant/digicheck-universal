@@ -37,7 +37,7 @@ Set-up in Azure: create an Artifact Signing account (Basic plan), complete ident
 Settings → Channel Select. (The Analyzer has its own channel box with the same choices plus Stereo.)
 
 ## Views
-Switch with the **Spectrogram | Analyzer | Balance | Key | Scope** buttons at the bottom left (keys **1-5**, **V** cycles, **K** goes to Key). The bottom bar stays the same in every view: Options, the LUFS readout, Tempo, Reset and Full screen are always there. The controls in the middle change with the view.
+Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor** buttons at the bottom left (keys **1-6**, **V** cycles, **K** goes to Key). The bottom bar stays the same in every view: Options, the LUFS readout, Tempo, Reset and Full screen are always there. The controls in the middle change with the view.
 
 - **Spectrogram:** the reassigned spectrogram described below. Bottom bar: Presets, Pause, **frequency scale**,
   **channel** (Left / Right / Mid / Side), Ref level -/+ and Settings (on narrow windows Settings, then the Ref
@@ -67,6 +67,13 @@ Switch with the **Spectrogram | Analyzer | Balance | Key | Scope** buttons at th
   - **Rec** arms the recorder: it starts with the next audio and records one window. Drag the wave icon into your DAW or Explorer to take it as a 24-bit WAV (right-click: Normalize, Trim silence, Snap to grid, Save as…). Recordings go to Documents\DigiCheck Universal\Scope Recordings.
   - Menu: source (Stereo, Left, Right, Mid, Side, Peak), guide lines, and colour **themes** (Dark, Neon, DigiCheck). Scyllascope-style JSON themes in Documents\DigiCheck Universal\Scope Themes are loaded too.
   - Reserved for the VST3 version: Sync to the host transport, Sync to Start, sidechain from another track or instance, track name/colour, listening to the BP band, and REAPER's embedded mode. They are shown greyed out.
+
+- **Monitor:** a modular metering page in the spirit of iZotope Insight 2. The chips at the top show and hide modules; each module's gear has its options, the corner button maximises it (or double-click its title), and dragging a title onto another module swaps them. **Full width** (gear menu) makes a module span the row; **Layout** sets 1-3 columns or resets the layout. Everything keeps measuring while the page is hidden, and **Reset** (here or in the bottom bar) restarts both.
+  - **Loudness:** short-term, integrated and momentary (click "Momentary" for its maximum), LRA (EBU Tech 3342) and true peak, coloured against a target: Streaming -14, Apple Music -16, Podcast -16, EBU R128 -23, ATSC A/85 -24, Loud master -9 LUFS, or none. Green within 1 LU, yellow up to 3 LU over, red beyond; true peak turns red above the target's ceiling.
+  - **Dynamics:** **PSR** (true peak of the last 3 s minus short-term loudness: how squashed it is right now) and **PLR** (true peak since reset minus integrated loudness: the whole take), on a zoned scale (under 6 dB crushed, 6-8 dense, 8-12 punchy, 12-16 dynamic, over 16 open). The white tick is PLR; the line under the scale is the PSR range while the music is near its loudest. Below, the PSR history (30 s, 1 or 5 min) with the short-term loudness drawn over it, so you can see which sections the limiter squashes.
+  - **Levels:** peak (dark) and RMS (light) bars for L and R (optionally Mid and Side), peak hold, red above -1 dBFS, clip marker, maximum peak and RMS above (click to reset). Scale -40, -60 or -90 dB; RMS optionally +3 dB (AES17).
+  - **Sound Field:** Polar Sample (every sample as a point, folded into the half disc, scaled to the recent peak), Polar Level (the energy going in each direction) or Lissajous (auto gain), with Insight's vertical correlation bar, width (0 % mono, 100 % unrelated L/R, 200 % inverted) and balance.
+  - **Phase:** correlation (fast bar, white 3 s average, red tick for the lowest since reset), the same for the lows (< 250 Hz), mids and highs (> 2.5 kHz, Linkwitz-Riley splits), balance, width and a correlation history. Warns when the lows are out of phase (bass cancels in mono).
 
 ## Rendering
 - The display is synced to the monitor's refresh rate (60/120/144 Hz…). New spectrogram columns pass through a ~30 ms buffer and are released at exactly the display speed, so the scroll is even on every frame.
@@ -160,7 +167,7 @@ Switch with the **Spectrogram | Analyzer | Balance | Key | Scope** buttons at th
 - If the DSP can't keep up, the gap is drawn in white, as DigiCheck does.
 - A full-scale sine reads about 0 dBFS. `dsp_test` checks this on every build.
 
-Code layout: `Source/Reassigner.*` (DSP, no dependencies), `AnalysisEngine.*` (sample ring, DSP thread, column queue, analysis taps; no audio device), `AudioEngine.*` (the standalone app's inputs: devices, loopback, test signal), `LoopbackCapture.*` (WASAPI loopback), `SpectrogramView.*` (display), `SettingsDialog.*`, `key/` (key finder, Key page), `transcribe/` (engine wrapper, chords / melody, models, MIDI), `balance/` (tonal balance), `scope/` (oscilloscope: `ScopeModel` has no JUCE dependency). The code is kept ready for a VST3 version: see [docs/VST3.md](docs/VST3.md).
+Code layout: `Source/Reassigner.*` (DSP, no dependencies), `AnalysisEngine.*` (sample ring, DSP thread, column queue, analysis taps; no audio device), `AudioEngine.*` (the standalone app's inputs: devices, loopback, test signal), `LoopbackCapture.*` (WASAPI loopback), `SpectrogramView.*` (display), `SettingsDialog.*`, `key/` (key finder, Key page), `transcribe/` (engine wrapper, chords / melody, models, MIDI), `balance/` (tonal balance), `scope/` (oscilloscope: `ScopeModel` has no JUCE dependency), `monitor/` (the Monitor page: `MonitorModel` has no JUCE dependency). The code is kept ready for a VST3 version: see [docs/VST3.md](docs/VST3.md).
 
 ## Building locally
 Requires CMake 3.24+, Visual Studio 2022 or newer (Desktop C++ workload) with its Clang tools (clang-cl), Ninja, and

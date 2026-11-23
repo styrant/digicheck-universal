@@ -57,6 +57,34 @@ int main()
     auto mono = run (48000, 1, 10, [&] (double t) { const float v = (float) (a * std::sin (tw * 1000 * t)); return std::make_pair (v, v); });
     expect ("48 kHz: mono 1 kHz -23 dBFS, integrated", mono.getIntegrated(), -26.0, 0.1);
 
+    // EBU Tech 3342 loudness range: 1 kHz stereo, 20 s at one level then 20 s at another
+    auto lraCase = [&] (double a1, double a2, double want, const char* what)
+    {
+        // a1 / a2 are LUFS: a 1 kHz sine at -x dBFS on both channels reads -x LUFS
+        const double s1 = std::pow (10.0, a1 / 20.0), s2 = std::pow (10.0, a2 / 20.0);
+        auto m = run (48000, 2, 40, [&] (double t) { const float v = (float) ((t < 20 ? s1 : s2) * std::sin (tw * 1000 * t)); return std::make_pair (v, v); });
+        expect (what, m.getLoudnessRange(), want, 1.0);
+    };
+    lraCase (-20, -30, 10, "Tech 3342 #1: -20 then -30 LUFS, LRA");
+    lraCase (-20, -15, 5,  "Tech 3342 #2: -20 then -15 LUFS, LRA");
+    lraCase (-40, -20, 20, "Tech 3342 #3: -40 then -20 LUFS, LRA");
+
+    // momentary, PSR and PLR on a steady sine: peak -6 dBTP, loudness -6 LUFS (1 kHz on both channels
+    // reads its dBFS level), so PSR = PLR = 0; a 1 kHz sine at -20 dBFS with one 0 dBFS click: PSR 20 near it
+    {
+        const double h = std::pow (10.0, -6.0 / 20.0);
+        auto m = run (48000, 2, 6, [&] (double t) { const float v = (float) (h * std::sin (tw * 1000 * t)); return std::make_pair (v, v); });
+        expect ("steady sine -6 dBFS: momentary", m.getMomentary(), -6.0, 0.1);
+        expect ("steady sine -6 dBFS: PSR", m.getPSR(), 0.0, 0.2);
+        expect ("steady sine -6 dBFS: PLR", m.getPLR(), 0.0, 0.2);
+        const double q = std::pow (10.0, -20.0 / 20.0);
+        auto c = run (48000, 2, 6, [&] (double t) { const float v = (float) (q * std::sin (tw * 1000 * t)) + ((t > 4.0 && t < 4.0 + 1.5 / 48000) ? 0.9f : 0.0f); return std::make_pair (v, v); });
+        expect ("sine -20 dBFS + one click to ~0 dBFS: PSR", c.getPSR(), 20.0, 1.0);
+        auto later = run (48000, 2, 9, [&] (double t) { const float v = (float) (q * std::sin (tw * 1000 * t)) + ((t > 4.0 && t < 4.0 + 1.5 / 48000) ? 0.9f : 0.0f); return std::make_pair (v, v); });
+        expect ("... 5 s later the click has left the 3 s window: PSR", later.getPSR(), 0.0, 0.3);
+        expect ("... but PLR keeps the click (true peak since reset)", later.getPLR(), 20.0, 1.0);
+    }
+
     std::printf (failures ? "%d FAILURES\n" : "all loudness checks passed\n", failures);
     return failures ? 1 : 0;
 }

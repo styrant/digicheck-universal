@@ -27,7 +27,7 @@ struct Settings
     double textScaleCustom = 1.0;
     bool   autoHideBar = true;    // hide the top toolbar in full screen (reveal at the top edge)
 
-    int    viewMode   = 0;        // 0 spectrogram, 1 analyzer, 2 balance, 3 key, 4 scope
+    int    viewMode   = 0;        // 0 spectrogram, 1 analyzer, 2 balance, 3 key, 4 scope, 5 monitor
     juce::String balanceTarget;   // name of the tonal balance target
     int    balanceWindow = 3;     // 0: realtime, 1: 1 s, 2: 3 s, 3: 10 s, 4: 30 s, 5: since reset
     int    balanceMode   = 0;     // 0 curve, 1 difference
@@ -54,6 +54,20 @@ struct Settings
     int    scopeSource   = 2;     // 0 left, 1 right, 2 mid, 3 peak
     juce::String scopeTheme = "Dark";
     bool   scopeRecNormalize = false, scopeRecTrim = true, scopeRecSnap = false;
+    // Monitor (modular metering page)
+    juce::String monitorOrder = "0,1,2,3,4";   // module order: loudness, dynamics, levels, sound field, phase
+    int    monitorShown  = 31;    // bit per module
+    int    monitorWide   = 3;     // bit per module: spans the whole row (loudness, dynamics)
+    int    monitorMax    = -1;    // the maximised module, -1 none
+    int    monitorCols   = 0;     // 0 auto, 1..3
+    int    monitorTarget = 0;     // see MonitorPage.cpp kTargets
+    bool   monitorMomMax = false; // momentary readout shows its maximum
+    bool   monitorMS     = false; // levels: add Mid and Side bars
+    int    monitorRange  = 0;     // levels scale: 0 -60, 1 -40, 2 -90 dB
+    bool   monitorAes    = false; // RMS + 3 dB (AES17: a sine reads its peak)
+    int    monitorField  = 0;     // 0 polar sample, 1 polar level, 2 lissajous
+    int    monitorHistory = 1;    // 0 30 s, 1 1 min, 2 5 min
+    bool   monitorDynLoud = true; // dynamics history: short-term loudness line
     double bpm        = 120.0;    // tempo calculator
     bool   tempoTriplets = false, tempoDotted = false;
     juce::String analyzerState;   // Spectrum Analyzer settings (XML)
@@ -144,6 +158,19 @@ struct Settings
         scopeRecNormalize = p.getBoolValue ("scopeRecNormalize", scopeRecNormalize);
         scopeRecTrim  = p.getBoolValue ("scopeRecTrim", scopeRecTrim);
         scopeRecSnap  = p.getBoolValue ("scopeRecSnap", scopeRecSnap);
+        monitorOrder  = p.getValue ("monitorOrder", monitorOrder);
+        monitorShown  = p.getIntValue ("monitorShown", monitorShown) & 31;
+        monitorWide   = p.getIntValue ("monitorWide", monitorWide) & 31;
+        monitorMax    = juce::jlimit (-1, 4, p.getIntValue ("monitorMax", monitorMax));
+        monitorCols   = juce::jlimit (0, 3, p.getIntValue ("monitorCols", monitorCols));
+        monitorTarget = juce::jlimit (0, 6, p.getIntValue ("monitorTarget", monitorTarget));
+        monitorMomMax = p.getBoolValue ("monitorMomMax", monitorMomMax);
+        monitorMS     = p.getBoolValue ("monitorMS", monitorMS);
+        monitorRange  = juce::jlimit (0, 2, p.getIntValue ("monitorRange", monitorRange));
+        monitorAes    = p.getBoolValue ("monitorAes", monitorAes);
+        monitorField  = juce::jlimit (0, 2, p.getIntValue ("monitorField", monitorField));
+        monitorHistory = juce::jlimit (0, 2, p.getIntValue ("monitorHistory", monitorHistory));
+        monitorDynLoud = p.getBoolValue ("monitorDynLoud", monitorDynLoud);
         bpm        = p.getDoubleValue ("bpm", bpm);
         tempoTriplets = p.getBoolValue ("tempoTriplets", tempoTriplets);
         tempoDotted   = p.getBoolValue ("tempoDotted", tempoDotted);
@@ -180,6 +207,11 @@ struct Settings
         p.setValue ("scopeGuides", scopeGuides); p.setValue ("scopeBP", scopeBP); p.setValue ("scopeBPHz", scopeBPHz);
         p.setValue ("scopeSide", scopeSide); p.setValue ("scopeSource", scopeSource); p.setValue ("scopeTheme", scopeTheme);
         p.setValue ("scopeRecNormalize", scopeRecNormalize); p.setValue ("scopeRecTrim", scopeRecTrim); p.setValue ("scopeRecSnap", scopeRecSnap);
+        p.setValue ("monitorOrder", monitorOrder); p.setValue ("monitorShown", monitorShown); p.setValue ("monitorWide", monitorWide);
+        p.setValue ("monitorMax", monitorMax); p.setValue ("monitorCols", monitorCols); p.setValue ("monitorTarget", monitorTarget);
+        p.setValue ("monitorMomMax", monitorMomMax); p.setValue ("monitorMS", monitorMS); p.setValue ("monitorRange", monitorRange);
+        p.setValue ("monitorAes", monitorAes); p.setValue ("monitorField", monitorField); p.setValue ("monitorHistory", monitorHistory);
+        p.setValue ("monitorDynLoud", monitorDynLoud);
         p.setValue ("bpm", bpm);               p.setValue ("tempoTriplets", tempoTriplets);
         p.setValue ("tempoDotted", tempoDotted);
         if (auto* file = dynamic_cast<juce::PropertiesFile*> (&p)) file->saveIfNeeded();     // the app writes its file at once

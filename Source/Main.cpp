@@ -151,9 +151,23 @@ private:
             {
                 if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_scope.png")); s.openedOk())
                 { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
-                mc->setView (3);
+                // Monitor page: the live test signal, or a file (SPECTROSCOPE_TEST_MONITORFILE) run through it and held
+                if (auto v = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_MONITORFIELD", {}); v.isNotEmpty()) mc->getSettings().monitorField = v.getIntValue();
+                if (auto v = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_MONITORMAX", {}); v.isNotEmpty()) mc->getSettings().monitorMax = v.getIntValue();
+                if (auto v = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_MONITORSHOWN", {}); v.isNotEmpty()) mc->getSettings().monitorShown = v.getIntValue();
+                if (auto v = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_MONITORCOLS", {}); v.isNotEmpty()) mc->getSettings().monitorCols = v.getIntValue();
+                mc->getMonitorPage().applySettings();
+                mc->setView (5);
+                if (auto f = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_MONITORFILE", {}); f.isNotEmpty())
+                    juce::Timer::callAfterDelay (200, [mc, f] { mc->getMonitorPage().loadForTest (juce::File (f)); });
+                juce::Timer::callAfterDelay (1800, [out, mc]
+                {
+                    if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_monitor.png")); s.openedOk())
+                    { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
+                    mc->setView (3);
+                });
             });
-            juce::Timer::callAfterDelay (juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_SCOPEWAIT", "2500").getIntValue() + 200, [this, out, mc]
+            juce::Timer::callAfterDelay (juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_SCOPEWAIT", "2500").getIntValue() + 2200, [this, out, mc]
             {
             mc->setView (3);
             const auto keyFile = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_KEYFILE", {});

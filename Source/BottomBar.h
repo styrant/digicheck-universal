@@ -8,7 +8,7 @@
 
 // The bottom control strip shared by both views (it stays put when you switch views):
 //
-//   [Options] [Spectrogram|Analyzer|Balance|Key|Scope] [LUFS] [Tempo]   <controls for the current view>   [LUFS boxes] [Reset] [Full screen]
+//   [Options] [Spectrogram|Analyzer|Balance|Key|Scope|Monitor] [LUFS] [Tempo]   <controls for the current view>   [LUFS boxes] [Reset] [Full screen]
 //
 // LUFS colours (loudness / estimated dynamics): white below -14, green -14..-9, yellow -9..-6, red -6 and up.
 // True peak: white below -1 dBTP, yellow -1..0, red above 0.
@@ -19,7 +19,7 @@
 class BottomBar : public juce::Component, private juce::Timer
 {
 public:
-    enum View { Spectrogram = 0, Analyzer = 1, Balance = 2, Key = 3, Scope = 4 };
+    enum View { Spectrogram = 0, Analyzer = 1, Balance = 2, Key = 3, Scope = 4, Monitor = 5 };
     static int height() { return ui::px (42); }
 
     BottomBar (Settings&, AnalysisEngine&, SpectrumAnalyzerProcessor&);
@@ -45,6 +45,7 @@ public:
     std::function<void (int)> onBalanceTarget, onBalanceWindow;
     std::function<void (bool difference)> onBalanceMode;
     std::function<void()> onBalanceReset;
+    std::function<void()> onLoudnessReset;                      // after Reset (the Monitor page resets with it)
     std::function<void()> onSpectrogramDsp;                     // scale or channel picked in the bar
 
     void paint (juce::Graphics&) override;
@@ -64,7 +65,7 @@ private:
     AnalysisEngine& engine;
     std::unique_ptr<juce::LookAndFeel> smallLnf;     // smaller text for the corner buttons (declared before them)
 
-    juce::TextButton optionsBtn { "Options" }, viewSpec { "Spectrogram" }, viewAna { "Analyzer" }, viewBal { "Balance" }, viewKey { "Key" }, viewScope { "Scope" }, lufsBtn { "LUFS" }, tempoBtn { "Tempo" };
+    juce::TextButton optionsBtn { "Options" }, viewSpec { "Spectrogram" }, viewAna { "Analyzer" }, viewBal { "Balance" }, viewKey { "Key" }, viewScope { "Scope" }, viewMon { "Monitor" }, lufsBtn { "LUFS" }, tempoBtn { "Tempo" };
     // spectrogram group
     juce::TextButton specPresets { "Presets" }, pause { "||" }, refDown { "-" }, refUp { "+" }, specSettings { "Settings" };
     juce::Label ref;

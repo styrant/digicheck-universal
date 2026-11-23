@@ -170,6 +170,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     engine.addTap (&liveBalance);
     engine.addTap (&recorder);
     engine.addTap (&scopeTap);
+    engine.addTap (&monitorTap);
     setWantsKeyboardFocus (true);
 
     status.setJustificationType (juce::Justification::topLeft);
@@ -188,6 +189,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     addChildComponent (balanceView);
     addChildComponent (keyPage);
     addChildComponent (scopePage);
+    addChildComponent (monitorPage);
     addAndMakeVisible (bottom);
 
     // tonal balance: targets from the targets folder, measurement on its own thread
@@ -207,6 +209,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p)
     bottom.onBalanceWindow = [this] (int w) { liveBalance.setWindow (w); saveAll(); };
     bottom.onBalanceMode = [this] (bool d) { settings.balanceMode = d ? 1 : 0; balanceView.setDifferenceMode (d); bottom.refresh(); saveAll(); };
     bottom.onBalanceReset = [this] { liveBalance.reset(); };
+    bottom.onLoudnessReset = [this] { monitorPage.model().reset(); };
     bottom.onSpectrogramDsp = [this] { onChange (Change::Dsp); };
     bottom.onBalanceTargetsAction = [this] (int a) { balanceTargetsAction (a); };
     refreshBalanceTargets();
@@ -337,6 +340,7 @@ void MainComponent::onFrame (double t)
     bottom.onFrame();
     balanceView.onFrame (t);
     scopePage.onFrame (t);
+    monitorPage.onFrame (t);
     if (glContext.isAttached()) glContext.triggerRepaint();
 }
 
@@ -371,6 +375,8 @@ void MainComponent::applyTextScale()
     balanceView.repaint();
     keyPage.resized();
     keyPage.repaint();
+    monitorPage.resized();
+    monitorPage.repaint();
     if (tempoWindow != nullptr)
     {
         const bool wasOpen = tempoWindow->isVisible();
@@ -390,10 +396,12 @@ void MainComponent::setOptionsVisible (bool show)
 
 void MainComponent::setView (int v)
 {
-    settings.viewMode = juce::jlimit (0, 4, v);
+    settings.viewMode = juce::jlimit (0, 5, v);
     const bool spec = settings.viewMode == BottomBar::Spectrogram, ana = settings.viewMode == BottomBar::Analyzer,
                bal = settings.viewMode == BottomBar::Balance, key = settings.viewMode == BottomBar::Key,
-               sco = settings.viewMode == BottomBar::Scope;
+               sco = settings.viewMode == BottomBar::Scope, mon = settings.viewMode == BottomBar::Monitor;
+    monitorPage.setVisible (mon);
+    monitorPage.setActive (mon);
     keyPage.setVisible (key);
     keyPage.setActive (key);
     scopePage.setVisible (sco);
@@ -406,7 +414,7 @@ void MainComponent::setView (int v)
     liveBalance.setActive (bal);
     engine.setSpectrogramActive (spec);
     if (bal) { refreshBalanceTargets(); grabKeyboardFocus(); }
-    if (key || sco) grabKeyboardFocus();
+    if (key || sco || mon) grabKeyboardFocus();
     if (ana) analyzerPanel.getView().grabKeyboardFocus();
     bottom.refresh();
     saveAll();
@@ -550,6 +558,7 @@ void MainComponent::timerCallback()
     balanceView.setInputRunning (engine.isRunning());
     keyPage.setInputRunning (engine.isRunning());
     scopePage.setInputRunning (engine.isRunning());
+    monitorPage.pump();                          // keeps measuring when display frames stall (minimised)
     if (++tick % 10 == 0) updateStatus();
 }
 
@@ -601,6 +610,7 @@ void MainComponent::resized()
     balanceView.setBounds (r);
     keyPage.setBounds (r);
     scopePage.setBounds (r);
+    monitorPage.setBounds (r);
     layoutOptions();
 }
 
@@ -643,7 +653,8 @@ void MainComponent::layoutOptions()
 
 bool MainComponent::keyPressed (const juce::KeyPress& k)
 {
-    const bool ana = settings.viewMode == BottomBar::Analyzer, bal = settings.viewMode == BottomBar::Balance || settings.viewMode == BottomBar::Key || settings.viewMode == BottomBar::Scope;
+    const bool ana = settings.viewMode == BottomBar::Analyzer, bal = settings.viewMode == BottomBar::Balance || settings.viewMode == BottomBar::Key || settings.viewMode == BottomBar::Scope
+                    || settings.viewMode == BottomBar::Monitor;
     if (k == juce::KeyPress::spaceKey)
     {
         if (settings.viewMode == BottomBar::Key) keyPage.togglePlay();
@@ -652,8 +663,8 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
         else if (! bal) view.togglePause();
         return true;
     }
-    if (k.getTextCharacter() == 'v' || k.getTextCharacter() == 'V') { setView ((settings.viewMode + 1) % 5); return true; }
-    if (k.getTextCharacter() >= '1' && k.getTextCharacter() <= '5') { setView ((int) (k.getTextCharacter() - '1')); return true; }
+    if (k.getTextCharacter() == 'v' || k.getTextCharacter() == 'V') { setView ((settings.viewMode + 1) % 6); return true; }
+    if (k.getTextCharacter() >= '1' && k.getTextCharacter() <= '6') { setView ((int) (k.getTextCharacter() - '1')); return true; }
     if (k == juce::KeyPress::F11Key)            { toggleFullscreen(); return true; }
     if (k.getTextCharacter() == 'o' || k.getTextCharacter() == 'O') { toggleOptions(); return true; }
     if (k == juce::KeyPress::escapeKey)

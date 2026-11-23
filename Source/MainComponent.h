@@ -11,6 +11,7 @@
 #include "balance/BalanceView.h"
 #include "key/KeyPage.h"
 #include "scope/ScopePage.h"
+#include "monitor/MonitorPage.h"
 
 class MainComponent : public juce::Component, private juce::Timer, private juce::OpenGLRenderer
 {
@@ -36,6 +37,7 @@ public:
     Settings& getSettings() { return settings; }
     KeyPage& getKeyPage() { return keyPage; }
     ScopePage& getScopePage() { return scopePage; }
+    MonitorPage& getMonitorPage() { return monitorPage; }
 
 private:
     void timerCallback() override;
@@ -102,6 +104,7 @@ private:
     LiveBalance liveBalance;
     LiveRecorder recorder;
     ScopeTap scopeTap;
+    FifoTap monitorTap;
     TranscriptionSession transcription;
     ModelStore modelStore;
     TranscriptionPlayer keyPlayer;
@@ -112,6 +115,7 @@ private:
     AnalyzerPanel analyzerPanel { analyzerProc };
     BalanceView balanceView { liveBalance, targetLibrary };
     ScopePage scopePage { scopeTap, settings, [this] { saveAll(); } };
+    MonitorPage monitorPage { monitorTap, settings, [this] { saveAll(); }, [this] { engine.resetLoudness(); } };
     KeyPage keyPage { keyFinder, transcription, recorder, modelStore, keyPlayer, &keyOutput, settings, [this] { saveAll(); } };
     void refreshBalanceTargets();
     void balanceTargetsAction (int action);
