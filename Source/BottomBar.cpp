@@ -360,7 +360,7 @@ void BottomBar::resized()
 
     // left: Options, view switch, LUFS / Key / Tempo toggles
     optionsBtn.setBounds (r.removeFromLeft (ui::px (72))); r.removeFromLeft (ui::px (10));
-    viewSpec.setBounds (r.removeFromLeft (ui::px (90))); viewAna.setBounds (r.removeFromLeft (ui::px (74)));
+    viewSpec.setBounds (r.removeFromLeft (ui::px (94))); viewAna.setBounds (r.removeFromLeft (ui::px (74)));
     viewBal.setBounds (r.removeFromLeft (ui::px (70)));
     viewKey.setBounds (r.removeFromLeft (ui::px (46)));
     viewScope.setBounds (r.removeFromLeft (ui::px (58)));

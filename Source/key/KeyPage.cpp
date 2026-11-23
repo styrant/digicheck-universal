@@ -1153,7 +1153,7 @@ void KeyPage::resized()
         timeArea = p.removeFromLeft (ui::px (110));
         p.removeFromLeft (ui::px (6));
         listenBox.setBounds (p.removeFromLeft (ui::px (170)).reduced (0, 1)); p.removeFromLeft (ui::px (6));
-        synthBox.setBounds (p.removeFromLeft (ui::px (190)).reduced (0, 1)); p.removeFromLeft (ui::px (10));
+        synthBox.setBounds (p.removeFromLeft (ui::px (198)).reduced (0, 1)); p.removeFromLeft (ui::px (10));
         volumeSlider.setBounds (p.removeFromLeft (ui::px (110))); p.removeFromLeft (ui::px (10));
         if (output != nullptr)
         {
