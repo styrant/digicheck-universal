@@ -41,6 +41,7 @@ public:
     // Renderer selection (message thread)
     void setGpuMode (bool useGpu);
     bool isGpuMode() const noexcept { return gpu; }
+    bool forSnapshot = false;          // paint the plot itself even with the GPU renderer (copy as image)
     double measureFps();                    // frames drawn per second since the last call
 
     // OpenGL hooks, called by the owner's OpenGLContext on its render thread

@@ -49,7 +49,7 @@ FftView::FftView (FifoTap& in, Settings& st, std::function<void()> ch) : input (
         b->onClick = [this, b, which] { menuFor (*b, which); };
         addAndMakeVisible (b);
     }
-    for (auto* b : { &holdBtn, &freezeBtn, &colourBtn })
+    for (auto* b : { &holdBtn, &freezeBtn, &colourBtn, &snapBtn })
     {
         b->setColour (juce::TextButton::buttonColourId, kButton);
         b->setColour (juce::TextButton::buttonOnColourId, kOn);
@@ -61,6 +61,15 @@ FftView::FftView (FifoTap& in, Settings& st, std::function<void()> ch) : input (
     freezeBtn.setTooltip ("Freeze the display (F, or Space)");
     freezeBtn.onClick = [this] { toggleFreeze(); };
     colourBtn.onClick = [this] { colourMenu(); };
+    snapBtn.setClickingTogglesState (false);
+    snapBtn.setTooltip ("Snapshot: keep the current spectrum as a ghost line, to compare before and after a change. Click again to clear it");
+    snapBtn.onClick = [this]
+    {
+        if (snapPower.empty()) snapPower = engine.power (0); else snapPower.clear();
+        snapBtn.setToggleState (! snapPower.empty(), juce::dontSendNotification);
+        snapBtn.setButtonText (snapPower.empty() ? "Snapshot" : "Clear snap");
+        repaint();
+    };
     configure();
 }
 
@@ -181,9 +190,9 @@ void FftView::resized()
     auto place = [&] (juce::Button& b, int w) { b.setBounds (h.removeFromLeft (ui::px (w))); h.removeFromLeft (ui::px (4)); };
     place (chanBtn, 78); place (secBtn, 104); h.removeFromLeft (ui::px (8));
     place (sizeBtn, 74); place (avgBtn, 112); place (slopeBtn, 96); place (smoothBtn, 120); h.removeFromLeft (ui::px (8));
-    place (holdBtn, 52); place (freezeBtn, 60);
+    place (holdBtn, 52); place (freezeBtn, 60); place (snapBtn, 80);
     colourBtn.setBounds (header.removeFromRight (ui::px (72)));
-    for (auto* b : std::initializer_list<juce::Component*> { &smoothBtn, &slopeBtn })   // narrow windows: the least used go first
+    for (auto* b : std::initializer_list<juce::Component*> { &snapBtn, &smoothBtn, &slopeBtn })   // narrow windows: the least used go first
         b->setVisible (b->getRight() < colourBtn.getX() - 4);
     computeEdges();
 }
@@ -309,6 +318,18 @@ void FftView::paint (juce::Graphics& g)
         g.strokePath (curvePath (holdDb, false), juce::PathStrokeType (1.0f));
     }
     if (sec && s.fftSecStyle != 1) drawSecondary();
+    if (! snapPower.empty() && snapPower.size() != engine.power (0).size()) snapPower.clear();   // FFT size changed
+    if (! snapPower.empty())
+    {
+        // the snapshot: a light dashed line with a dark halo, drawn with today's slope and smoothing
+        engine.curve (snapPower, edges, s.fftSlope, smooth, snapDb);
+        auto p = curvePath (snapDb, false);
+        g.setColour (kBgBottom.withAlpha (0.6f)); g.strokePath (p, juce::PathStrokeType (3.5f));
+        juce::Path dashed; const float dashes[] = { 3.0f, 3.0f };
+        juce::PathStrokeType (1.4f).createDashedStroke (dashed, p, dashes, 2);
+        g.setColour (juce::Colour (0xffe9e3c9)); g.fillPath (dashed);
+    }
+    else snapDb.clear();
     g.restoreState();
 
     // hover readout
@@ -334,8 +355,9 @@ void FftView::paint (juce::Graphics& g)
         juce::String t = (hz >= 1000 ? juce::String (hz / 1000, 2) + " kHz" : juce::String (hz, hz < 100 ? 1 : 0) + " Hz") + "   " + noteName (hz, s.noteRef)
                          + "   " + juce::String (mainDb[(size_t) i], 1) + " dB";
         if (sec && i < (int) secDb.size()) t << "   " << juce::String (secDb[(size_t) i], 1) << " dB";
+        if (i < (int) snapDb.size()) t << "   (snapshot " << (mainDb[(size_t) i] >= snapDb[(size_t) i] ? "+" : "") << juce::String (mainDb[(size_t) i] - snapDb[(size_t) i], 1) << ")";
         g.setFont (juce::FontOptions (ui::fs (12.0f)));
-        const int w = ui::px (360);
+        const int w = ui::px (snapDb.empty() ? 360 : 460);
         auto box = juce::Rectangle<int> (juce::jlimit (plot.getX(), plot.getRight() - w, hoverX + 10), plot.getY() + 6, w, ui::px (22));
         g.setColour (juce::Colour (0xe0101215)); g.fillRoundedRectangle (box.toFloat(), 4);
         g.setColour (kText); g.drawText (t, box.reduced (8, 0), juce::Justification::centredLeft);

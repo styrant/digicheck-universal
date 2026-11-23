@@ -50,8 +50,10 @@ struct Core
         monitorTap.drain ([this] (const float* l, const float* r, int n) { monitorModel.push (l, r, n); });
     }
 
+    bool saveBlocked = false;       // after Restore / Reset defaults: the stored settings wait for a restart
     void save()
     {
+        if (saveBlocked) return;
         settings.analyzerState = analyzerProc.saveStateXml();
         settings.save (state);
     }

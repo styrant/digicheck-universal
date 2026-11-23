@@ -97,6 +97,7 @@ Two styles, switched with **Bars | FFT** at the top left of the view.
 ### FFT (SPAN / Pro-Q style)
 A smooth spectrum curve with a peak-hold line.
 - **Header:** channel, a **second curve** (Left / Right / Mid / Side, or the sidechain in the plugin) in its own colour and style, FFT size, averaging, slope (4.5 dB/oct makes a balanced mix look flat), smoothing, **Hold**, **Freeze**, **Colours**.
+- **Snapshot:** keeps the current spectrum as a dashed ghost line (drawn with the current slope and smoothing), for before / after comparisons; the hover readout shows the difference. Click **Clear snap** to remove it.
 - **Mouse:** hover for frequency, note and level (with a level line). The wheel scrolls the dB range, Ctrl+wheel zooms it, double-click resets. Click the display to reset the peak hold.
 
 ### Bars (Spectrum Analyzer 2)
@@ -129,6 +130,7 @@ Compares the tonal balance of your audio with a **target**, like iZotope Tonal B
   - **Fine:** 1/6 octave, for narrow resonances.
   - The target's range is smoothed to match.
 - **Curve / Diff**, and **Reset** (start the measurement again).
+- **Snapshot** (top of the curve panel): keeps the current measurement as a dashed ghost curve, to compare before and after a change (an EQ move, a different master). The hover readout adds how far you've moved from it. Click **Clear snapshot** to remove it.
 
 **Targets** are JSON files in `Documents\DigiCheck Universal\Targets`: ones made with [Target Builder](#13-target-builder) from your own reference songs, or Tonal Balance Control-style target files. New files are picked up automatically.
 
@@ -237,6 +239,8 @@ Put several views on one page: for example the spectrogram large on the left, wi
    - a 2 × 2 grid
 3. In the same menu, choose what each **Pane** shows: Spectrogram, Analyzer, Balance, Key, Scope, Monitor, or Empty. A view can be in only one pane; picking one that's already in another pane swaps the two.
 4. **Resize** the panes by dragging the gaps between them. *Equal sizes* (in the menu) puts them back.
+5. **Click a pane** to work with it: it gets a blue outline, and the bottom bar shows its controls next to Layout (the Balance target and smoothing, the Spectrogram's presets and scale, the Analyzer's controls). Keys like Space, P and S act on that pane too.
+6. **Saved layouts:** *Layout ▾ → Save layout as...* stores the whole arrangement (layout, panes, sizes and the Monitor's modules) under a name, for example "Mixing" or "Mastering". Switch with *Saved layouts*; *Update* and *Delete* act on the layout you loaded. Saved layouts are shared by the app and all plugin instances.
 
 Good to know:
 - Each view keeps its own settings: the Balance target, spectrogram presets, analyzer style and so on. Set them on the view's own page (or in the pane itself) and they carry over.
@@ -274,10 +278,18 @@ Some graphics drivers switch a full-screen OpenGL window to *exclusive* mode. Wi
 - **Exact full screen:** covers every pixel (HDR may turn off).
 - On NVIDIA you can also set the app's *Vulkan/OpenGL present method* to *Prefer layered on DXGI Swapchain* in the NVIDIA Control Panel.
 
+### Copy as image
+**Ctrl+C** copies the page as a picture (paste it into a chat, an email or a document); on the Custom page **Ctrl+Shift+C** copies only the pane you last clicked. Every copy is also saved as a PNG in `Documents\DigiCheck Universal\Screenshots`. *Options → Copy view as image* does the same (useful in a DAW that keeps Ctrl+C for itself).
+
 ### Display (Options)
 - **GPU rendering (OpenGL):** on by default. Turn it off if your graphics driver has OpenGL problems.
 - **Frame rate limit:** 60 fps by default (smooth, and spares the GPU). *Off* follows the monitor. On a G-Sync/FreeSync monitor, pick about 3 below its maximum (for example 141 on 144 Hz).
 - **Text size:** Small, Medium, Large or Custom (70-200 %) for the whole app. Monitor modules also have their own text size in their gear menus.
+
+### Updates and settings (Options)
+- **Check for updates** (on by default): at start-up the app asks GitHub whether there's a newer *Latest build*; if so, a small green "1.3.x available" button appears at the bottom right (and in Options). Nothing else is sent.
+- **Back up...** saves everything to one `.dcubackup` file: all settings, presets, Custom layouts, Scope themes and Balance targets. **Restore...** loads one (restart the app, or reopen the project in a DAW, to use it).
+- **Reset to defaults** puts every setting back to its default; presets, layouts, themes and targets are kept, and so is the audio input. Restart to use it.
 
 ---
 
@@ -336,6 +348,8 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
 | Shift+F11 | Full screen without the bottom bar |
 | B | Hide / show the bottom bar (in full screen) |
 | ? or F1 | Help mode |
+| Ctrl+C | Copy the page as an image (also saved as PNG) |
+| Ctrl+Shift+C | Copy the focused Custom pane as an image |
 | Esc | Close Options, leave full screen, or remove the cursor |
 
 ---
@@ -347,6 +361,7 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
 | Balance targets | `Documents\DigiCheck Universal\Targets` |
 | Scope recordings | `Documents\DigiCheck Universal\Scope Recordings` |
 | Scope themes | `Documents\DigiCheck Universal\Scope Themes` |
+| Copied images | `Documents\DigiCheck Universal\Screenshots` |
 | Transcription models | `%APPDATA%\DigiCheck Universal\Models` |
 | Settings | `%APPDATA%\DigiCheck Universal\Spectroscope.settings` |
 

@@ -103,6 +103,7 @@ set(DCU_SHARED_SOURCES
     Source/fft/FftView.cpp
     Source/listen/BandIsolator.cpp
     Source/listen/ListenPanel.cpp
+    Source/ClipboardImage.cpp
     Source/MainComponent.cpp            # the main view: the app window and the plugin editor both show it
     Source/AudioEngine.cpp              # the standalone's audio input (the plugin never creates one)
     Source/LoopbackCapture.cpp)

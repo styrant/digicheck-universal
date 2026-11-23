@@ -37,6 +37,26 @@ BalanceView::BalanceView (LiveBalance& l, TargetLibrary& lib) : live (l), librar
     openFolder.onClick = [this] { if (onOpenFolder) onOpenFolder(); };
     openBuilder.onClick = [this] { if (onOpenBuilder) onOpenBuilder(); };
     shownCurve.assign ((size_t) tonal::kBins, -120.0);
+    addAndMakeVisible (snapBtn);
+    snapBtn.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2c2f35));
+    snapBtn.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff4c8dff));
+    snapBtn.setTooltip ("Snapshot: keep the current measurement as a dashed ghost curve, to compare before and after a change. Click again to clear it");
+    snapBtn.onClick = [this]
+    {
+        if (snapRaw.empty() && latest.valid) snapRaw = latest.raw; else snapRaw.clear();
+        snapSmoothedFor = -1;
+        snapBtn.setToggleState (! snapRaw.empty(), juce::dontSendNotification);
+        snapBtn.setButtonText (snapRaw.empty() ? "Snapshot" : "Clear snapshot");
+        resized();
+        repaint();
+    };
+}
+
+const std::vector<double>* BalanceView::snapshot()
+{
+    if (snapRaw.size() != (size_t) tonal::kBins) return nullptr;
+    if (snapSmoothedFor != smoothing) { snapCurve = tonal::smoothDbBell (snapRaw, tonal::smoothingOctaves (smoothing)); snapSmoothedFor = smoothing; }
+    return &snapCurve;
 }
 
 void BalanceView::setActive (bool a)
@@ -146,6 +166,7 @@ void BalanceView::resized()
     auto c = r.reduced (ui::px (14), ui::px (10));
     c.removeFromTop (ui::px (24));
     plot = c.withTrimmedLeft (ui::px (34)).withTrimmedBottom (ui::px (16));
+    snapBtn.setBounds (curveArea.reduced (ui::px (14), ui::px (8)).removeFromTop (ui::px (22)).withSizeKeepingCentre (ui::px (snapRaw.empty() ? 90 : 120), ui::px (22)));
 
     // one curve point every 2 px: the nearest spectrum bin to each column's frequency
     columns.clear();
@@ -363,6 +384,19 @@ void BalanceView::paintCurveLive (juce::Graphics& g)
                                        : "measured over " + (shownSeconds < 2 ? juce::String (shownSeconds, 1) : juce::String (juce::roundToInt (shownSeconds))) + " s of audio",
                     head, juce::Justification::centredRight);
 
+    if (const auto* snap = snapshot())
+    {
+        juce::Path p;
+        bool first = true;
+        for (auto [x, k] : columns)
+        {
+            const float y = yOf (at (*snap, k) - baseAt (k));
+            if (std::exchange (first, false)) p.startNewSubPath (x, y); else p.lineTo (x, y);
+        }
+        juce::Path dashed; const float dashes[] = { 4.0f, 3.0f };
+        juce::PathStrokeType (1.6f).createDashedStroke (dashed, p, dashes, 2);
+        g.setColour (juce::Colour (0xffe9e3c9).withAlpha (0.8f)); g.fillPath (dashed);
+    }
     if (shownValid)
     {
         // the input's curve; red where it leaves the target's range
@@ -400,6 +434,11 @@ void BalanceView::paintCurveLive (juce::Graphics& g)
             const double o = v > t->high[(size_t) k] ? v - t->high[(size_t) k] : (v < t->low[(size_t) k] ? v - t->low[(size_t) k] : 0.0);
             txt << "   " << (d >= 0 ? "+" : "") << juce::String (d, 1) << " dB vs target"
                 << (std::abs (o) > 1e-9 ? "   (" + juce::String (o > 0 ? "+" : "") + juce::String (o, 1) + " dB outside the range)" : juce::String ("   in range"));
+        }
+        if (const auto* snap = snapshot(); snap != nullptr && shownValid)
+        {
+            const double d = shownCurve[(size_t) k] - (*snap)[(size_t) k];
+            txt << "   snapshot " << (d >= 0 ? "+" : "") << juce::String (d, 1) << " dB";
         }
         g.setFont (juce::FontOptions (ui::fs (13.0f)));
         const int tw = juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), txt) + 16;

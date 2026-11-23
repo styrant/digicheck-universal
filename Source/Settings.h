@@ -37,7 +37,10 @@ struct Settings
     // the Monitor's own module layout while it is in the Custom page
     juce::String customMonOrder = "0,1,2,3,4,5";
     int    customMonShown = 5, customMonWide = 0, customMonMax = -1, customMonCols = 1;
-    bool   helpMode = false;      // bottom bar "?": descriptions when hovering over controls
+    int    customFocus = -1;      // the view whose controls the bar shows on the Custom page (the pane last clicked)
+    juce::String customName;      // the saved layout last loaded or saved ("" none)
+    bool   helpMode = false;
+    bool   checkUpdates = true;   // look for a newer Latest build at start-up      // bottom bar "?": descriptions when hovering over controls
     juce::String balanceTarget;   // name of the tonal balance target
     int    balanceWindow = 3;     // 0: realtime, 1: 1 s, 2: 3 s, 3: 10 s, 4: 30 s, 5: since reset
     int    balanceMode   = 0;     // 0 curve, 1 difference
@@ -260,6 +263,9 @@ struct Settings
         customMonMax   = juce::jlimit (-1, 5, p.getIntValue ("customMonMax", customMonMax));
         customMonCols  = juce::jlimit (0, 3, p.getIntValue ("customMonCols", customMonCols));
         helpMode = p.getBoolValue ("helpMode", helpMode);
+        checkUpdates = p.getBoolValue ("checkUpdates", checkUpdates);
+        customFocus = juce::jlimit (-1, 5, p.getIntValue ("customFocus", customFocus));
+        customName = p.getValue ("customName", customName);
         monitorShown  = p.getIntValue ("monitorShown", monitorShown) & 63;
         monitorWide   = p.getIntValue ("monitorWide", monitorWide) & 63;
         monitorMax    = juce::jlimit (-1, 5, p.getIntValue ("monitorMax", monitorMax));
@@ -338,7 +344,8 @@ struct Settings
         p.setValue ("customLayout", customLayout); p.setValue ("customSlots", customSlots);
         p.setValue ("customSplitA", customSplitA); p.setValue ("customSplitB", customSplitB);
         p.setValue ("customMonOrder", customMonOrder); p.setValue ("customMonShown", customMonShown); p.setValue ("customMonWide", customMonWide);
-        p.setValue ("customMonMax", customMonMax); p.setValue ("customMonCols", customMonCols); p.setValue ("helpMode", helpMode); p.setValue ("monitorShown", monitorShown); p.setValue ("monitorWide", monitorWide);
+        p.setValue ("customMonMax", customMonMax); p.setValue ("customMonCols", customMonCols); p.setValue ("helpMode", helpMode); p.setValue ("checkUpdates", checkUpdates);
+        p.setValue ("customFocus", customFocus); p.setValue ("customName", customName); p.setValue ("monitorShown", monitorShown); p.setValue ("monitorWide", monitorWide);
         p.setValue ("monitorMax", monitorMax); p.setValue ("monitorCols", monitorCols); p.setValue ("monitorTarget", monitorTarget);
         p.setValue ("monitorMomMax", monitorMomMax); p.setValue ("monitorMS", monitorMS); p.setValue ("monitorRange", monitorRange);
         p.setValue ("monitorAes", monitorAes); p.setValue ("monitorField", monitorField); p.setValue ("monitorHistory", monitorHistory);

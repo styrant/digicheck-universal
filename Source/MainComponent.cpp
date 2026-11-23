@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "ClipboardImage.h"
 #include "listen/ListenPanel.h"
 #include "SettingsDialog.h"
 
@@ -228,6 +229,25 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     manualBtn.setTooltip ("Open the user manual (in your web browser)");
     manualBtn.onClick = [] { juce::URL ("https://github.com/styrant/digicheck-universal/blob/main/docs/MANUAL.md").launchInDefaultBrowser(); };
     options.addAndMakeVisible (manualBtn);
+    copyImgBtn.setTooltip ("Copy the page as an image (Ctrl+C; on the Custom page Ctrl+Shift+C copies the pane last clicked). "
+                           "It's also saved in Documents\\DigiCheck Universal\\Screenshots");
+    copyImgBtn.onClick = [this] { setOptionsVisible (false); juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this)] { if (safe) safe->copyViewImage (false); }); };
+    backupBtn.setTooltip ("Save all settings, presets, Custom layouts, Scope themes and Balance targets to one file");
+    restoreBtn.setTooltip ("Load a backup file (takes effect after a restart)");
+    defaultsBtn.setTooltip ("Put every setting back to its default (presets, layouts, themes and targets are kept); takes effect after a restart");
+    backupBtn.onClick = [this] { backupSettings(); };
+    restoreBtn.onClick = [this] { restoreSettings(); };
+    defaultsBtn.onClick = [this] { resetDefaults(); };
+    updateToggle.setToggleState (settings.checkUpdates, juce::dontSendNotification);
+    updateToggle.setTooltip ("At start-up, check GitHub for a newer Latest build (nothing else is sent)");
+    updateToggle.onClick = [this] { settings.checkUpdates = updateToggle.getToggleState(); saveAll(); if (settings.checkUpdates) checkForUpdates(); };
+    updateBtn.setTooltip ("A newer build is available: open the download page");
+    updateBtn.onClick = [] { juce::URL ("https://github.com/styrant/digicheck-universal/releases/tag/latest").launchInDefaultBrowser(); };
+    for (auto* c : std::initializer_list<juce::Component*> { &copyImgBtn, &backupBtn, &restoreBtn, &defaultsBtn, &updateToggle })
+        options.addAndMakeVisible (c);
+    options.addChildComponent (updateBtn);
+    if (settings.checkUpdates)
+        juce::Timer::callAfterDelay (4000, [safe = juce::Component::SafePointer<MainComponent> (this)] { if (safe) safe->checkForUpdates(); });
     hdrBox.addItemList ({ "Keep HDR (1 px gap at the bottom)", "Keep HDR (CPU rendering while full screen)", "Exact full screen (may turn HDR off)" }, 1);
     hdrBox.setSelectedItemIndex (settings.hdrFullscreen, juce::dontSendNotification);
     hdrBox.setTooltip ("On an HDR monitor, some graphics drivers switch a full-screen OpenGL window to exclusive mode and Windows turns HDR off. "
@@ -265,7 +285,24 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     view.onPauseChanged      = [this] (bool isPaused) { bottom.setPaused (isPaused); };
     bottom.onViewChange      = [this] (int v) { setView (v); };
     bottom.onCustomChanged   = [this] { setView (BottomBar::Custom); };
+    bottom.onLoadLayout      = [this] (const juce::String& n) { loadLayout (n); };
+    bottom.onDeleteLayout    = [this] { if (settings.customName.isNotEmpty()) deleteLayout (settings.customName); };
+    bottom.onSaveLayout      = [this]
+    {
+        askPresetName ("Save Custom layout", [safe = juce::Component::SafePointer<MainComponent> (this)] (const juce::String& n)
+        {
+            if (safe != nullptr && n.isNotEmpty()) safe->saveLayoutAs (n);
+        });
+    };
+    bottom.onUpdateLayout    = [this] { if (settings.customName.isNotEmpty()) saveLayoutAs (settings.customName); };
+    refreshSavedLayouts();
     bottom.onToggleHelp      = [this] { setHelpMode (! settings.helpMode); };
+    addChildComponent (toast);
+    toast.setJustificationType (juce::Justification::centred);
+    toast.setColour (juce::Label::backgroundColourId, juce::Colour (0xf0181a1f));
+    toast.setColour (juce::Label::outlineColourId, juce::Colour (0xff4c8dff));
+    toast.setColour (juce::Label::textColourId, juce::Colour (0xffeef0f3));
+    toast.setInterceptsMouseClicks (false, false);
     bottom.onToggleHideBar   = [this] { setBarHidden (! barHidden); };
     if (settings.helpMode) setHelpMode (true);
     bottom.onPause           = [this] { view.togglePause(); };
@@ -364,6 +401,7 @@ void MainComponent::OutsideClick::mouseDown (const juce::MouseEvent& e)
 {
     auto& o = owner;
     auto* c = e.eventComponent;
+    if (c != nullptr) o.notePaneClick (*c);
     if (! o.options.isVisible() || c == nullptr) return;
     if (c->getTopLevelComponent() != o.getTopLevelComponent()) return;          // pop-up menus are separate windows
     if (c == &o.options || o.options.isParentOf (c)) return;
@@ -662,6 +700,7 @@ void MainComponent::timerCallback()
     keyPage.setInputRunning (inputRunning());
     scopePage.setInputRunning (inputRunning());
     monitorPage.pump();                          // keeps measuring when display frames stall (minimised)
+    if (toast.isVisible() && juce::Time::getMillisecondCounterHiRes() * 0.001 > toastUntil) toast.setVisible (false);
     if (fullscreen && barHidden)
     {
         // the hidden bar peeks back while the mouse is at the bottom edge or over it (or a menu from it is open)
@@ -726,6 +765,13 @@ void MainComponent::paint (juce::Graphics& g)
                 g.setColour (juce::Colour (0xff15171b)); g.fillRoundedRectangle (panes[i].toFloat().reduced (1), 6.0f);
                 g.setColour (juce::Colour (0xffb0b6c0)); g.setFont (juce::FontOptions (ui::fs (14.0f)));
                 g.drawFittedText ("Empty pane " + juce::String ((int) i + 1) + ": choose a view for it in the bottom bar", panes[i].reduced (12), juce::Justification::centred, 3);
+            }
+        // the focused pane (its controls are in the bar): a thin outline in the gap around it
+        for (size_t i = 0; i < panes.size(); ++i)
+            if (slots[i] >= 0 && slots[i] == settings.customFocus)
+            {
+                g.setColour (juce::Colour (0xff4c8dff).withAlpha (0.85f));
+                g.drawRoundedRectangle (panes[i].toFloat().expanded (2.5f), 4.0f, 1.5f);
             }
         for (auto& d : dividers)
         {
@@ -844,6 +890,255 @@ void MainComponent::mouseUp (const juce::MouseEvent&)
     dragDivider = -1;
 }
 
+void MainComponent::copyViewImage (bool paneOnly)
+{
+    juce::Rectangle<int> area = contentArea;
+    juce::String what = BottomBar::viewNames()[juce::jlimit (0, 5, settings.viewMode)];
+    if (settings.viewMode == BottomBar::Custom)
+    {
+        what = "Custom";
+        if (paneOnly && shows (settings.customFocus))
+            if (auto* c = viewComponent (settings.customFocus)) { area = c->getBounds(); what = BottomBar::viewNames()[settings.customFocus]; }
+    }
+    view.forSnapshot = true;                       // the spectrogram paints its picture even with the GPU renderer
+    const auto scale = juce::jmax (1.0f, (float) juce::Component::getApproximateScaleFactorForComponent (this));
+    const auto img = createComponentSnapshot (area, true, scale);
+    view.forSnapshot = false;
+
+    const bool copied = clipboard::copyImage (img);
+    auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("DigiCheck Universal").getChildFile ("Screenshots");
+    dir.createDirectory();
+    auto file = dir.getNonexistentChildFile (what + " " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H%M%S"), ".png", false);
+    bool saved = false;
+    if (auto st = file.createOutputStream()) saved = juce::PNGImageFormat().writeImageToStream (img, *st);
+    showToast ((copied ? "Copied to the clipboard" : juce::String ("Saved")) + (saved ? (copied ? " and saved as " : " as ") + file.getFileName() : juce::String()));
+}
+
+void MainComponent::showToast (const juce::String& text)
+{
+    toast.setText (text, juce::dontSendNotification);
+    toast.setFont (juce::FontOptions (ui::fs (14.0f)));
+    const int w = juce::GlyphArrangement::getStringWidthInt (toast.getFont(), text) + ui::px (32);
+    toast.setBounds (contentArea.getCentreX() - w / 2, contentArea.getBottom() - ui::px (56), w, ui::px (34));
+    toast.setVisible (true);
+    toast.toFront (false);
+    toastUntil = juce::Time::getMillisecondCounterHiRes() * 0.001 + 2.5;
+}
+
+//==============================================================================
+// Update check: GitHub's Latest build release is named "Latest build (1.3.34)"
+struct MainComponent::UpdateCheck : public juce::Thread
+{
+    UpdateCheck (juce::Component::SafePointer<MainComponent> o) : juce::Thread ("Update check"), owner (o) {}
+    void run() override
+    {
+        juce::String name;
+        if (auto in = juce::URL ("https://api.github.com/repos/styrant/digicheck-universal/releases/tags/latest")
+                          .createInputStream (juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
+                                                  .withConnectionTimeoutMs (8000).withExtraHeaders ("Accept: application/vnd.github+json\r\nUser-Agent: DigiCheck-Universal")))
+            name = juce::JSON::parse (in->readEntireStreamAsString()).getProperty ("name", {}).toString();
+        const auto ver = name.fromLastOccurrenceOf ("(", false, false).upToFirstOccurrenceOf (")", false, false).trim();
+        juce::MessageManager::callAsync ([o = owner, ver] { if (o != nullptr) o->onUpdateResult (ver); });
+    }
+    juce::Component::SafePointer<MainComponent> owner;
+};
+
+void MainComponent::checkForUpdates()
+{
+    if (updateThread != nullptr && updateThread->isThreadRunning()) return;
+    updateThread = std::make_unique<UpdateCheck> (juce::Component::SafePointer<MainComponent> (this));
+    updateThread->startThread (juce::Thread::Priority::low);
+}
+
+void MainComponent::onUpdateResult (const juce::String& latest)
+{
+    // compare a.b.c numerically
+    auto parts = [] (const juce::String& v) { auto t = juce::StringArray::fromTokens (v, ".", {}); std::array<int, 3> r {}; for (int i = 0; i < 3 && i < t.size(); ++i) r[(size_t) i] = t[i].getIntValue(); return r; };
+    if (latest.isEmpty() || parts (latest) <= parts (ProjectInfo::versionString)) return;
+    newerVersion = latest;
+    updateBtn.setButtonText ("Download " + latest);
+    updateBtn.setVisible (true);
+    bottom.setUpdateAvailable (latest);
+}
+
+//==============================================================================
+// Settings backup: one XML file with the stored settings, the app-wide presets and layouts, Scope themes
+// and Balance targets
+void MainComponent::backupSettings()
+{
+    saveAll();
+    juce::XmlElement root ("DIGICHECK_UNIVERSAL_BACKUP");
+    root.setAttribute ("version", ProjectInfo::versionString);
+    root.setAttribute ("plugin", core.plugin ? 1 : 0);
+    auto addProps = [&] (const char* tag, juce::PropertySet& p)
+    {
+        auto* e = root.createNewChildElement (tag);
+        const auto& all = p.getAllProperties();
+        for (int i = 0; i < all.size(); ++i) { auto* v = e->createNewChildElement ("V"); v->setAttribute ("k", all.getAllKeys()[i]); v->setAttribute ("v", all.getAllValues()[i]); }
+    };
+    addProps ("SETTINGS", core.state);
+    if (&props != &core.state) addProps ("GLOBAL", props);
+    auto addFolder = [&] (const char* tag, const juce::File& dir)
+    {
+        auto* e = root.createNewChildElement (tag);
+        for (auto& f : dir.findChildFiles (juce::File::findFiles, false, "*.json"))
+            if (f.getSize() < 4 * 1024 * 1024) { auto* x = e->createNewChildElement ("FILE"); x->setAttribute ("name", f.getFileName()); x->addTextElement (f.loadFileAsString()); }
+    };
+    addFolder ("THEMES", ScopeTheme::folder());
+    addFolder ("TARGETS", TargetLibrary::folder());
+
+    chooser = std::make_unique<juce::FileChooser> ("Back up settings",
+        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("DigiCheck Universal backup " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d") + ".dcubackup"),
+        "*.dcubackup");
+    auto xml = std::make_shared<juce::String> (root.toString());
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [safe = juce::Component::SafePointer<MainComponent> (this), xml] (const juce::FileChooser& fc)
+    {
+        const auto f = fc.getResult();
+        if (safe == nullptr || f == juce::File()) return;
+        safe->showToast (f.replaceWithText (*xml) ? "Settings backed up to " + f.getFileName() : juce::String ("Couldn't write ") + f.getFileName());
+    });
+}
+
+void MainComponent::restoreSettings()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Restore settings", juce::File::getSpecialLocation (juce::File::userDocumentsDirectory), "*.dcubackup");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [safe = juce::Component::SafePointer<MainComponent> (this)] (const juce::FileChooser& fc)
+    {
+        const auto f = fc.getResult();
+        if (safe == nullptr || ! f.existsAsFile()) return;
+        auto root = juce::XmlDocument::parse (f);
+        if (root == nullptr || ! root->hasTagName ("DIGICHECK_UNIVERSAL_BACKUP")) { safe->showToast ("That isn't a DigiCheck Universal backup"); return; }
+        auto& self = *safe;
+        auto readProps = [&] (const char* tag, juce::PropertySet& p)
+        {
+            if (auto* e = root->getChildByName (tag))
+                for (auto* v : e->getChildIterator()) p.setValue (v->getStringAttribute ("k"), v->getStringAttribute ("v"));
+        };
+        readProps ("SETTINGS", self.core.state);
+        readProps ("GLOBAL", self.props);
+        auto readFolder = [&] (const char* tag, const juce::File& dir)
+        {
+            if (auto* e = root->getChildByName (tag))
+            {
+                dir.createDirectory();
+                for (auto* x : e->getChildIterator())
+                {
+                    const auto name = juce::File::createLegalFileName (x->getStringAttribute ("name"));
+                    if (name.endsWithIgnoreCase (".json")) dir.getChildFile (name).replaceWithText (x->getAllSubText());
+                }
+            }
+        };
+        readFolder ("THEMES", ScopeTheme::folder());
+        readFolder ("TARGETS", TargetLibrary::folder());
+        if (auto* pf = dynamic_cast<juce::PropertiesFile*> (&self.core.state)) pf->saveIfNeeded();
+        self.props.saveIfNeeded();
+        self.core.saveBlocked = true;            // keep what was restored: nothing overwrites it before the restart
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Settings restored",
+            self.core.plugin ? "Close and reopen the project (or remove and re-add the plugin) to use the restored settings."
+                             : "Restart DigiCheck Universal to use the restored settings.");
+    });
+}
+
+void MainComponent::resetDefaults()
+{
+    auto opts = juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::QuestionIcon).withTitle ("Reset to defaults")
+                    .withMessage ("Put every setting back to its default? Presets, Custom layouts, Scope themes and Balance targets are kept. "
+                                  "Tip: Back up... first if you might want them back.")
+                    .withButton ("Reset", 1).withButton ("Cancel", 0).withAssociatedComponent (this);
+    juce::AlertWindow::showAsync (opts, [safe = juce::Component::SafePointer<MainComponent> (this)] (int r)
+    {
+        if (safe == nullptr || r != 1) return;
+        Settings fresh;
+        fresh.source = safe->settings.source;            // keep the audio input, so the app still hears something
+        fresh.save (safe->core.state);
+        safe->core.state.setValue ("analyzerState", juce::String());
+        if (auto* pf = dynamic_cast<juce::PropertiesFile*> (&safe->core.state)) pf->saveIfNeeded();
+        safe->core.saveBlocked = true;
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Settings reset",
+            safe->core.plugin ? "Close and reopen the project to use the default settings." : "Restart DigiCheck Universal to use the default settings.");
+    });
+}
+
+// Custom page: a click in a pane makes it the focused pane (the bottom bar shows its controls)
+void MainComponent::notePaneClick (juce::Component& c)
+{
+    if (settings.viewMode != BottomBar::Custom || ! isParentOf (&c)) return;
+    for (int id = 0; id < 6; ++id)
+        if (auto* v = viewComponent (id); v != nullptr && v->isVisible() && (v == &c || v->isParentOf (&c)))
+        {
+            if (settings.customFocus != id) { settings.customFocus = id; bottom.refresh(); repaint(); saveAll(); }
+            return;
+        }
+}
+
+// Saved Custom layouts live with the presets (app-wide), as <LAYOUT name=...> elements
+std::unique_ptr<juce::XmlElement> MainComponent::loadLayouts() const
+{
+    auto x = props.getXmlValue ("customLayouts");
+    return x != nullptr ? std::move (x) : std::make_unique<juce::XmlElement> ("LAYOUTS");
+}
+
+void MainComponent::refreshSavedLayouts()
+{
+    juce::StringArray names;
+    if (auto x = loadLayouts()) for (auto* e : x->getChildIterator()) names.add (e->getStringAttribute ("name"));
+    bottom.savedLayouts = names;
+}
+
+void MainComponent::saveLayoutAs (const juce::String& name)
+{
+    auto x = loadLayouts();
+    for (auto* e : x->getChildIterator()) if (e->getStringAttribute ("name") == name) { x->removeChildElement (e, true); break; }
+    auto* e = x->createNewChildElement ("LAYOUT");
+    e->setAttribute ("name", name);
+    e->setAttribute ("layout", settings.customLayout); e->setAttribute ("slots", settings.customSlots);
+    e->setAttribute ("splitA", settings.customSplitA); e->setAttribute ("splitB", settings.customSplitB);
+    e->setAttribute ("monOrder", settings.customMonOrder); e->setAttribute ("monShown", settings.customMonShown);
+    e->setAttribute ("monWide", settings.customMonWide); e->setAttribute ("monMax", settings.customMonMax); e->setAttribute ("monCols", settings.customMonCols);
+    props.setValue ("customLayouts", x.get());
+    props.saveIfNeeded();
+    settings.customName = name;
+    refreshSavedLayouts();
+    bottom.refresh();
+    saveAll();
+}
+
+void MainComponent::loadLayout (const juce::String& name)
+{
+    auto x = loadLayouts();
+    for (auto* e : x->getChildIterator())
+        if (e->getStringAttribute ("name") == name)
+        {
+            settings.customLayout = juce::jlimit (0, 5, e->getIntAttribute ("layout", settings.customLayout));
+            settings.customSlots = e->getStringAttribute ("slots", settings.customSlots);
+            settings.customSplitA = juce::jlimit (0.15, 0.85, e->getDoubleAttribute ("splitA", 0.5));
+            settings.customSplitB = juce::jlimit (0.15, 0.85, e->getDoubleAttribute ("splitB", 0.5));
+            settings.customMonOrder = e->getStringAttribute ("monOrder", settings.customMonOrder);
+            settings.customMonShown = e->getIntAttribute ("monShown", settings.customMonShown) & 63;
+            settings.customMonWide = e->getIntAttribute ("monWide", settings.customMonWide) & 63;
+            settings.customMonMax = juce::jlimit (-1, 5, e->getIntAttribute ("monMax", -1));
+            settings.customMonCols = juce::jlimit (0, 3, e->getIntAttribute ("monCols", 0));
+            settings.customName = name;
+            monitorPage.setCustomProfile (false);       // re-reads the module layout when it switches back on
+            setView (BottomBar::Custom);
+            return;
+        }
+}
+
+void MainComponent::deleteLayout (const juce::String& name)
+{
+    auto x = loadLayouts();
+    for (auto* e : x->getChildIterator()) if (e->getStringAttribute ("name") == name) { x->removeChildElement (e, true); break; }
+    props.setValue ("customLayouts", x.get());
+    props.saveIfNeeded();
+    if (settings.customName == name) settings.customName = {};
+    refreshSavedLayouts();
+    bottom.refresh();
+    saveAll();
+}
+
 void MainComponent::setBarHidden (bool h)
 {
     barHidden = h && fullscreen;
@@ -865,7 +1160,7 @@ void MainComponent::setHelpMode (bool on)
 void MainComponent::layoutOptions()
 {
     using ui::px;
-    const int w = juce::jmin (px (470), getWidth() - 16), h = px ((settings.textSize == 3 ? 404 : 372) + (device != nullptr ? 34 : 0) + 38);
+    const int w = juce::jmin (px (470), getWidth() - 16), h = px ((settings.textSize == 3 ? 404 : 372) + (device != nullptr ? 34 : 0) + 38 + 30 + 4);
     options.setBounds (8, getHeight() - BottomBar::height() - h - 6, w, h);
     options.headings.clear();
     auto r = options.getLocalBounds().reduced (14, 10);
@@ -905,17 +1200,30 @@ void MainComponent::layoutOptions()
         textSlider.setBounds (r.removeFromTop (px (28)).withTrimmedLeft (px (130)).withWidth (px (260)));
     }
     r.removeFromTop (px (10));
-    manualBtn.setBounds (r.removeFromTop (px (28)).withWidth (px (120)));
+    row = r.removeFromTop (px (28));
+    manualBtn.setBounds (row.removeFromLeft (px (120))); row.removeFromLeft (px (6));
+    copyImgBtn.setBounds (row.removeFromLeft (px (160)));
+    r.removeFromTop (px (6));
+    row = r.removeFromTop (px (24));
+    updateToggle.setBounds (row.removeFromLeft (px (170))); row.removeFromLeft (px (6));
+    updateBtn.setBounds (row.removeFromLeft (px (200)));
+    heading ("SETTINGS");
+    row = r.removeFromTop (px (28));
+    backupBtn.setBounds (row.removeFromLeft (px (100))); row.removeFromLeft (px (6));
+    restoreBtn.setBounds (row.removeFromLeft (px (90))); row.removeFromLeft (px (6));
+    defaultsBtn.setBounds (row.removeFromLeft (px (140)));
 }
 
 bool MainComponent::keyPressed (const juce::KeyPress& k)
 {
-    const bool ana = settings.viewMode == BottomBar::Analyzer, bal = settings.viewMode == BottomBar::Balance || settings.viewMode == BottomBar::Key || settings.viewMode == BottomBar::Scope
-                    || settings.viewMode == BottomBar::Monitor || settings.viewMode == BottomBar::Custom;
+    // on the Custom page, keys act on the pane last clicked (none: no view keys)
+    const int kv = settings.viewMode == BottomBar::Custom ? (shows (settings.customFocus) ? settings.customFocus : -1) : settings.viewMode;
+    const bool ana = kv == BottomBar::Analyzer, bal = kv == BottomBar::Balance || kv == BottomBar::Key || kv == BottomBar::Scope
+                    || kv == BottomBar::Monitor || kv < 0;
     if (k == juce::KeyPress::spaceKey)
     {
-        if (settings.viewMode == BottomBar::Key) keyPage.togglePlay();
-        else if (settings.viewMode == BottomBar::Scope) scopePage.toggleFreeze();
+        if (kv == BottomBar::Key) keyPage.togglePlay();
+        else if (kv == BottomBar::Scope) scopePage.toggleFreeze();
         else if (ana) { if (analyzerPanel.isFft()) analyzerPanel.getFftView().toggleFreeze(); else analyzerPanel.getView().toggleFreeze(); }
         else if (! bal) view.togglePause();
         return true;
@@ -930,6 +1238,8 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
     }
     if (k == juce::KeyPress::F11Key)            { toggleFullscreen(); return true; }
     if ((k.getTextCharacter() == 'b' || k.getTextCharacter() == 'B') && fullscreen) { setBarHidden (! barHidden); return true; }
+    if (k == juce::KeyPress ('c', juce::ModifierKeys::commandModifier, 0)) { copyViewImage (false); return true; }
+    if (k == juce::KeyPress ('c', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0)) { copyViewImage (true); return true; }
     if (k.getTextCharacter() == '?' || k == juce::KeyPress::F1Key) { setHelpMode (! settings.helpMode); return true; }
     if (k.getTextCharacter() == 'o' || k.getTextCharacter() == 'O') { toggleOptions(); return true; }
     if (k == juce::KeyPress::escapeKey)
@@ -940,7 +1250,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
         return true;
     }
     if (k.getTextCharacter() == 'k' || k.getTextCharacter() == 'K') { setView (BottomBar::Key); return true; }
-    if ((k.getTextCharacter() == 'r' || k.getTextCharacter() == 'R') && settings.viewMode == BottomBar::Key) { keyPage.toggleRecording(); return true; }
+    if ((k.getTextCharacter() == 'r' || k.getTextCharacter() == 'R') && kv == BottomBar::Key) { keyPage.toggleRecording(); return true; }
     if (k.getTextCharacter() == 't' || k.getTextCharacter() == 'T') { toggleTempoWindow(); return true; }
     if (k.getTextCharacter() == 'p' || k.getTextCharacter() == 'P')
     {

@@ -70,7 +70,11 @@ private:
     juce::Image staticLayer;
     float staticScale = 1.0f;
     juce::Point<float> hover { -1, -1 };
-    juce::TextButton openFolder { "Open targets folder" }, openBuilder { "Open Target Builder" };
+    juce::TextButton openFolder { "Open targets folder" }, openBuilder { "Open Target Builder" }, snapBtn { "Snapshot" };
+    // Snapshot: the measurement kept as a ghost curve (before / after); smoothed like the live curve
+    std::vector<double> snapRaw, snapCurve;
+    int snapSmoothedFor = -1;
+    const std::vector<double>* snapshot();
 
     // optional paint timing (SPECTROSCOPE_PAINT_LOG=1)
     double paintMsSum = 0;

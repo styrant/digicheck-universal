@@ -29,10 +29,14 @@ public:
     ~BottomBar() override;
 
     void refresh();                          // re-read settings (view, toggles, ref level)
+    std::function<void()> onSaveLayout, onDeleteLayout, onUpdateLayout;     // Custom layouts: ask for a name / delete the current one
+    std::function<void (const juce::String&)> onLoadLayout;
+    juce::StringArray savedLayouts;          // names, set by the owner
     void setPaused (bool);
     void setFullscreen (bool);
     void setBarHidden (bool);
     void setHelp (bool);
+    void setUpdateAvailable (const juce::String& version);
     void setTempoOpen (bool);
     void setOptionsOpen (bool);
     void onFrame();                          // called on each (capped) display frame
@@ -91,9 +95,11 @@ private:
     int balSelected = 0;
     // right corner (small)
     LufsReadout lufs;
-    juce::TextButton resetBtn { "Reset" }, full { "Full screen" }, helpBtn { "?" }, hideBarBtn { "Hide bar" };
+    juce::TextButton resetBtn { "Reset" }, full { "Full screen" }, helpBtn { "?" }, hideBarBtn { "Hide bar" }, updateBtn;
     // custom group
     juce::TextButton customBtn;
     void showCustomMenu();
+    int cv() const;
+    juce::String customLongText;
     bool lufsDirty = false;
 };

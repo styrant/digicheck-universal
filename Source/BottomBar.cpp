@@ -174,7 +174,7 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
 
 BottomBar::~BottomBar()
 {
-    for (auto* b : { &resetBtn, &full, &helpBtn, &hideBarBtn }) b->setLookAndFeel (nullptr);
+    for (auto* b : { &resetBtn, &full, &helpBtn, &hideBarBtn, &updateBtn }) b->setLookAndFeel (nullptr);
 }
 
 void BottomBar::refresh()
@@ -188,7 +188,7 @@ void BottomBar::refresh()
     viewMon.setToggleState (s.viewMode == Monitor, juce::dontSendNotification);
     viewCustom.setToggleState (s.viewMode == Custom, juce::dontSendNotification);
     helpBtn.setToggleState (s.helpMode, juce::dontSendNotification);
-    customBtn.setButtonText ("Layout: " + juce::StringArray ({ "2 side by side", "2 stacked", "Large left", "Large top", "3 columns", "2 x 2" })[juce::jlimit (0, 5, s.customLayout)]
+    customLongText = ((s.customName.isNotEmpty() ? s.customName + ": " : juce::String ("Layout: ")) + juce::StringArray ({ "2 side by side", "2 stacked", "Large left", "Large top", "3 columns", "2 x 2" })[juce::jlimit (0, 5, s.customLayout)]
                              + juce::String::fromUTF8 (" \xe2\x96\xbe"));
 
     balCurve.setToggleState (s.balanceMode == 0, juce::dontSendNotification);
@@ -254,6 +254,18 @@ void BottomBar::showCustomMenu()
         menu.addSubMenu ("Pane " + juce::String (i + 1) + " (" + where[juce::jlimit (0, 5, s.customLayout)][i] + "):  " + cur, sub);
     }
     menu.addSeparator();
+    // saved layouts (app-wide)
+    juce::PopupMenu saved;
+    for (auto& n : savedLayouts) saved.addItem (n, true, n == s.customName, [this, n] { if (onLoadLayout) onLoadLayout (n); });
+    if (savedLayouts.isEmpty()) saved.addItem ("(none yet)", false, false, [] {});
+    menu.addSubMenu ("Saved layouts", saved);
+    menu.addItem ("Save layout as...", [this] { if (onSaveLayout) onSaveLayout(); });
+    if (s.customName.isNotEmpty())
+    {
+        menu.addItem ("Update \"" + s.customName + "\"", [this] { if (onUpdateLayout) onUpdateLayout(); });
+        menu.addItem ("Delete \"" + s.customName + "\"", [this] { if (onDeleteLayout) onDeleteLayout(); });
+    }
+    menu.addSeparator();
     menu.addItem ("Equal sizes", [this]
     {
         static const double a[6] = { 0.5, 0.5, 0.62, 0.62, 1.0 / 3.0, 0.5 };
@@ -274,6 +286,17 @@ std::array<int, 4> BottomBar::customSlots (const Settings& st)
 }
 
 void BottomBar::setBarHidden (bool h) { hideBarBtn.setButtonText (h ? "Show bar" : "Hide bar"); }
+void BottomBar::setUpdateAvailable (const juce::String& v)
+{
+    updateBtn.setButtonText (v + " available");
+    updateBtn.setTooltip ("A newer build (" + v + ") is on GitHub: open the download page");
+    updateBtn.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2f6b3f));
+    updateBtn.setLookAndFeel (smallLnf.get());
+    updateBtn.onClick = [] { juce::URL ("https://github.com/styrant/digicheck-universal/releases/tag/latest").launchInDefaultBrowser(); };
+    addAndMakeVisible (updateBtn);
+    resized();
+}
+
 void BottomBar::setHelp (bool on)     { helpBtn.setToggleState (on, juce::dontSendNotification); }
 
 void BottomBar::setPaused (bool p)     { pause.setButtonText (p ? ">" : "||"); }
@@ -305,9 +328,20 @@ void BottomBar::paint (juce::Graphics& g)
     g.setColour (kFrameLine); g.drawHorizontalLine (0, 0.0f, (float) getWidth());
 }
 
+// The view whose controls the bar shows: the current view, or on the Custom page the pane last clicked
+int BottomBar::cv() const
+{
+    if (s.viewMode != Custom) return s.viewMode;
+    const auto slots = customSlots (s);
+    for (int i = 0; i < panesIn (s.customLayout); ++i) if (slots[(size_t) i] == s.customFocus && s.customFocus >= 0) return s.customFocus;
+    return -1;
+}
+
 void BottomBar::resized()
 {
-    const bool spec = s.viewMode == Spectrogram, bal = s.viewMode == Balance;
+    const int view = cv();
+    const bool cust = s.viewMode == Custom;
+    const bool spec = view == Spectrogram, bal = view == Balance;
     const bool controls = ! s.hidePanel;
     auto r = getLocalBounds().withTrimmedTop (1).reduced (8, 6);
 
@@ -338,6 +372,7 @@ void BottomBar::resized()
     small (helpBtn, ui::px (24));
     hideBarBtn.setVisible (! plugin && isFull);
     if (! plugin && isFull) small (hideBarBtn, ui::px (64));
+    if (updateBtn.isVisible()) small (updateBtn, ui::px (96));
     resetBtn.setVisible (s.showLufs);
     lufs.setVisible (s.showLufs);
     if (s.showLufs)
@@ -346,16 +381,15 @@ void BottomBar::resized()
         r.removeFromRight (ui::px (4));
         // leave the middle controls their minimum width; the loudness boxes shrink first
         // the analyzer's combo boxes get room only if the loudness boxes can stay comfortably wide
-        const int compact = spec ? ui::px (66 + 6 + 34 + 8 + 80 + 4 + 62)
+        const int compact = (cust ? ui::px (160) : 0) + (spec ? ui::px (66 + 6 + 34 + 8 + 80 + 4 + 62)
                           : bal ? ui::px (110 + 4 + 96 + 6 + 96 + 6 + 52 + 44 + 6 + 48)
-                          : s.viewMode == Custom ? ui::px (160)
-                          : (s.viewMode == Key || s.viewMode == Scope || s.viewMode == Monitor) ? 0
+                          : (view == Key || view == Scope || view == Monitor || view < 0) ? 0
                           : s.anaStyle == 1 ? 0
-                                : ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
+                                : ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72));
         const int withCombos = compact + ui::px (64 + 4 + 122 + 4 + 84 + 10);
         auto lufsFor = [&] (int group) { return juce::jmin (ui::px (450), juce::jmin (r.getWidth() / 2, r.getWidth() - group - ui::px (16))); };
-        const int minGroup = (s.viewMode == Analyzer && s.anaStyle == 0 && lufsFor (withCombos) >= ui::px (330)) ? withCombos : compact;
-        const int lufsW = juce::jmax (ui::px (s.viewMode == Balance ? 180 : 240), lufsFor (minGroup));
+        const int minGroup = (view == Analyzer && s.anaStyle == 0 && lufsFor (withCombos) >= ui::px (330)) ? withCombos : compact;
+        const int lufsW = juce::jmax (ui::px (view == Balance || cust ? 180 : 240), lufsFor (minGroup));
         lufs.setBounds (r.removeFromRight (lufsW).expanded (0, 2));
         r.removeFromRight (ui::px (12));
     }
@@ -364,16 +398,17 @@ void BottomBar::resized()
     for (auto* c : std::initializer_list<juce::Component*> { &specPresets, &pause, &ref, &refDown, &refUp, &specScale, &specChannel, &specSettings })
         c->setVisible (spec && controls);
     for (auto* c : std::initializer_list<juce::Component*> { &anaPresets, &bpoBox, &chanBox, &gridBox, &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings })
-        c->setVisible (s.viewMode == Analyzer && controls && s.anaStyle == 0);
+        c->setVisible (view == Analyzer && controls && s.anaStyle == 0);
     for (auto* c : std::initializer_list<juce::Component*> { &balTarget, &balWindow, &balSmooth, &balCurve, &balDiff, &balReset })
         c->setVisible (bal && controls);
-    const bool cust = s.viewMode == Custom;
     customBtn.setVisible (cust);
     if (cust)
     {
-        const int w = juce::jmin (r.getWidth(), ui::px (160));
-        customBtn.setBounds (juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight()));
-        return;
+        // Custom: the Layout button, then the controls of the pane last clicked
+        // a short "Layout" button when the pane's controls need the room
+        const bool shortBtn = view >= 0 && view != Key && view != Scope && view != Monitor && r.getWidth() < ui::px (150 + 10 + 300);
+        customBtn.setButtonText (shortBtn ? "Layout" + juce::String::fromUTF8 (" \xe2\x96\xbe") : customLongText);
+        customBtn.setBounds (r.removeFromLeft (juce::jmin (r.getWidth(), ui::px (shortBtn ? 80 : 150)))); r.removeFromLeft (juce::jmin (r.getWidth(), ui::px (8)));
     }
     if (! controls) return;
 
@@ -425,7 +460,7 @@ void BottomBar::resized()
         return;
     }
 
-    if (s.viewMode != Analyzer) return;               // the Key, Scope and Monitor views have no controls here (they're on their pages)
+    if (view != Analyzer) return;                     // the Key, Scope and Monitor views have no controls here (they're on their pages)
     if (s.anaStyle == 1) return;                       // the FFT style keeps its controls in its own header
 
     // what fits, in order; when space is short the least important go first: the three combo boxes, Full,

@@ -161,7 +161,28 @@ private:
     std::vector<Divider> dividers;
     int dragDivider = -1;
     juce::Rectangle<int> contentArea;
-    juce::TextButton startBtn { "Start" }, settingsBtn { "View settings" }, rescanBtn { "Rescan" }, manualBtn { "User manual" };
+    void notePaneClick (juce::Component&);
+    // Ctrl+C: the page (Custom: Ctrl+Shift+C the focused pane) as an image on the clipboard and in the Screenshots folder
+    void copyViewImage (bool paneOnly);
+    void showToast (const juce::String& text);
+    juce::Label toast;
+    double toastUntil = 0;
+    std::unique_ptr<juce::XmlElement> loadLayouts() const;
+    void refreshSavedLayouts();
+    void saveLayoutAs (const juce::String& name);
+    void loadLayout (const juce::String& name);
+    void deleteLayout (const juce::String& name);
+    juce::TextButton startBtn { "Start" }, settingsBtn { "View settings" }, rescanBtn { "Rescan" }, manualBtn { "User manual" }, copyImgBtn { "Copy view as image" },
+                     backupBtn { "Back up..." }, restoreBtn { "Restore..." }, defaultsBtn { "Reset to defaults" }, updateBtn;
+    juce::ToggleButton updateToggle { "Check for updates" };
+    void backupSettings();
+    void restoreSettings();
+    void resetDefaults();
+    void checkForUpdates();
+    void onUpdateResult (const juce::String& latestVersion);
+    struct UpdateCheck;
+    std::unique_ptr<juce::Thread> updateThread;
+    juce::String newerVersion;
     juce::ToggleButton gpuToggle { "GPU rendering (OpenGL)" };
     juce::VBlankAttachment frameTick { this, [this] (double t) { onFrame (t); } };
     std::vector<AudioEngine::Source> sources;

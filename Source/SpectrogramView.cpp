@@ -602,7 +602,7 @@ void SpectrogramView::mouseWheelMove (const juce::MouseEvent&, const juce::Mouse
 //==============================================================================
 void SpectrogramView::paint (juce::Graphics& g)
 {
-    if (gpu)
+    if (gpu && ! forSnapshot)
     {
         // the GL texture is drawn underneath: paint only the frame around the plot
         juce::Graphics::ScopedSaveState ss (g);
@@ -617,14 +617,32 @@ void SpectrogramView::paint (juce::Graphics& g)
     }
     g.setColour (kFrameLine); g.drawRect (plot.expanded (1));
 
-    // spectrogram image (CPU renderer)
-    if (! gpu)
+    // spectrogram image (CPU renderer; with the GPU renderer, for a snapshot: the texture's pixels)
+    if (! gpu || forSnapshot)
     {
         juce::Graphics::ScopedSaveState ss (g);
         g.reduceClipRegion (plot);
         g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
+        juce::Image gimg;
+        if (gpu)
+        {
+            const juce::ScopedLock sl (glLock);
+            if (gpix.size() >= (size_t) W * (size_t) H && W > 0 && H > 0)
+            {
+                gimg = juce::Image (juce::Image::RGB, W, H, false);
+                juce::Image::BitmapData bd (gimg, juce::Image::BitmapData::writeOnly);
+                for (int x = 0; x < W; ++x)
+                    for (int j = 0; j < H; ++j)
+                    {
+                        const auto v = gpix[(size_t) x * (size_t) H + (size_t) j];
+                        bd.setPixelColour (x, H - 1 - j, juce::Colour ((juce::uint8) (v & 0xff), (juce::uint8) ((v >> 8) & 0xff), (juce::uint8) ((v >> 16) & 0xff)));
+                    }
+            }
+        }
+        const auto& img = gpu ? gimg : this->img;
         const int px = plot.getX(), py = plot.getY(), ph = plot.getHeight();
-        if (s.stationary)
+        if (img.isNull()) {}
+        else if (s.stationary)
             g.drawImage (img, px, py, W, ph, 0, 0, W, H);
         else
         {
