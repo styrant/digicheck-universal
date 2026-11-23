@@ -26,10 +26,16 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     bool keyPressed (const juce::KeyPress&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
 
     void startSourceByKey (const juce::String& key);   // used by --test-screenshot
     void openSettings();
     void toggleFullscreen();
+    void setBarHidden (bool hidden);                 // full screen only: the bottom bar too (it peeks back at the bottom edge)
+    void setHelpMode (bool on);
     void setFullscreenState (bool isFullscreen);     // called by the window owner
     void suspendGpu();                               // around moving to another window
     void setCpuOverride (bool on)                    { cpuOverride = on; applyRenderer(); }   // full screen on an HDR monitor (mode 1)
@@ -38,6 +44,7 @@ public:
     void toggleTempoWindow();
     void setCursorForTest (double hz) { view.setCursorFrequency (hz); }
     void setView (int viewMode);
+    void setCustomForTest (int layout, const juce::String& slots) { settings.customLayout = layout; settings.customSlots = slots; setView (BottomBar::Custom); }
     void applyRendererForTest() { applyRenderer(); }
     Settings& getSettings() { return settings; }
     KeyPage& getKeyPage() { return keyPage; }
@@ -142,7 +149,19 @@ private:
     juce::Slider textSlider;
     juce::Label lblL { {}, "L" }, lblR { {}, "R" }, lblFps { {}, "Frame rate limit" }, lblText { {}, "Text size" }, lblHdr { {}, "HDR full screen" };
     bool fullscreen = false, gpuSuspended = false, cpuOverride = false;
-    juce::TextButton startBtn { "Start" }, settingsBtn { "View settings" }, rescanBtn { "Rescan" };
+    bool barHidden = false, barPeek = false, pendingHideBar = false;
+    double barLeaveTime = 0;
+    std::unique_ptr<juce::TooltipWindow> helpTips;
+
+    // Custom page: the panes, and the dividers between them (dragged to resize)
+    juce::Component* viewComponent (int id);
+    bool shows (int id) const;                       // shown now (alone, or in a Custom pane)
+    std::vector<juce::Rectangle<int>> customPanes (juce::Rectangle<int> area) const;
+    struct Divider { juce::Rectangle<int> r; bool vertical; int which; juce::Rectangle<int> span; };   // which: 0 splitA, 1 splitB
+    std::vector<Divider> dividers;
+    int dragDivider = -1;
+    juce::Rectangle<int> contentArea;
+    juce::TextButton startBtn { "Start" }, settingsBtn { "View settings" }, rescanBtn { "Rescan" }, manualBtn { "User manual" };
     juce::ToggleButton gpuToggle { "GPU rendering (OpenGL)" };
     juce::VBlankAttachment frameTick { this, [this] (double t) { onFrame (t); } };
     std::vector<AudioEngine::Source> sources;

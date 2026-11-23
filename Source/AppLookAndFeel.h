@@ -19,6 +19,31 @@ public:
     }
     juce::Font getPopupMenuFont() override { return juce::FontOptions (ui::fs (17.0f)); }
 
+    // Help mode's descriptions: larger text, wrapped to a readable width, on a dark card with a blue edge
+    static juce::TextLayout tipLayout (const juce::String& text, juce::Colour c)
+    {
+        juce::AttributedString s;
+        s.setJustification (juce::Justification::topLeft);
+        s.append (text, juce::FontOptions (ui::fs (14.5f)), c);
+        juce::TextLayout tl;
+        tl.createLayoutWithBalancedLineLengths (s, (float) ui::px (340));
+        return tl;
+    }
+    juce::Rectangle<int> getTooltipBounds (const juce::String& text, juce::Point<int> pos, juce::Rectangle<int> parent) override
+    {
+        const auto tl = tipLayout (text, juce::Colours::white);
+        const int w = (int) (tl.getWidth() + ui::px (22)), h = (int) (tl.getHeight() + ui::px (16));
+        return juce::Rectangle<int> (pos.x > parent.getCentreX() ? pos.x - (w + 12) : pos.x + 16,
+                                     pos.y > parent.getCentreY() ? pos.y - (h + 8) : pos.y + 18, w, h).constrainedWithin (parent);
+    }
+    void drawTooltip (juce::Graphics& g, const juce::String& text, int w, int h) override
+    {
+        const auto r = juce::Rectangle<float> ((float) w, (float) h);
+        g.setColour (juce::Colour (0xf5181a1f)); g.fillRoundedRectangle (r, 6.0f);
+        g.setColour (juce::Colour (0xff4c8dff)); g.drawRoundedRectangle (r.reduced (0.75f), 6.0f, 1.5f);
+        tipLayout (text, juce::Colour (0xffeef0f3)).draw (g, r.reduced ((float) ui::px (11), (float) ui::px (8)));
+    }
+
     juce::Label* createSliderTextBox (juce::Slider& s) override
     {
         auto* l = LookAndFeel_V4::createSliderTextBox (s);

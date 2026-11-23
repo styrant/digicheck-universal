@@ -78,6 +78,19 @@ int main()
     const auto fs = tonal::smoothDb (flat);
     double mx = 0; for (double d : fs) mx = std::max (mx, std::abs (d + 60.0));
     check (mx < 1e-9, "smoothing a flat curve leaves it flat");
+    {
+        // bell smoothing: flat stays flat, a narrow peak spreads smoothly (no corners: small second differences)
+        std::vector<double> flat ((size_t) tonal::kBins, -40.0), spike ((size_t) tonal::kBins, -60.0);
+        double mxb = 0;
+        for (double v : tonal::smoothDbBell (flat, 1.0)) mxb = std::max (mxb, std::abs (v + 40.0));
+        check (mxb < 1e-9, "bell smoothing leaves a flat curve flat");
+        for (int k = 180; k <= 190; ++k) spike[(size_t) k] = -20.0;          // about 2.1-2.2 kHz
+        const auto a = tonal::smoothDbBell (spike, 1.0 / 3.0), b = tonal::smoothDbBell (spike, 1.0);
+        double d2a = 0, d2b = 0;
+        for (int k = 60; k < 700; ++k) { d2a = std::max (d2a, std::abs (a[(size_t) k + 1] - 2 * a[(size_t) k] + a[(size_t) k - 1])); d2b = std::max (d2b, std::abs (b[(size_t) k + 1] - 2 * b[(size_t) k] + b[(size_t) k - 1])); }
+        check (b[185] < a[185] && d2b < d2a, "wider bell smoothing is lower at the peak and smoother");
+        check (b[93] > -59.0 && b[370] > -59.0, "1-octave bell reaches an octave either side");
+    }
     const auto sh = tonal::bandShares (loud);
     check (std::abs (sh[0] + sh[1] + sh[2] + sh[3] - 1.0) < 1e-9, "band shares add up to 1");
 

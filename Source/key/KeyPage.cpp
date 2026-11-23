@@ -3,7 +3,7 @@
 
 namespace
 {
-    const juce::Colour kBg { 0xff111214 }, kPanel { 0xff17191d }, kLine { 0xff2a2c31 }, kText { 0xffe8e8e8 }, kMuted { 0xff8c93a3 },
+    const juce::Colour kBg { 0xff111214 }, kPanel { 0xff17191d }, kLine { 0xff2a2c31 }, kText { 0xffe8e8e8 }, kMuted { 0xffb0b6c0 },
                        kGreen { 0xff3ddc84 }, kBlue { 0xff7fb0ff }, kRed { 0xffe5484d }, kAccent { 0xff4c8dff }, kMelody { 0xffffb347 };
 
     void caption (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& text, const juce::String& right = {})

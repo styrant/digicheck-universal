@@ -5,7 +5,7 @@
 
 namespace
 {
-    const juce::Colour kBg { 0xff111214 }, kPanel { 0xff17191d }, kGrid { 0xff2a2c31 }, kText { 0xffe8e8e8 }, kMuted { 0xff8c93a3 },
+    const juce::Colour kBg { 0xff111214 }, kPanel { 0xff17191d }, kGrid { 0xff2a2c31 }, kText { 0xffe8e8e8 }, kMuted { 0xffb0b6c0 },
                        kRange { 0xff4c8dff }, kGreen { 0xff3ddc84 }, kAmber { 0xfff0b429 }, kRed { 0xffff5252 }, kTrack { 0xff202227 };
     const char* kBandNames[4] = { "Low", "Low-mid", "High-mid", "High" };
     const char* kBandFreqs[4] = { "0 - 250 Hz", "250 Hz - 2 kHz", "2 - 8 kHz", "8 kHz +" };
@@ -20,10 +20,13 @@ namespace
     int binAt (double hz) { return juce::jlimit (1, tonal::kBins - 1, (int) std::lround (hz / (tonal::kSampleRate / tonal::kFftSize))); }
     float binPos (double hz) { return (float) juce::jlimit (1.0, (double) tonal::kBins - 1.001, hz / (tonal::kSampleRate / tonal::kFftSize)); }
     // a curve value between bins (the low end has few bins per pixel; interpolating avoids steps)
+    // (Catmull-Rom between bins, so the curve has no corners at the bins)
     double at (const std::vector<double>& v, float pos)
     {
-        const int i = (int) pos; const double f = pos - (float) i;
-        return v[(size_t) i] + (v[(size_t) i + 1] - v[(size_t) i]) * f;
+        const int n = (int) v.size();
+        const int i = juce::jlimit (0, n - 2, (int) pos); const double f = pos - (float) i;
+        const double p0 = v[(size_t) juce::jmax (0, i - 1)], p1 = v[(size_t) i], p2 = v[(size_t) i + 1], p3 = v[(size_t) juce::jmin (n - 1, i + 2)];
+        return p1 + 0.5 * f * (p2 - p0 + f * (2 * p0 - 5 * p1 + 4 * p2 - p3 + f * (3 * (p1 - p2) + p3 - p0)));
     }
 }
 
@@ -39,13 +42,14 @@ BalanceView::BalanceView (LiveBalance& l, TargetLibrary& lib) : live (l), librar
 void BalanceView::setActive (bool a)
 {
     active = a;
-    if (a) { library.rescanIfChanged(); startTimerHz (2); timerCallback(); lastFrameTime = 0; }
+    if (a) { if (library.rescanIfChanged()) smoothedFor = -2; startTimerHz (2); timerCallback(); lastFrameTime = 0; }
     else stopTimer();
 }
 
 void BalanceView::setTargetIndex (int i)
 {
     targetIndex = (i >= 0 && i < (int) library.entries().size()) ? i : -1;
+    smoothedFor = -2;
     shownValid = false;                                   // band values are relative to the target: start fresh
     invalidateStatic();
 }
@@ -53,14 +57,36 @@ void BalanceView::setTargetIndex (int i)
 void BalanceView::setDifferenceMode (bool d)    { difference = d; invalidateStatic(); }
 void BalanceView::setInputRunning (bool r)       { if (r != running) { running = r; repaint(); } }
 
+void BalanceView::setSmoothing (int i)
+{
+    if (i == smoothing) return;
+    smoothing = i; smoothedFor = -2;
+    live.setSmoothing (i);
+    invalidateStatic();
+}
+
 const tonal::Target* BalanceView::target() const
 {
-    return targetIndex >= 0 && targetIndex < (int) library.entries().size() ? &library.entries()[(size_t) targetIndex].target : nullptr;
+    if (targetIndex < 0 || targetIndex >= (int) library.entries().size()) return nullptr;
+    const auto& t = library.entries()[(size_t) targetIndex].target;
+    // target files hold a 1/3-octave curve and range; smoother settings smooth them the rest of the way
+    const double extra = std::sqrt (std::max (0.0, juce::square (tonal::smoothingOctaves (smoothing)) - 1.0 / 9.0));
+    if (extra < 1e-6 || t.mean.size() != (size_t) tonal::kBins) return &t;
+    if (smoothedFor != targetIndex)
+    {
+        auto& st = const_cast<BalanceView*> (this)->smoothedTarget;
+        st = t;
+        st.mean = tonal::smoothDbBell (t.mean, extra);
+        st.low  = tonal::smoothDbBell (t.low, extra);
+        st.high = tonal::smoothDbBell (t.high, extra);
+        const_cast<BalanceView*> (this)->smoothedFor = targetIndex;
+    }
+    return &smoothedTarget;
 }
 
 void BalanceView::timerCallback()
 {
-    if (++tick % 4 == 0 && library.rescanIfChanged() && onTargetsChanged) onTargetsChanged();     // every 2 s
+    if (++tick % 4 == 0 && library.rescanIfChanged()) { smoothedFor = -2; if (onTargetsChanged) onTargetsChanged(); }     // every 2 s
     const bool empty = library.entries().empty();
     if (openFolder.isVisible() != empty) { openFolder.setVisible (empty); openBuilder.setVisible (empty && builderAvailable); resized(); repaint(); }
 }

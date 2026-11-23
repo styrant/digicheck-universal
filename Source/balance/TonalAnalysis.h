@@ -78,6 +78,11 @@ namespace tonal
 
     // fractional-octave smoothing in the power domain (frac = 1/3 -> third-octave)
     std::vector<double> smoothDb (const std::vector<double>& db, double frac = 1.0 / 3.0);
+    // smooth, bell-shaped (near Gaussian) fractional-octave smoothing in the power domain: three passes of a
+    // log-symmetric box, so no corners. fwhmOct: the width at half weight in octaves (1 = one octave).
+    std::vector<double> smoothDbBell (const std::vector<double>& db, double fwhmOct);
+    // the display smoothing choices: Smooth (1 octave, the default), Medium (1/2), Detailed (1/3), Fine (1/6)
+    inline double smoothingOctaves (int index) { static const double o[4] = { 1.0, 0.5, 1.0 / 3.0, 1.0 / 6.0 }; return o[index < 0 ? 0 : (index > 3 ? 3 : index)]; }
 
     // each band's share of the (linear magnitude) spectrum; the 4 values add up to 1
     std::array<double, 4> bandShares (const std::vector<double>& normalizedDb);

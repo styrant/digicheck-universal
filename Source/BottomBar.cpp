@@ -17,7 +17,7 @@ namespace
 BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor& proc) : s (st), engine (e)
 {
     smallLnf = std::make_unique<SmallButtonLnf>();          // per instance: no static look-and-feel outliving the UI
-    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &viewBal, &viewKey, &viewScope, &viewMon, &balCurve, &balDiff, &balReset, &lufsBtn, &tempoBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
+    for (auto* b : { &optionsBtn, &viewSpec, &viewAna, &viewBal, &viewKey, &viewScope, &viewMon, &viewCustom, &helpBtn, &hideBarBtn, &balCurve, &balDiff, &balReset, &lufsBtn, &tempoBtn, &specPresets, &anaPresets, &pause, &refDown, &refUp, &specSettings,
                      &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings, &resetBtn, &full, &listenBtn, &scBtn })
     {
         addAndMakeVisible (b);
@@ -36,7 +36,22 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
     viewBal.setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
     viewKey.setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
     viewScope.setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
-    viewMon.setConnectedEdges (juce::Button::ConnectedOnLeft);
+    viewMon.setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
+    viewCustom.setConnectedEdges (juce::Button::ConnectedOnLeft);
+    viewCustom.setTooltip ("Custom: several views on one page, side by side (7, V cycles). Choose the layout and the view in each pane in the bar");
+    viewCustom.onClick = [this] { if (onViewChange) onViewChange (Custom); };
+
+    // custom page: one button with the layout and the view in each pane (picking a view that is already in
+    // another pane swaps them)
+    customBtn.setTooltip ("The Custom page's layout and what each pane shows. Drag the gaps between panes to resize them. "
+                          "Each view's own settings (targets, presets) are set on its own page and carry over; the Monitor keeps a separate module layout here");
+    customBtn.setColour (juce::TextButton::buttonColourId, kButton);
+    customBtn.onClick = [this] { showCustomMenu(); };
+    addAndMakeVisible (customBtn);
+    helpBtn.setTooltip ("Help: while on, resting the mouse on a button or control shows what it does");
+    helpBtn.onClick = [this] { if (onToggleHelp) onToggleHelp(); };
+    hideBarBtn.setTooltip ("Hide this bar too, for the cleanest full screen (B, or Shift+F11). Move the mouse to the bottom edge to bring it back");
+    hideBarBtn.onClick = [this] { if (onToggleHideBar) onToggleHideBar(); };
     viewSpec.setTooltip ("Reassigned spectrogram (1, V cycles)");
     viewAna.setTooltip ("Filter-bank spectrum analyzer (2, V cycles)");
     viewBal.setTooltip ("Tonal balance against a target (3, V cycles)");
@@ -83,7 +98,11 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
     for (auto* c : { &specScale, &specChannel }) addAndMakeVisible (c);
     balWindow.setTooltip ("How much recent audio the measurement averages. Realtime follows the music as it plays (about 0.3 s)");
     balWindow.onChange = [this] { s.balanceWindow = balWindow.getSelectedId() - 1; if (onBalanceWindow) onBalanceWindow (s.balanceWindow); };
-    for (auto* c : { &balTarget, &balWindow }) addAndMakeVisible (c);
+    balSmooth.addItemList ({ "Smooth", "Medium", "Detailed", "Fine" }, 1);
+    balSmooth.setTooltip ("Curve smoothing: Smooth (1 octave, like Tonal Balance Control), Medium (1/2 octave), "
+                          "Detailed (1/3 octave), Fine (1/6 octave). The target's range is smoothed to match");
+    balSmooth.onChange = [this] { s.balanceSmooth = balSmooth.getSelectedId() - 1; if (onBalanceSmooth) onBalanceSmooth (s.balanceSmooth); };
+    for (auto* c : { &balTarget, &balWindow, &balSmooth }) addAndMakeVisible (c);
     balCurve.setConnectedEdges (juce::Button::ConnectedOnRight);
     balDiff.setConnectedEdges (juce::Button::ConnectedOnLeft);
     balCurve.setTooltip ("Your audio over the target's range");
@@ -140,13 +159,13 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
     anaSettings.onClick = [this] { if (onAnalyzerSettings) onAnalyzerSettings(); };
 
     addAndMakeVisible (lufs);
-    for (auto* b : { &resetBtn, &full }) b->setLookAndFeel (smallLnf.get());
+    for (auto* b : { &resetBtn, &full, &helpBtn, &hideBarBtn }) b->setLookAndFeel (smallLnf.get());
     resetBtn.setTooltip ("Restart integrated loudness and true-peak hold");
     full.setTooltip ("Full screen (F11, Esc to leave)");
     resetBtn.onClick = [this] { engine.resetLoudness(); if (onLoudnessReset) onLoudnessReset(); };
     full.onClick     = [this] { if (onToggleFullscreen) onToggleFullscreen(); };
 
-    for (auto* b : { &viewSpec, &viewAna, &viewBal, &viewKey, &viewScope, &viewMon, &balCurve, &balDiff, &lufsBtn })
+    for (auto* b : { &viewSpec, &viewAna, &viewBal, &viewKey, &viewScope, &viewMon, &viewCustom, &balCurve, &balDiff, &lufsBtn, &helpBtn })
         b->setClickingTogglesState (false);   // state comes from settings via refresh()
 
     refresh();
@@ -155,7 +174,7 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
 
 BottomBar::~BottomBar()
 {
-    for (auto* b : { &resetBtn, &full }) b->setLookAndFeel (nullptr);
+    for (auto* b : { &resetBtn, &full, &helpBtn, &hideBarBtn }) b->setLookAndFeel (nullptr);
 }
 
 void BottomBar::refresh()
@@ -167,10 +186,15 @@ void BottomBar::refresh()
     viewKey.setToggleState  (s.viewMode == Key, juce::dontSendNotification);
     viewScope.setToggleState (s.viewMode == Scope, juce::dontSendNotification);
     viewMon.setToggleState (s.viewMode == Monitor, juce::dontSendNotification);
+    viewCustom.setToggleState (s.viewMode == Custom, juce::dontSendNotification);
+    helpBtn.setToggleState (s.helpMode, juce::dontSendNotification);
+    customBtn.setButtonText ("Layout: " + juce::StringArray ({ "2 side by side", "2 stacked", "Large left", "Large top", "3 columns", "2 x 2" })[juce::jlimit (0, 5, s.customLayout)]
+                             + juce::String::fromUTF8 (" \xe2\x96\xbe"));
 
     balCurve.setToggleState (s.balanceMode == 0, juce::dontSendNotification);
     balDiff.setToggleState  (s.balanceMode == 1, juce::dontSendNotification);
     balWindow.setSelectedId (juce::jlimit (0, 5, s.balanceWindow) + 1, juce::dontSendNotification);
+    balSmooth.setSelectedId (juce::jlimit (0, 3, s.balanceSmooth) + 1, juce::dontSendNotification);
     specScale.setSelectedId (juce::jlimit (0, 5, s.freqScale) + 1, juce::dontSendNotification);
     specChannel.setSelectedId (juce::jlimit (0, 3, s.channel) + 1, juce::dontSendNotification);
     lufsBtn.setToggleState  (s.showLufs, juce::dontSendNotification);
@@ -190,6 +214,67 @@ void BottomBar::setBalanceTargets (const juce::StringArray& names, int selected)
     balSelected = (selected >= 0 && selected < names.size()) ? selected + 1 : 0;
     balTarget.setSelectedId (balSelected, juce::dontSendNotification);
 }
+
+void BottomBar::showCustomMenu()
+{
+    static const char* layouts[6] = { "Two side by side", "Two stacked", "Large left, two right", "Large top, two below", "Three columns", "Grid 2 x 2" };
+    juce::PopupMenu menu, lay;
+    for (int i = 0; i < 6; ++i)
+        lay.addItem (layouts[i], true, s.customLayout == i, [this, i]
+        {
+            static const double a[6] = { 0.5, 0.5, 0.62, 0.62, 1.0 / 3.0, 0.5 };
+            s.customLayout = i; s.customSplitA = a[i]; s.customSplitB = 0.5;
+            refresh();
+            if (onCustomChanged) onCustomChanged();
+        });
+    menu.addSubMenu ("Layout", lay);
+    menu.addSeparator();
+    const auto slots = customSlots (s);
+    const auto names = viewNames();
+    static const char* where[6][4] = { { "left", "right" }, { "top", "bottom" }, { "large, left", "top right", "bottom right" },
+                                       { "large, top", "bottom left", "bottom right" }, { "left", "middle", "right" },
+                                       { "top left", "top right", "bottom left", "bottom right" } };
+    for (int i = 0; i < panesIn (s.customLayout); ++i)
+    {
+        juce::PopupMenu sub;
+        auto pick = [this, i] (int v)
+        {
+            auto sl = customSlots (s);
+            for (int j = 0; j < 4; ++j) if (j != i && sl[(size_t) j] == v && v >= 0) sl[(size_t) j] = sl[(size_t) i];   // swap
+            sl[(size_t) i] = v;
+            juce::StringArray a; for (int x : sl) a.add (juce::String (x));
+            s.customSlots = a.joinIntoString (",");
+            refresh();
+            if (onCustomChanged) onCustomChanged();
+        };
+        for (int v = 0; v < names.size(); ++v) sub.addItem (names[v], true, slots[(size_t) i] == v, [pick, v] { pick (v); });
+        sub.addSeparator();
+        sub.addItem ("Empty", true, slots[(size_t) i] < 0, [pick] { pick (-1); });
+        const auto cur = slots[(size_t) i] >= 0 ? names[slots[(size_t) i]] : juce::String ("empty");
+        menu.addSubMenu ("Pane " + juce::String (i + 1) + " (" + where[juce::jlimit (0, 5, s.customLayout)][i] + "):  " + cur, sub);
+    }
+    menu.addSeparator();
+    menu.addItem ("Equal sizes", [this]
+    {
+        static const double a[6] = { 0.5, 0.5, 0.62, 0.62, 1.0 / 3.0, 0.5 };
+        s.customSplitA = a[juce::jlimit (0, 5, s.customLayout)]; s.customSplitB = 0.5;
+        if (onCustomChanged) onCustomChanged();
+    });
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (customBtn));
+}
+
+std::array<int, 4> BottomBar::customSlots (const Settings& st)
+{
+    std::array<int, 4> r { 0, 5, 4, 1 };
+    auto t = juce::StringArray::fromTokens (st.customSlots, ",", {});
+    for (int i = 0; i < 4 && i < t.size(); ++i) r[(size_t) i] = juce::jlimit (-1, 5, t[i].trim().getIntValue());
+    for (int i = 0; i < 4; ++i)                              // a view shows in one pane only
+        for (int j = 0; j < i; ++j) if (r[(size_t) i] >= 0 && r[(size_t) i] == r[(size_t) j]) r[(size_t) i] = -1;
+    return r;
+}
+
+void BottomBar::setBarHidden (bool h) { hideBarBtn.setButtonText (h ? "Show bar" : "Hide bar"); }
+void BottomBar::setHelp (bool on)     { helpBtn.setToggleState (on, juce::dontSendNotification); }
 
 void BottomBar::setPaused (bool p)     { pause.setButtonText (p ? ">" : "||"); }
 void BottomBar::setFullscreen (bool f) { full.setButtonText (f ? "Exit full screen" : "Full screen"); }
@@ -232,7 +317,8 @@ void BottomBar::resized()
     viewBal.setBounds (r.removeFromLeft (ui::px (70)));
     viewKey.setBounds (r.removeFromLeft (ui::px (46)));
     viewScope.setBounds (r.removeFromLeft (ui::px (58)));
-    viewMon.setBounds (r.removeFromLeft (ui::px (70))); r.removeFromLeft (ui::px (10));
+    viewMon.setBounds (r.removeFromLeft (ui::px (70)));
+    viewCustom.setBounds (r.removeFromLeft (ui::px (68))); r.removeFromLeft (ui::px (10));
     lufsBtn.setBounds (r.removeFromLeft (ui::px (48))); r.removeFromLeft (ui::px (4));
     tempoBtn.setBounds (r.removeFromLeft (ui::px (56))); r.removeFromLeft (ui::px (12));
     listenBtn.setVisible (plugin);
@@ -247,7 +333,11 @@ void BottomBar::resized()
 
     // right corner: small Full screen / Auto-hide / Reset, then the loudness boxes
     auto small = [&] (juce::TextButton& b, int w) { b.setBounds (r.removeFromRight (w).withSizeKeepingCentre (w, ui::px (20))); r.removeFromRight (ui::px (4)); };
-    if (! plugin) small (full, ui::px (full.getButtonText().startsWith ("Exit") ? 92 : 70));
+    const bool isFull = full.getButtonText().startsWith ("Exit");
+    if (! plugin) small (full, ui::px (isFull ? 92 : 70));
+    small (helpBtn, ui::px (24));
+    hideBarBtn.setVisible (! plugin && isFull);
+    if (! plugin && isFull) small (hideBarBtn, ui::px (64));
     resetBtn.setVisible (s.showLufs);
     lufs.setVisible (s.showLufs);
     if (s.showLufs)
@@ -257,14 +347,15 @@ void BottomBar::resized()
         // leave the middle controls their minimum width; the loudness boxes shrink first
         // the analyzer's combo boxes get room only if the loudness boxes can stay comfortably wide
         const int compact = spec ? ui::px (66 + 6 + 34 + 8 + 80 + 4 + 62)
-                          : bal ? ui::px (110 + 4 + 80 + 6 + 52 + 44 + 6 + 48)
+                          : bal ? ui::px (110 + 4 + 96 + 6 + 96 + 6 + 52 + 44 + 6 + 48)
+                          : s.viewMode == Custom ? ui::px (160)
                           : (s.viewMode == Key || s.viewMode == Scope || s.viewMode == Monitor) ? 0
                           : s.anaStyle == 1 ? 0
                                 : ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
         const int withCombos = compact + ui::px (64 + 4 + 122 + 4 + 84 + 10);
         auto lufsFor = [&] (int group) { return juce::jmin (ui::px (450), juce::jmin (r.getWidth() / 2, r.getWidth() - group - ui::px (16))); };
         const int minGroup = (s.viewMode == Analyzer && s.anaStyle == 0 && lufsFor (withCombos) >= ui::px (330)) ? withCombos : compact;
-        const int lufsW = juce::jmax (ui::px (240), lufsFor (minGroup));
+        const int lufsW = juce::jmax (ui::px (s.viewMode == Balance ? 180 : 240), lufsFor (minGroup));
         lufs.setBounds (r.removeFromRight (lufsW).expanded (0, 2));
         r.removeFromRight (ui::px (12));
     }
@@ -274,21 +365,34 @@ void BottomBar::resized()
         c->setVisible (spec && controls);
     for (auto* c : std::initializer_list<juce::Component*> { &anaPresets, &bpoBox, &chanBox, &gridBox, &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings })
         c->setVisible (s.viewMode == Analyzer && controls && s.anaStyle == 0);
-    for (auto* c : std::initializer_list<juce::Component*> { &balTarget, &balWindow, &balCurve, &balDiff, &balReset })
+    for (auto* c : std::initializer_list<juce::Component*> { &balTarget, &balWindow, &balSmooth, &balCurve, &balDiff, &balReset })
         c->setVisible (bal && controls);
+    const bool cust = s.viewMode == Custom;
+    customBtn.setVisible (cust);
+    if (cust)
+    {
+        const int w = juce::jmin (r.getWidth(), ui::px (160));
+        customBtn.setBounds (juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight()));
+        return;
+    }
     if (! controls) return;
 
     if (bal)
     {
-        // the target box takes whatever is left (110..220 px); the window box goes first if space is short
-        const int rest = ui::px (4 + 96 + 6 + 52 + 44 + 6 + 48);
-        const int tw = juce::jlimit (ui::px (110), ui::px (220), r.getWidth() - rest);
+        // Curve|Diff and Reset always; then the window and smoothing boxes if they fit beside a target box of at
+        // least 110 px (the smoothing box goes first when space is short); the target box takes what's left (to 220 px)
+        const int base = ui::px (4 + 52 + 44 + 6 + 48), box = ui::px (96 + 6), minT = ui::px (110);
+        const bool roomForWindow = r.getWidth() >= minT + base + box;
+        const bool roomForSmooth = r.getWidth() >= minT + base + 2 * box;
+        const int rest = base + (roomForWindow ? box : 0) + (roomForSmooth ? box : 0);
+        const int tw = juce::jlimit (juce::jmin (minT, r.getWidth() - base), ui::px (220), r.getWidth() - rest);
         const int w = juce::jmin (r.getWidth(), tw + rest);
         auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
         balTarget.setBounds (g.removeFromLeft (tw)); g.removeFromLeft (ui::px (4));
-        const bool roomForWindow = g.getWidth() >= ui::px (96 + 6 + 52 + 44 + 6 + 48);
         balWindow.setVisible (roomForWindow);
+        balSmooth.setVisible (roomForSmooth);
         if (roomForWindow) { balWindow.setBounds (g.removeFromLeft (ui::px (96))); g.removeFromLeft (ui::px (6)); }
+        if (roomForSmooth) { balSmooth.setBounds (g.removeFromLeft (ui::px (96))); g.removeFromLeft (ui::px (6)); }
         balCurve.setBounds (g.removeFromLeft (ui::px (52)));
         balDiff.setBounds (g.removeFromLeft (ui::px (44))); g.removeFromLeft (ui::px (6));
         balReset.setBounds (g.removeFromLeft (ui::px (48)));

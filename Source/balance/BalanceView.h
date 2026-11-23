@@ -24,6 +24,7 @@ public:
 
     void setTargetIndex (int index);              // -1: none
     void setDifferenceMode (bool d);
+    void setSmoothing (int index);                // tonal::smoothingOctaves: the target's range is smoothed to match
     void setInputRunning (bool r);
     void setActive (bool a);
     void onFrame (double vblankSeconds);          // from the display frame clock
@@ -49,6 +50,8 @@ private:
     float yOf (double db) const;
     double baseAt (float binPos) const;                // what the curve is drawn relative to (target mean in Diff mode)
 
+    tonal::Target smoothedTarget;                  // the target, smoothed to the chosen smoothing
+    int smoothedFor = -2, smoothing = 0;
     LiveBalance& live;
     TargetLibrary& library;
     int targetIndex = -1, lastSerial = -1, tick = 0;

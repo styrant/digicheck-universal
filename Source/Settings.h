@@ -28,10 +28,20 @@ struct Settings
     double textScaleCustom = 1.0;
     bool   autoHideBar = true;    // hide the top toolbar in full screen (reveal at the top edge)
 
-    int    viewMode   = 0;        // 0 spectrogram, 1 analyzer, 2 balance, 3 key, 4 scope, 5 monitor
+    int    viewMode   = 0;        // 0 spectrogram, 1 analyzer, 2 balance, 3 key, 4 scope, 5 monitor, 6 custom
+    // Custom page: a layout of up to 4 panes, each showing one view (same numbers as viewMode, -1 empty)
+    int    customLayout = 2;      // 0 two side by side, 1 two stacked, 2 large left + two right, 3 large top + two below,
+                                  // 4 three columns, 5 grid 2 x 2
+    juce::String customSlots = "0,5,4,1";
+    double customSplitA = 0.62, customSplitB = 0.5;   // the main divider and the second one (0..1)
+    // the Monitor's own module layout while it is in the Custom page
+    juce::String customMonOrder = "0,1,2,3,4,5";
+    int    customMonShown = 5, customMonWide = 0, customMonMax = -1, customMonCols = 1;
+    bool   helpMode = false;      // bottom bar "?": descriptions when hovering over controls
     juce::String balanceTarget;   // name of the tonal balance target
     int    balanceWindow = 3;     // 0: realtime, 1: 1 s, 2: 3 s, 3: 10 s, 4: 30 s, 5: since reset
     int    balanceMode   = 0;     // 0 curve, 1 difference
+    int    balanceSmooth = 0;     // 0 Smooth (1 oct), 1 Medium (1/2), 2 Detailed (1/3), 3 Fine (1/6)
     // Key page: chords & melody (transcription)
     int    keyModel      = 0;     // ModelStore::Size: 0 small, 1 medium, 2 large
     juce::String keyDevice;       // device name; empty = Auto
@@ -172,6 +182,7 @@ struct Settings
         balanceTarget = p.getValue ("balanceTarget", balanceTarget);
         balanceWindow = p.getIntValue ("balanceWindow2", p.containsKey ("balanceWindow") ? juce::jlimit (2, 5, p.getIntValue ("balanceWindow") + 2) : balanceWindow);   // old list had no Realtime / 1 s
         balanceMode   = p.getIntValue ("balanceMode", balanceMode);
+        balanceSmooth = juce::jlimit (0, 3, p.getIntValue ("balanceSmooth", balanceSmooth));
         keyModel      = juce::jlimit (0, 2, p.getIntValue ("keyModel", keyModel));
         keyDevice     = p.getValue ("keyDevice", keyDevice);
         keyInstruments = p.getValue ("keyInstruments", keyInstruments);
@@ -239,6 +250,16 @@ struct Settings
         monitorHistLen = juce::jlimit (0, 5, p.getIntValue ("monitorHistLen", monitorHistLen));
         monitorPoints = juce::jlimit (0, 2, p.getIntValue ("monitorPoints", monitorPoints));
         monitorOrder  = p.getValue ("monitorOrder", monitorOrder);
+        customLayout  = juce::jlimit (0, 5, p.getIntValue ("customLayout", customLayout));
+        customSlots   = p.getValue ("customSlots", customSlots);
+        customSplitA  = juce::jlimit (0.15, 0.85, p.getDoubleValue ("customSplitA", customSplitA));
+        customSplitB  = juce::jlimit (0.15, 0.85, p.getDoubleValue ("customSplitB", customSplitB));
+        customMonOrder = p.getValue ("customMonOrder", customMonOrder);
+        customMonShown = p.getIntValue ("customMonShown", customMonShown) & 63;
+        customMonWide  = p.getIntValue ("customMonWide", customMonWide) & 63;
+        customMonMax   = juce::jlimit (-1, 5, p.getIntValue ("customMonMax", customMonMax));
+        customMonCols  = juce::jlimit (0, 3, p.getIntValue ("customMonCols", customMonCols));
+        helpMode = p.getBoolValue ("helpMode", helpMode);
         monitorShown  = p.getIntValue ("monitorShown", monitorShown) & 63;
         monitorWide   = p.getIntValue ("monitorWide", monitorWide) & 63;
         monitorMax    = juce::jlimit (-1, 5, p.getIntValue ("monitorMax", monitorMax));
@@ -288,7 +309,7 @@ struct Settings
         p.setValue ("chL", chL);               p.setValue ("chR", chR);
         p.setValue ("windowState", windowState);
         p.setValue ("viewMode", viewMode);     p.setValue ("analyzerState", analyzerState);
-        p.setValue ("balanceTarget", balanceTarget); p.setValue ("balanceWindow2", balanceWindow); p.setValue ("balanceMode", balanceMode);
+        p.setValue ("balanceTarget", balanceTarget); p.setValue ("balanceWindow2", balanceWindow); p.setValue ("balanceMode", balanceMode); p.setValue ("balanceSmooth", balanceSmooth);
         p.setValue ("keyModel", keyModel); p.setValue ("keyDevice", keyDevice); p.setValue ("keyInstruments", keyInstruments);
         p.setValue ("keyAuto", keyAuto); p.setValue ("keySevenths", keySevenths); p.setValue ("keyShowNotes", keyShowNotes);
         p.setValue ("keyListen", keyListen); p.setValue ("keySynth", keySynth); p.setValue ("keyVolume", keyVolume);
@@ -313,7 +334,11 @@ struct Settings
         p.setValue ("monitorLoudRange", monitorLoudRange); p.setValue ("monitorRelative", monitorRelative); p.setValue ("monitorResetOnPlay", monitorResetOnPlay);
         p.setValue ("monitorHoldTime", monitorHoldTime); p.setValue ("monitorRmsTime", monitorRmsTime);
         p.setValue ("monitorHistTraces", monitorHistTraces); p.setValue ("monitorHistLen", monitorHistLen); p.setValue ("monitorPoints", monitorPoints);
-        p.setValue ("monitorOrder", monitorOrder); p.setValue ("monitorShown", monitorShown); p.setValue ("monitorWide", monitorWide);
+        p.setValue ("monitorOrder", monitorOrder);
+        p.setValue ("customLayout", customLayout); p.setValue ("customSlots", customSlots);
+        p.setValue ("customSplitA", customSplitA); p.setValue ("customSplitB", customSplitB);
+        p.setValue ("customMonOrder", customMonOrder); p.setValue ("customMonShown", customMonShown); p.setValue ("customMonWide", customMonWide);
+        p.setValue ("customMonMax", customMonMax); p.setValue ("customMonCols", customMonCols); p.setValue ("helpMode", helpMode); p.setValue ("monitorShown", monitorShown); p.setValue ("monitorWide", monitorWide);
         p.setValue ("monitorMax", monitorMax); p.setValue ("monitorCols", monitorCols); p.setValue ("monitorTarget", monitorTarget);
         p.setValue ("monitorMomMax", monitorMomMax); p.setValue ("monitorMS", monitorMS); p.setValue ("monitorRange", monitorRange);
         p.setValue ("monitorAes", monitorAes); p.setValue ("monitorField", monitorField); p.setValue ("monitorHistory", monitorHistory);

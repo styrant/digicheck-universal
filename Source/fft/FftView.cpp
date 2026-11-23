@@ -5,7 +5,7 @@
 namespace
 {
     const juce::Colour kBgTop (0xff14171c), kBgBottom (0xff0b0c0f), kGrid (0xff23272e), kGridStrong (0xff313741),
-                       kLabel (0xff7f8794), kText (0xffd6dae1), kButton (0xff2c2f35), kOn (0xff4c8dff);
+                       kLabel (0xffb0b6c0), kText (0xffd6dae1), kButton (0xff2c2f35), kOn (0xff4c8dff);
 
     const char* kChannels[] = { "Stereo", "Left", "Right", "Mid", "Side" };
     const char* kSecondary[] = { "None", "Left", "Right", "Mid", "Side", "Sidechain" };
@@ -124,6 +124,9 @@ void FftView::updateButtons()
     secBtn.setTooltip ("A second curve on top, in its own colour and style" + juce::String (scAvailable ? " (Sidechain: the plugin's sidechain input)" : ""));
     sizeBtn.setTooltip ("FFT size: larger resolves low notes better, smaller reacts faster");
     slopeBtn.setTooltip ("Tilt in dB per octave around 1 kHz (4.5 makes a balanced mix look flat)");
+    avgBtn.setTooltip ("Averaging: how quickly the curve follows the music (longer is steadier)");
+    smoothBtn.setTooltip ("Smoothing across frequency: wider bands give a calmer, easier-to-read curve");
+    colourBtn.setTooltip ("Colours of the main and second curves");
 }
 
 void FftView::menuFor (juce::TextButton& b, int which)

@@ -2,6 +2,8 @@
 
 A native Windows recreation of the Spectroscope (reassigned spectrogram) from RME's DigiCheck NG that works with any audio interface. It was built for a Focusrite Scarlett 16i16 Gen 4.
 
+**[User manual](docs/MANUAL.md)**: how to use every page. In the app, **?** (bottom right, or F1) turns on Help: hover over any control to see what it does.
+
 ## Getting it
 Every push to `main` is built by GitHub Actions and published to the **Latest build** release:
 - **SpectroscopeSetup.exe** installs per user (no admin rights), with a Start menu entry, an optional desktop shortcut and an uninstaller.
@@ -25,7 +27,7 @@ Set-up in Azure: create an Artifact Signing account (Basic plan), complete ident
 
 ## VST3 plugin
 
-**DigiCheck Universal.vst3** puts the same six views on a track in your DAW. The setup installs it (the "Install the VST3 plugin" box), or unzip **DigiCheckUniversal-VST3.zip** into `C:\Program Files\Common Files\VST3`. It's an analysis plugin: the audio passes through untouched (bit for bit, no latency) unless you use Listen.
+**DigiCheck Universal.vst3** puts the same pages (Custom included) on a track in your DAW. The setup installs it (the "Install the VST3 plugin" box), or unzip **DigiCheckUniversal-VST3.zip** into `C:\Program Files\Common Files\VST3`. It's an analysis plugin: the audio passes through untouched (bit for bit, no latency) unless you use Listen.
 
 What the plugin adds:
 - **The project's tempo.** The Tempo window and the Scope's bar lengths follow the DAW's tempo (you can still type another one; it follows again when the project's tempo changes).
@@ -53,7 +55,7 @@ Not in the plugin: the audio-input choice (the track is the input), full screen 
 Settings → Channel Select. (The Analyzer has its own channel box with the same choices plus Stereo.)
 
 ## Views
-Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor** buttons at the bottom left (keys **1-6**, **V** cycles, **K** goes to Key). The bottom bar stays the same in every view: Options, the LUFS readout, Tempo, Reset and Full screen are always there. The controls in the middle change with the view.
+Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor | Custom** buttons at the bottom left (keys **1-7**, **V** cycles, **K** goes to Key). The bottom bar stays the same in every view: Options, the LUFS readout, Tempo, Reset and Full screen are always there. The controls in the middle change with the view.
 
 - **Spectrogram:** the reassigned spectrogram described below. Bottom bar: Presets, Pause, **frequency scale**,
   **channel** (Left / Right / Mid / Side), Ref level -/+ and Settings (on narrow windows Settings, then the Ref
@@ -87,6 +89,7 @@ Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor** but
   - **Colours** (in the menu): a **spectral palette** independent of the theme (Scyllascope, Heat, Ocean, Rainbow, Pastel, Forest, Mono), and your own colour for the wave, Side2SC / sidechain, hold, background, grid, playhead, clipping and accent (a picker that applies as you drag). **Save current colours as a theme...** writes a Scyllascope-compatible theme file.
   - Reserved for the VST3 version: Sync to the host transport, Sync to Start, sidechain from another track or instance, track name/colour, listening to the BP band, and REAPER's embedded mode. They are shown greyed out.
 
+- **Custom:** several views on one page. **Layout ▾** in the bottom bar picks the layout (two side by side, two stacked, large left + two right, large top + two below, three columns, 2 x 2) and what each pane shows; picking a view that's already in another pane swaps them. Drag the gaps to resize the panes. Each view keeps its own settings; the Monitor has a separate module layout on this page (e.g. only Loudness and Levels). The Scope's and Monitor's toolbars drop less important buttons when a pane is narrow (the Monitor's modules move to Layout → Modules).
 - **Monitor:** a modular metering page in the spirit of iZotope Insight 2. The chips at the top show and hide modules; each module's gear has its options (and a **Text size**, 85-200 %), the corner button maximises it (or double-click its title), and dragging a title onto another module swaps them. **Full width** (gear menu) makes a module span the row; **Layout** sets 1-3 columns or resets the layout. **Pause** freezes every module; **Reset** (here or in the bottom bar) restarts the measurements. Everything keeps measuring while the page is hidden.
   - **Loudness:** short-term, integrated, momentary (and its maximum), LRA and true peak against a target. Tall enough (or maximised) it shows Insight's three meter bars, with the LRA as a white bar beside Integrated and the target marked. Colours as in Insight: Integrated green within the tolerance and red above it, Short Term / Momentary yellow above the target, True Peak red above the peak target, LRA red outside its target range. Targets: Streaming -14, Apple Music -16, Podcast / AES TD1006 -16, EBU R128 (and DPP, South Africa), ATSC A/85, AGCOM, ARIB TR-B32, OP-59, Portaria 354, BS.1770-1 (ungated) and -2/3/4, Netflix (with program gating; Netflix asks for dialogue gating, which isn't here), Loud master -9, Custom or none. The **Targets** button (left of the list) sets the loudness target and tolerance, the peak target, the LRA range and the **gate** (Program, BS.1770-2/3/4; or Off, BS.1770-1). Gear: bar range (dB linear / non-linear, BS.1771, EBU +9, EBU +18), the scale relative to the target (LU), and (VST3) **reset when playback starts**.
   - **History:** Momentary, Short-term and Integrated loudness over 30 s to 10 min, the target as a red dashed line, Integrated red where it's above the target; hover for the values at that moment. Gear: which traces, length, relative scale.
@@ -105,15 +108,18 @@ Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor** but
 
 ## Toolbar and windows
 - **Options** (bottom left, or O) opens a pop-up panel with the audio input (source, L/R channels, Start/Stop, Rescan), the status line and the display options (GPU rendering, frame rate limit). There is no top toolbar, so the analysis uses the full height. Click anywhere else or press Esc to close it.
-- **Full screen**: F11 or the small button at the bottom right; Esc leaves. This is *windowed* (borderless) full screen. The window is deliberately 1 px taller than the monitor, so graphics drivers don't promote the OpenGL window to exclusive full screen. That keeps HDR and the video signal undisturbed.
+- **Full screen**: F11 or the small button at the bottom right; Esc leaves. This is *windowed* (borderless) full screen; see HDR full screen under Rendering. In full screen, **Hide bar** (or B; Shift+F11 goes straight there) hides the bottom bar too: move the mouse to the bottom edge and it slides back while you use it.
+- **Help** (**?** left of Full screen, or F1): while on, resting the mouse on a button, box or Monitor module header shows a short description.
 - **Tonal Balance view** (Balance button, or 3; V cycles the three views): your input's tonal balance against a target.
   - Left, four band meters (Low 0-250 Hz, Low-mid 250 Hz-2 kHz, High-mid 2-8 kHz, High 8 kHz+): the blue zone is the
     target's range and the marker shows where you are: green "In range", amber just outside, red further out, with how
     many dB above or below the range.
-  - Right, the detailed curve (20 Hz-20 kHz, 1/3-octave): **Curve** shows your audio over the target's range (red
+  - Right, the detailed curve (20 Hz-20 kHz): **Curve** shows your audio over the target's range (red
     where it leaves the range); **Diff** shows your audio minus the target, so 0 dB is right on target. Hover for the
     exact difference at any frequency.
-  - Bottom bar: the target, the measurement window (Realtime, 1 s, 3 s, 10 s, 30 s or since Reset), Curve/Diff and
+  - Bottom bar: the target, the measurement window (Realtime, 1 s, 3 s, 10 s, 30 s or since Reset), the **smoothing**
+    (Smooth: 1 octave, like Tonal Balance Control's broad curve, the default; Medium 1/2, Detailed 1/3, Fine 1/6
+    octave; a bell-shaped weighting in the power domain, with the target's range smoothed to match), Curve/Diff and
     Reset. Realtime follows the music as it plays (about the last 0.3 s, a new measurement every 23 ms); the longer
     windows show the overall balance. The target list ends with Open targets folder, Rescan targets and Open Target
     Builder.

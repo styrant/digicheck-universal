@@ -192,6 +192,9 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     targetLibrary.rescan();
     liveBalance.setWindow (settings.balanceWindow);
     balanceView.setDifferenceMode (settings.balanceMode == 1);
+    balanceView.setSmoothing (settings.balanceSmooth);
+    liveBalance.setSmoothing (settings.balanceSmooth);
+    bottom.onBalanceSmooth = [this] (int i) { balanceView.setSmoothing (i); saveAll(); };
     balanceView.builderAvailable = targetBuilderExe().existsAsFile();
     balanceView.onOpenFolder = [] { auto d = TargetLibrary::folder(); d.createDirectory(); d.startAsProcess(); };
     balanceView.onOpenBuilder = [] { targetBuilderExe().startAsProcess(); };
@@ -222,6 +225,9 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     fpsBox.onChange = [this] { settings.fpsCap = fpsBox.getSelectedId() - 1; frameclock::capHz = settings.fpsCap; saveAll(); };
     frameclock::capHz = settings.fpsCap;
 
+    manualBtn.setTooltip ("Open the user manual (in your web browser)");
+    manualBtn.onClick = [] { juce::URL ("https://github.com/styrant/digicheck-universal/blob/main/docs/MANUAL.md").launchInDefaultBrowser(); };
+    options.addAndMakeVisible (manualBtn);
     hdrBox.addItemList ({ "Keep HDR (1 px gap at the bottom)", "Keep HDR (CPU rendering while full screen)", "Exact full screen (may turn HDR off)" }, 1);
     hdrBox.setSelectedItemIndex (settings.hdrFullscreen, juce::dontSendNotification);
     hdrBox.setTooltip ("On an HDR monitor, some graphics drivers switch a full-screen OpenGL window to exclusive mode and Windows turns HDR off. "
@@ -258,6 +264,10 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     // bottom bar
     view.onPauseChanged      = [this] (bool isPaused) { bottom.setPaused (isPaused); };
     bottom.onViewChange      = [this] (int v) { setView (v); };
+    bottom.onCustomChanged   = [this] { setView (BottomBar::Custom); };
+    bottom.onToggleHelp      = [this] { setHelpMode (! settings.helpMode); };
+    bottom.onToggleHideBar   = [this] { setBarHidden (! barHidden); };
+    if (settings.helpMode) setHelpMode (true);
     bottom.onPause           = [this] { view.togglePause(); };
     bottom.onRef             = [this] (int d) { settings.refLevel = juce::jlimit (-80.0, 0.0, settings.refLevel + d); onChange (Change::Visual); };
     bottom.onToggleTempo     = [this] { toggleTempoWindow(); };
@@ -400,12 +410,35 @@ void MainComponent::setOptionsVisible (bool show)
     if (! show) grabKeyboardFocus();
 }
 
+juce::Component* MainComponent::viewComponent (int id)
+{
+    switch (id)
+    {
+        case BottomBar::Spectrogram: return &view;
+        case BottomBar::Analyzer:    return &analyzerPanel;
+        case BottomBar::Balance:     return &balanceView;
+        case BottomBar::Key:         return &keyPage;
+        case BottomBar::Scope:       return &scopePage;
+        case BottomBar::Monitor:     return &monitorPage;
+        default:                     return nullptr;
+    }
+}
+
+bool MainComponent::shows (int id) const
+{
+    if (settings.viewMode != BottomBar::Custom) return settings.viewMode == id;
+    const auto slots = BottomBar::customSlots (settings);
+    for (int i = 0; i < BottomBar::panesIn (settings.customLayout); ++i) if (slots[(size_t) i] == id) return true;
+    return false;
+}
+
 void MainComponent::setView (int v)
 {
-    settings.viewMode = juce::jlimit (0, 5, v);
-    const bool spec = settings.viewMode == BottomBar::Spectrogram, ana = settings.viewMode == BottomBar::Analyzer,
-               bal = settings.viewMode == BottomBar::Balance, key = settings.viewMode == BottomBar::Key,
-               sco = settings.viewMode == BottomBar::Scope, mon = settings.viewMode == BottomBar::Monitor;
+    settings.viewMode = juce::jlimit (0, (int) BottomBar::NumViews - 1, v);
+    const bool spec = shows (BottomBar::Spectrogram), ana = shows (BottomBar::Analyzer), bal = shows (BottomBar::Balance),
+               key = shows (BottomBar::Key), sco = shows (BottomBar::Scope), mon = shows (BottomBar::Monitor);
+    const bool custom = settings.viewMode == BottomBar::Custom;
+    monitorPage.setCustomProfile (custom);
     monitorPage.setVisible (mon);
     monitorPage.setActive (mon);
     keyPage.setVisible (key);
@@ -420,10 +453,12 @@ void MainComponent::setView (int v)
     liveBalance.setActive (bal);
     engine.setSpectrogramActive (spec);
     if (host != nullptr) if (auto* e = host->sidechainEngine()) e->setSpectrogramActive (spec && settings.specSc);
-    if (bal) { refreshBalanceTargets(); grabKeyboardFocus(); }
-    if (key || sco || mon) grabKeyboardFocus();
-    if (ana) { if (analyzerPanel.isFft()) grabKeyboardFocus(); else analyzerPanel.getView().grabKeyboardFocus(); }
+    if (bal) refreshBalanceTargets();
+    if (custom || bal || key || sco || mon) grabKeyboardFocus();
+    else if (ana) { if (analyzerPanel.isFft()) grabKeyboardFocus(); else analyzerPanel.getView().grabKeyboardFocus(); }
     bottom.refresh();
+    resized();
+    repaint();
     saveAll();
 }
 
@@ -542,6 +577,8 @@ void MainComponent::resumeGpu()
 void MainComponent::setFullscreenState (bool isFull)
 {
     fullscreen = isFull;
+    if (! isFull) { barHidden = barPeek = false; bottom.setBarHidden (false); }
+    if (isFull && std::exchange (pendingHideBar, false)) { barHidden = true; bottom.setBarHidden (true); }
     bottom.setFullscreen (isFull);
     resized();
     grabKeyboardFocus();
@@ -583,7 +620,7 @@ void MainComponent::setUpPlugin()
     bottom.onSidechainMenu = [this] (juce::Component& anchor)
     {
         juce::PopupMenu m, colours;
-        const auto apply = [this] { view.sidechainStyleChanged(); saveAll(); if (auto* e = host->sidechainEngine()) e->setSpectrogramActive (settings.viewMode == BottomBar::Spectrogram && settings.specSc); };
+        const auto apply = [this] { view.sidechainStyleChanged(); saveAll(); if (auto* e = host->sidechainEngine()) e->setSpectrogramActive (shows (BottomBar::Spectrogram) && settings.specSc); };
         m.addItem ("Show the sidechain", true, settings.specSc, [this, apply] { settings.specSc = ! settings.specSc; apply(); });
         m.addItem ("Style: tint (its colour, by level)", true, settings.specScStyle == 0, [this, apply] { settings.specScStyle = 0; apply(); });
         m.addItem ("Style: contour lines (the main picture stays clear)", true, settings.specScStyle == 1, [this, apply] { settings.specScStyle = 1; apply(); });
@@ -625,6 +662,18 @@ void MainComponent::timerCallback()
     keyPage.setInputRunning (inputRunning());
     scopePage.setInputRunning (inputRunning());
     monitorPage.pump();                          // keeps measuring when display frames stall (minimised)
+    if (fullscreen && barHidden)
+    {
+        // the hidden bar peeks back while the mouse is at the bottom edge or over it (or a menu from it is open)
+        const auto p = getMouseXYRelative();
+        const double now = juce::Time::getMillisecondCounterHiRes() * 0.001;
+        const bool inside = p.x >= 0 && p.x < getWidth();
+        const bool want = (inside && p.y >= getHeight() - 3 && p.y <= getHeight() + 4)
+                       || (barPeek && inside && p.y >= getHeight() - BottomBar::height() - ui::px (14) && p.y <= getHeight() + 4)
+                       || (barPeek && (options.isVisible() || juce::ModalComponentManager::getInstance()->getNumModalComponents() > 0));
+        if (want) { barLeaveTime = now; if (! barPeek) { barPeek = true; resized(); } }
+        else if (barPeek && now - barLeaveTime > 0.7) { barPeek = false; resized(); grabKeyboardFocus(); }
+    }
     if (++tick % 10 == 0) updateStatus();
 }
 
@@ -642,7 +691,7 @@ void MainComponent::updateStatus()
     glFpsTime = now;
 
     const juce::String render = juce::String (glContext.isAttached() ? "GPU (OpenGL)" : "CPU")
-        + (glContext.isAttached() || settings.viewMode == BottomBar::Spectrogram ? ", " + juce::String (juce::roundToInt (fps)) + " fps" : juce::String())
+        + (glContext.isAttached() || shows (BottomBar::Spectrogram) ? ", " + juce::String (juce::roundToInt (fps)) + " fps" : juce::String())
         + (settings.fpsCap > 0 ? " (limit " + juce::String (settings.fpsCap) + ")" : juce::String());
     juce::String text;
     if (error.isNotEmpty()) text = "Could not start: " + error;
@@ -664,6 +713,29 @@ void MainComponent::updateStatus()
 
 void MainComponent::paint (juce::Graphics& g)
 {
+    if (settings.viewMode == BottomBar::Custom)
+    {
+        // the gaps between panes and any empty pane (not over the spectrogram: OpenGL draws it underneath)
+        if (view.isVisible()) g.excludeClipRegion (view.getBounds());
+        g.fillAll (juce::Colour (0xff0b0c0e));
+        const auto slots = BottomBar::customSlots (settings);
+        const auto panes = customPanes (contentArea);
+        for (size_t i = 0; i < panes.size(); ++i)
+            if (slots[i] < 0)
+            {
+                g.setColour (juce::Colour (0xff15171b)); g.fillRoundedRectangle (panes[i].toFloat().reduced (1), 6.0f);
+                g.setColour (juce::Colour (0xffb0b6c0)); g.setFont (juce::FontOptions (ui::fs (14.0f)));
+                g.drawFittedText ("Empty pane " + juce::String ((int) i + 1) + ": choose a view for it in the bottom bar", panes[i].reduced (12), juce::Justification::centred, 3);
+            }
+        for (auto& d : dividers)
+        {
+            g.setColour (juce::Colour (0xff2a2d33));
+            const auto c = d.r.getCentre();
+            if (d.vertical) g.fillRoundedRectangle ((float) c.x - 1.5f, (float) c.y - 14, 3, 28, 1.5f);
+            else            g.fillRoundedRectangle ((float) c.x - 14, (float) c.y - 1.5f, 28, 3, 1.5f);
+        }
+        return;
+    }
     if (! glContext.isAttached()) g.fillAll (juce::Colour (0xff0b0c0e));   // GPU: children cover everything
 }
 
@@ -671,20 +743,129 @@ void MainComponent::resized()
 {
     ownerW = (float) getWidth(); ownerH = (float) getHeight();
     auto r = getLocalBounds();
-    bottom.setBounds (r.removeFromBottom (BottomBar::height()));
-    view.setBounds (r);                       // no top toolbar: the analysis uses the full height
-    analyzerPanel.setBounds (r);
-    balanceView.setBounds (r);
-    keyPage.setBounds (r);
-    scopePage.setBounds (r);
-    monitorPage.setBounds (r);
+    // full screen without the bar: the views take the whole screen; the bar peeks back over them at the bottom edge
+    const bool hideBar = fullscreen && barHidden;
+    const auto barArea = r.withTop (r.getBottom() - BottomBar::height());
+    if (! hideBar) r.removeFromBottom (BottomBar::height());
+    bottom.setBounds (barArea);
+    bottom.setVisible (! hideBar || barPeek);
+    if (hideBar && barPeek) bottom.toFront (false);
+    contentArea = r;
+    dividers.clear();
+    if (settings.viewMode == BottomBar::Custom)
+    {
+        const auto panes = customPanes (r);
+        const auto slots = BottomBar::customSlots (settings);
+        for (int id = 0; id < 6; ++id)
+        {
+            auto* c = viewComponent (id);
+            for (size_t i = 0; i < panes.size(); ++i) if (slots[i] == id) c->setBounds (panes[i]);
+        }
+    }
+    else
+        for (int id = 0; id < 6; ++id) viewComponent (id)->setBounds (r);   // no top toolbar: the analysis uses the full height
     layoutOptions();
+}
+
+// The Custom page's panes for its layout (in the order of the bar's pane boxes), and its dividers
+std::vector<juce::Rectangle<int>> MainComponent::customPanes (juce::Rectangle<int> area) const
+{
+    const int gap = ui::px (6);
+    const double a = settings.customSplitA, b = settings.customSplitB;
+    auto* self = const_cast<MainComponent*> (this);
+    auto& dv = self->dividers;
+    dv.clear();
+    // split r at fraction f (vertical: a column boundary); the divider covers the gap
+    auto split = [&] (juce::Rectangle<int> r, double f, bool vertical, int which, juce::Rectangle<int>& first, juce::Rectangle<int>& second)
+    {
+        if (vertical)
+        {
+            const int x = r.getX() + juce::roundToInt ((r.getWidth() - gap) * f);
+            first = r.withRight (x); second = r.withLeft (x + gap);
+            dv.push_back ({ { x, r.getY(), gap, r.getHeight() }, true, which, r });
+        }
+        else
+        {
+            const int y = r.getY() + juce::roundToInt ((r.getHeight() - gap) * f);
+            first = r.withBottom (y); second = r.withTop (y + gap);
+            dv.push_back ({ { r.getX(), y, r.getWidth(), gap }, false, which, r });
+        }
+    };
+    juce::Rectangle<int> p, q, p2, q2;
+    std::vector<juce::Rectangle<int>> out;
+    switch (juce::jlimit (0, 5, settings.customLayout))
+    {
+        case 0: split (area, a, true, 0, p, q);  out = { p, q }; break;
+        case 1: split (area, a, false, 0, p, q); out = { p, q }; break;
+        case 2: split (area, a, true, 0, p, q);  split (q, b, false, 1, p2, q2); out = { p, p2, q2 }; break;
+        case 3: split (area, a, false, 0, p, q); split (q, b, true, 1, p2, q2);  out = { p, p2, q2 }; break;
+        case 4: split (area, a, true, 0, p, q); split (q, b, true, 1, p2, q2); out = { p, p2, q2 }; break;
+        default:
+        {
+            // a 2 x 2 grid: one vertical divider (splitA) and one horizontal (splitB) across the whole page
+            const int x = area.getX() + juce::roundToInt ((area.getWidth() - gap) * a), y = area.getY() + juce::roundToInt ((area.getHeight() - gap) * b);
+            out = { juce::Rectangle<int>::leftTopRightBottom (area.getX(), area.getY(), x, y), juce::Rectangle<int>::leftTopRightBottom (x + gap, area.getY(), area.getRight(), y),
+                    juce::Rectangle<int>::leftTopRightBottom (area.getX(), y + gap, x, area.getBottom()), juce::Rectangle<int>::leftTopRightBottom (x + gap, y + gap, area.getRight(), area.getBottom()) };
+            dv.push_back ({ { x, area.getY(), gap, area.getHeight() }, true, 0, area });
+            dv.push_back ({ { area.getX(), y, area.getWidth(), gap }, false, 1, area });
+        }
+    }
+    return out;
+}
+
+void MainComponent::mouseMove (const juce::MouseEvent& e)
+{
+    for (auto& d : dividers)
+        if (d.r.expanded (2).contains (e.getPosition())) { setMouseCursor (d.vertical ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::UpDownResizeCursor); return; }
+    setMouseCursor (juce::MouseCursor::NormalCursor);
+}
+
+void MainComponent::mouseDown (const juce::MouseEvent& e)
+{
+    dragDivider = -1;
+    for (size_t i = 0; i < dividers.size(); ++i) if (dividers[i].r.expanded (2).contains (e.getPosition())) dragDivider = (int) i;
+}
+
+void MainComponent::mouseDrag (const juce::MouseEvent& e)
+{
+    if (dragDivider < 0 || dragDivider >= (int) dividers.size()) return;
+    const auto d = dividers[(size_t) dragDivider];
+    const double f = d.vertical ? (double) (e.x - d.span.getX()) / juce::jmax (1, d.span.getWidth())
+                                : (double) (e.y - d.span.getY()) / juce::jmax (1, d.span.getHeight());
+    double& target = d.which == 0 ? settings.customSplitA : settings.customSplitB;
+    target = juce::jlimit (0.15, 0.85, f);
+    resized();
+    repaint();
+}
+
+void MainComponent::mouseUp (const juce::MouseEvent&)
+{
+    if (dragDivider >= 0) saveAll();
+    dragDivider = -1;
+}
+
+void MainComponent::setBarHidden (bool h)
+{
+    barHidden = h && fullscreen;
+    barPeek = false;
+    bottom.setBarHidden (barHidden);
+    resized();
+    repaint();
+}
+
+void MainComponent::setHelpMode (bool on)
+{
+    settings.helpMode = on;
+    if (on && helpTips == nullptr) helpTips = std::make_unique<juce::TooltipWindow> (this, 350);
+    if (! on) helpTips.reset();
+    bottom.setHelp (on);
+    saveAll();
 }
 
 void MainComponent::layoutOptions()
 {
     using ui::px;
-    const int w = juce::jmin (px (470), getWidth() - 16), h = px ((settings.textSize == 3 ? 404 : 372) + (device != nullptr ? 34 : 0));
+    const int w = juce::jmin (px (470), getWidth() - 16), h = px ((settings.textSize == 3 ? 404 : 372) + (device != nullptr ? 34 : 0) + 38);
     options.setBounds (8, getHeight() - BottomBar::height() - h - 6, w, h);
     options.headings.clear();
     auto r = options.getLocalBounds().reduced (14, 10);
@@ -723,12 +904,14 @@ void MainComponent::layoutOptions()
         r.removeFromTop (px (4));
         textSlider.setBounds (r.removeFromTop (px (28)).withTrimmedLeft (px (130)).withWidth (px (260)));
     }
+    r.removeFromTop (px (10));
+    manualBtn.setBounds (r.removeFromTop (px (28)).withWidth (px (120)));
 }
 
 bool MainComponent::keyPressed (const juce::KeyPress& k)
 {
     const bool ana = settings.viewMode == BottomBar::Analyzer, bal = settings.viewMode == BottomBar::Balance || settings.viewMode == BottomBar::Key || settings.viewMode == BottomBar::Scope
-                    || settings.viewMode == BottomBar::Monitor;
+                    || settings.viewMode == BottomBar::Monitor || settings.viewMode == BottomBar::Custom;
     if (k == juce::KeyPress::spaceKey)
     {
         if (settings.viewMode == BottomBar::Key) keyPage.togglePlay();
@@ -737,9 +920,17 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
         else if (! bal) view.togglePause();
         return true;
     }
-    if (k.getTextCharacter() == 'v' || k.getTextCharacter() == 'V') { setView ((settings.viewMode + 1) % 6); return true; }
-    if (k.getTextCharacter() >= '1' && k.getTextCharacter() <= '6') { setView ((int) (k.getTextCharacter() - '1')); return true; }
+    if (k.getTextCharacter() == 'v' || k.getTextCharacter() == 'V') { setView ((settings.viewMode + 1) % BottomBar::NumViews); return true; }
+    if (k.getTextCharacter() >= '1' && k.getTextCharacter() <= '7') { setView ((int) (k.getTextCharacter() - '1')); return true; }
+    if (k == juce::KeyPress (juce::KeyPress::F11Key, juce::ModifierKeys::shiftModifier, 0))
+    {
+        // straight to full screen without the bar (or out of it)
+        if (! fullscreen) { pendingHideBar = true; toggleFullscreen(); } else setBarHidden (! barHidden);
+        return true;
+    }
     if (k == juce::KeyPress::F11Key)            { toggleFullscreen(); return true; }
+    if ((k.getTextCharacter() == 'b' || k.getTextCharacter() == 'B') && fullscreen) { setBarHidden (! barHidden); return true; }
+    if (k.getTextCharacter() == '?' || k == juce::KeyPress::F1Key) { setHelpMode (! settings.helpMode); return true; }
     if (k.getTextCharacter() == 'o' || k.getTextCharacter() == 'O') { toggleOptions(); return true; }
     if (k == juce::KeyPress::escapeKey)
     {

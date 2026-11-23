@@ -19,6 +19,7 @@ public:
     bool isActive() const noexcept { return active.load(); }
     void setWindow (int index);                   // 0: realtime, 1: 1 s, 2: 3 s, 3: 10 s, 4: 30 s, 5: since reset
     void reset() { resetRequest = true; }
+    void setSmoothing (int index)                 { smoothing = index; republish = true; }   // tonal::smoothingOctaves
     static juce::StringArray windowNames() { return { "Realtime", "1 s", "3 s", "10 s", "30 s", "Since reset" }; }
     static constexpr int kDefaultWindow = 3;
     static bool isFast (int index) { return index <= 1; }
@@ -29,7 +30,7 @@ public:
     struct Snapshot
     {
         bool valid = false;
-        std::vector<double> raw, smooth;           // normalised spectrum (kBins) and its 1/3-octave smoothing
+        std::vector<double> raw, smooth;           // normalised spectrum (kBins) and its smoothing (setSmoothing)
         std::array<double, 4> shares {};           // band shares
         double seconds = 0;                        // audio (above the gate) in the result
         int window = 0;                            // the window it was measured over
@@ -46,7 +47,7 @@ private:
     std::vector<float> ring;
     std::atomic<double> pushRate { 0 };
     std::atomic<bool> active { false }, resetRequest { true };
-    std::atomic<int> windowIndex { kDefaultWindow };
+    std::atomic<int> windowIndex { kDefaultWindow }, smoothing { 0 };
     std::atomic<bool> republish { false };
 
     // balance thread only

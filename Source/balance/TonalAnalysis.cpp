@@ -190,6 +190,40 @@ std::vector<double> smoothDb (const std::vector<double>& db, double frac)
     return out;
 }
 
+std::vector<double> smoothDbBell (const std::vector<double>& db, double fwhm)
+{
+    const int n = (int) db.size();
+    std::vector<double> pw ((size_t) n), cum ((size_t) n + 1), out ((size_t) n);
+    for (int k = 0; k < n; ++k) pw[(size_t) k] = std::pow (10.0, db[(size_t) k] / 10.0);
+    if (fwhm > 1e-6)
+    {
+        // three boxes of width w (octaves) give a bell with sigma = w / 2; FWHM = 2.355 sigma
+        const double w = fwhm / 2.355 * 2.0;
+        const double half = std::pow (2.0, w / 2.0);
+        for (int pass = 0; pass < 3; ++pass)
+        {
+            cum[0] = 0;
+            for (int k = 0; k < n; ++k) cum[(size_t) k + 1] = cum[(size_t) k] + pw[(size_t) k];
+            for (int k = 1; k < n; ++k)
+            {
+                // a fractional box [k/half, k*half] in bins, with partial bins at the ends: smooth as it slides
+                const double a = std::max (0.5, k / half - 0.5), b = std::min ((double) n - 0.5, k * half + 0.5);
+                auto F = [&] (double x)                                   // integral of the step function up to x
+                {
+                    const int i = std::clamp ((int) std::floor (x + 0.5), 0, n - 1);
+                    const double frac = x + 0.5 - i;
+                    return cum[(size_t) i] + pw[(size_t) i] * std::clamp (frac, 0.0, 1.0);
+                };
+                out[(size_t) k] = (F (b) - F (a)) / std::max (1e-9, b - a);
+            }
+            out[0] = pw[0];
+            std::swap (pw, out);
+        }
+    }
+    for (int k = 0; k < n; ++k) out[(size_t) k] = 10 * std::log10 (pw[(size_t) k] + 1e-300);
+    return out;
+}
+
 std::array<double, 4> bandShares (const std::vector<double>& db)
 {
     std::array<double, 4> s {};

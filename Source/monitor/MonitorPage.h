@@ -52,7 +52,9 @@ public:
     void setShown (int id, bool shown);
     void setWide (int id, bool wide);
     bool isWide (int id) const;
-    bool isMaxed (int id) const                  { return s.monitorMax == id; }
+    bool isMaxed (int id) const                  { return custom ? s.customMonMax == id : s.monitorMax == id; }
+    // the Custom page keeps its own module layout (which modules, order, wide, maximised, columns)
+    void setCustomProfile (bool on)              { if (on != custom) { custom = on; updateChips(); layoutModules(); repaint(); } }
     void dragModule (int id, juce::Point<int> pagePos);
     void dropModule (int id, juce::Point<int> pagePos);
     Settings& settings()                         { return s; }
@@ -67,6 +69,12 @@ public:
     void changed()                               { if (onChanged) onChanged(); }
 
 private:
+    bool custom = false;
+    int& layShown() const          { return custom ? s.customMonShown : s.monitorShown; }
+    int& layWide() const           { return custom ? s.customMonWide : s.monitorWide; }
+    int& layMax() const            { return custom ? s.customMonMax : s.monitorMax; }
+    int& layCols() const           { return custom ? s.customMonCols : s.monitorCols; }
+    juce::String& layOrder() const { return custom ? s.customMonOrder : s.monitorOrder; }
     std::vector<int> order() const;
     void setOrder (const std::vector<int>&);
     void layoutModules();

@@ -88,5 +88,5 @@ private:
     juce::TextButton tripletBtn { "T" }, bpBtn { "BP" }, sideBtn { "Side2SC" }, holdBtn { "Hold" }, resetBtn { "Reset" }, recBtn { "Rec" };
     juce::Label bpmLabel;
     juce::Slider gain { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };
-    juce::Rectangle<int> header, footer, gainText, titleArea;
+    juce::Rectangle<int> infoArea, header, footer, gainText, titleArea;
 };

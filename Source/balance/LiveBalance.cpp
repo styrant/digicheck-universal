@@ -79,7 +79,7 @@ void LiveBalance::publish()
     if (! s.raw.empty())
     {
         s.valid = true;
-        s.smooth = tonal::smoothDb (s.raw);
+        s.smooth = tonal::smoothDbBell (s.raw, tonal::smoothingOctaves (smoothing.load()));
         s.shares = tonal::bandShares (s.raw);
     }
     else if (isFast (w) && snap.valid && snap.window == w)

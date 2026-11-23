@@ -1029,37 +1029,53 @@ void ScopePage::resized()
     footer = r.removeFromBottom (ui::px (36));
     r.removeFromBottom (ui::px (6));
 
+    // left-to-right items that drop off the end (hidden) when the page is narrow, e.g. in a Custom pane
+    struct Item { juce::Component* c; int w, gapAfter; };
+    auto place = [] (juce::Rectangle<int>& area, std::initializer_list<Item> items)
+    {
+        bool fits = true;
+        for (auto& i : items)
+        {
+            if (i.c == nullptr) continue;
+            fits = fits && area.getWidth() >= ui::px (i.w);
+            i.c->setVisible (fits);
+            if (! fits) continue;
+            i.c->setBounds (area.removeFromLeft (ui::px (i.w)).reduced (0, 3));
+            area.removeFromLeft (juce::jmin (area.getWidth(), ui::px (i.gapAfter)));
+        }
+    };
+
     auto h = header;
-    titleArea = h.removeFromLeft (ui::px (96));
+    titleArea = h.removeFromLeft (ui::px (h.getWidth() < ui::px (560) ? 70 : 96));
     h.removeFromLeft (ui::px (10));
-    syncBtn.setBounds (h.removeFromLeft (ui::px (58)).reduced (0, 3));
-    freeBtn.setBounds (h.removeFromLeft (ui::px (58)).reduced (0, 3)); h.removeFromLeft (ui::px (12));
-    freezeBtn.setBounds (h.removeFromLeft (ui::px (64)).reduced (0, 3));
-    scrollBtn.setBounds (h.removeFromLeft (ui::px (58)).reduced (0, 3)); h.removeFromLeft (ui::px (16));
-    spectralBtn.setBounds (h.removeFromLeft (ui::px (74)).reduced (0, 3));
-    aaBtn.setBounds (h.removeFromLeft (ui::px (40)).reduced (0, 3));
-    menuBtn.setBounds (h.removeFromRight (ui::px (70)).reduced (0, 3));
+    menuBtn.setBounds (h.removeFromRight (ui::px (70)).reduced (0, 3)); h.removeFromRight (ui::px (8));
+    place (h, { { &syncBtn, 58, 0 }, { &freeBtn, 58, 12 }, { &freezeBtn, 64, 0 }, { &scrollBtn, 58, 16 }, { &spectralBtn, 74, 0 }, { &aaBtn, 40, 0 } });
+    infoArea = h.getWidth() >= ui::px (120) ? h : juce::Rectangle<int>();
 
     zoomBar->setBounds (r.removeFromBottom (ui::px (10)));
     r.removeFromBottom (ui::px (2));
     display->setBounds (r);
 
     auto f = footer;
-    for (auto& b : divBtns) b.setBounds (f.removeFromLeft (ui::px (38)).reduced (0, 3));
-    f.removeFromLeft (ui::px (4));
-    tripletBtn.setBounds (f.removeFromLeft (ui::px (30)).reduced (0, 3)); f.removeFromLeft (ui::px (8));
-    bpmLabel.setBounds (f.removeFromLeft (ui::px (80)).reduced (0, 5)); f.removeFromLeft (ui::px (14));
-    gain.setBounds (f.removeFromLeft (ui::px (130)));
-    gainText = f.removeFromLeft (ui::px (64)); f.removeFromLeft (ui::px (10));
-    bpBtn.setBounds (f.removeFromLeft (ui::px (46)).reduced (0, 3)); f.removeFromLeft (ui::px (4));
-    bpFreq->setBounds (f.removeFromLeft (ui::px (58)).reduced (0, 3)); f.removeFromLeft (ui::px (host ? 4 : 14));
-    if (host != nullptr) { listenBtn.setBounds (f.removeFromLeft (ui::px (60)).reduced (0, 3)); f.removeFromLeft (ui::px (10)); }
-    sideBtn.setBounds (f.removeFromLeft (ui::px (86)).reduced (0, 3));
-    waveIcon->setBounds (f.removeFromRight (ui::px (52)));
-    f.removeFromRight (ui::px (6));
-    recBtn.setBounds (f.removeFromRight (ui::px (66)).reduced (0, 3)); f.removeFromRight (ui::px (6));
-    resetBtn.setBounds (f.removeFromRight (ui::px (64)).reduced (0, 3)); f.removeFromRight (ui::px (6));
-    holdBtn.setBounds (f.removeFromRight (ui::px (64)).reduced (0, 3));
+    // right: Hold, Reset, Rec, the wave icon (dropped first when narrow), then the left group fills what's left
+    const bool roomRight = f.getWidth() >= ui::px (760);
+    for (auto* c : std::initializer_list<juce::Component*> { waveIcon.get(), &recBtn, &resetBtn, &holdBtn }) c->setVisible (roomRight);
+    if (roomRight)
+    {
+        waveIcon->setBounds (f.removeFromRight (ui::px (52)));
+        f.removeFromRight (ui::px (6));
+        recBtn.setBounds (f.removeFromRight (ui::px (66)).reduced (0, 3)); f.removeFromRight (ui::px (6));
+        resetBtn.setBounds (f.removeFromRight (ui::px (64)).reduced (0, 3)); f.removeFromRight (ui::px (6));
+        holdBtn.setBounds (f.removeFromRight (ui::px (64)).reduced (0, 3)); f.removeFromRight (ui::px (8));
+    }
+    place (f, { { &divBtns[0], 38, 0 }, { &divBtns[1], 38, 0 }, { &divBtns[2], 38, 0 }, { &divBtns[3], 38, 0 }, { &divBtns[4], 38, 0 }, { &divBtns[5], 38, 4 },
+                { &tripletBtn, 30, 8 }, { &bpmLabel, 80, 14 } });
+    const bool roomGain = f.getWidth() >= ui::px (130 + 64);
+    gain.setVisible (roomGain);
+    gainText = {};
+    if (roomGain) { gain.setBounds (f.removeFromLeft (ui::px (130))); gainText = f.removeFromLeft (ui::px (64)); f.removeFromLeft (ui::px (10)); }
+    place (f, { { &bpBtn, 46, 4 }, { bpFreq.get(), 58, host ? 4 : 14 }, { host != nullptr ? &listenBtn : nullptr, 60, 10 }, { &sideBtn, 86, 0 } });
+    if (host == nullptr) listenBtn.setVisible (false);
 }
 
 void ScopePage::paint (juce::Graphics& g)
@@ -1071,7 +1087,7 @@ void ScopePage::paint (juce::Graphics& g)
     g.setColour (theme.text); g.setFont (juce::FontOptions (ui::fs (13.0f)));
     g.drawText ((s.scopeGainDb >= 0 ? "+" : "") + juce::String (s.scopeGainDb, 1) + "dB", gainText, juce::Justification::centred);
     // the window's length, for reference
-    auto info = header.withTrimmedLeft (menuBtn.getX() - header.getX() - ui::px (220)).withRight (menuBtn.getX() - ui::px (8));
-    g.drawText (juce::String (engine.windowSeconds(), engine.windowSeconds() < 10 ? 2 : 1) + " s  " + juce::String (juce::roundToInt (engine.sampleRate() / 100) / 10.0, 1) + " kHz",
+    auto info = infoArea;
+    if (! info.isEmpty()) g.drawText (juce::String (engine.windowSeconds(), engine.windowSeconds() < 10 ? 2 : 1) + " s  " + juce::String (juce::roundToInt (engine.sampleRate() / 100) / 10.0, 1) + " kHz",
                 info, juce::Justification::centredRight);
 }

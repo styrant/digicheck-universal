@@ -6,8 +6,9 @@ using monitor::MonitorModel;
 namespace
 {
     const juce::Colour kBg (0xff0b0c0e), kPanel (0xff15171b), kPanelLine (0xff2a2d33), kHeaderText (0xffe6e8eb),
-                       kDim (0xff8a8f98), kFaint (0xff5a5f68), kGrid (0xff24272d), kButton (0xff3a3c41), kOn (0xff4c8dff);
-    const juce::Colour kGood (0xff4cd07d), kWarn (0xffffd23f), kBad (0xffff4d6a), kQuiet (0xffbfc5cf), kTeal (0xff3ec7c7);
+                       kDim (0xffc3c8d0), kFaint (0xff9aa0aa), kGrid (0xff24272d), kButton (0xff3a3c41), kOn (0xff4c8dff);
+    const juce::Colour kGood (0xff4cd07d), kWarn (0xffffd23f), kBad (0xffff4d6a), kQuiet (0xffbfc5cf), kTeal (0xff3ec7c7),
+                       kScaleText (0xffe2e5ea);              // scale numbers: near white, so they read at a glance
 
     // loudness targets: the common streaming ones, then Insight 2's broadcast list (public standards)
     struct Target { const char* name; double lufs, tol, tp; bool programGate; };
@@ -107,6 +108,7 @@ namespace
 
     const LoudScale kLoudScales[] = { { -60, 0, false, 0, 0 }, { -60, 0, true, 0, 0 }, { -45, -14, false, -21, 9 }, { -41, -14, false, -18, 9 }, { -59, -5, false, -36, 18 } };
     const char* kModuleNames[MonitorPage::NumModules] = { "Loudness", "Dynamics", "Levels", "Sound Field", "Phase", "History" };
+    const char* kModuleShort[MonitorPage::NumModules] = { "Loud", "Dyn", "Lvl", "Field", "Phase", "Hist" };
     const float kModuleWeight[MonitorPage::NumModules] = { 0.62f, 1.0f, 1.0f, 1.35f, 1.0f, 0.9f };
 
     juce::String num (double v, int dec = 1) { return v <= -199 || ! std::isfinite (v) ? juce::String ("-inf") : (v > 0 && dec > 0 ? "+" : "") + juce::String (v, dec); }
@@ -158,9 +160,22 @@ namespace
 
 //==============================================================================
 // A module: a panel with a header (gear | title | maximise, hide) and a body
-struct MonitorPage::Module : public juce::Component
+struct MonitorPage::Module : public juce::Component, public juce::TooltipClient
 {
     Module (MonitorPage& p, int i) : page (p), id (i) {}
+    // Help (the bottom bar's "?"): what the header's controls and the module do
+    virtual juce::String helpText() const { return {}; }
+    virtual juce::String bodyTip (juce::Point<int>) { return {}; }
+    juce::String getTooltip() override
+    {
+        const auto p = getMouseXYRelative();
+        if (gearR.contains (p))  return "Options for this module: what it shows, its scale and text size (or right-click anywhere on it)";
+        if (maxR.contains (p))   return "Maximise this module to fill the page, or restore the grid (double-clicking the header does the same)";
+        if (closeR.contains (p)) return "Hide this module (show it again with its button in the toolbar)";
+        if (header.contains (p)) return "Drag the header onto another module to swap their places; double-click to maximise";
+        if (auto t = bodyTip (p); t.isNotEmpty()) return t;
+        return helpText();
+    }
     MonitorPage& page;
     const int id;
     juce::Rectangle<int> header, body, gearR, maxR, closeR;
@@ -287,8 +302,16 @@ struct MonitorPage::Module : public juce::Component
 // the LRA target range. The Targets panel (button by the preset list) sets all of them and the gate.
 struct MonitorPage::LoudnessModule : public MonitorPage::Module
 {
+    juce::String helpText() const override { return "Loudness (EBU R128 / ITU BS.1770): Short Term (3 s), Integrated (the whole take since Reset) and Momentary (0.4 s) in LUFS, with LRA (loudness range) and true peak, coloured against the target. Hover over the bars for a value line"; }
     using Module::Module;
     juce::Rectangle<int> momLabel, targetR, targetsBtnR;
+    juce::String bodyTip (juce::Point<int> p) override
+    {
+        if (targetsBtnR.contains (p)) return "Targets panel: target loudness, tolerance, true-peak and LRA limits, gating";
+        if (targetR.contains (p))     return "The loudness standard to meet (streaming services, broadcast): sets the target, tolerance, peak limit and gate";
+        if (momLabel.contains (p))    return "Click to switch between Momentary and its maximum";
+        return {};
+    }
 
     bool hasTarget() { return st().monitorTarget != kNoTarget; }
     double target()  { return st().monitorTargetLufs; }
@@ -415,11 +438,16 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
         auto footer = r.removeFromBottom (f * 2.4f * gTextMul);
         g.setColour (kPanelLine); g.drawHorizontalLine ((int) footer.getY(), r.getX(), r.getRight());
         paintFooter (g, footer.reduced (0, 4), f);
-        const float numH = juce::jlimit (34.0f, 70.0f, r.getHeight() * 0.16f);
-        const float titleH = 15.0f * 1.5f * gTextMul;
-        auto numbers = r.removeFromBottom (numH * gTextMul / 1.15f + titleH);
         const float colW = r.getWidth() / 3;
         const float barW = juce::jlimit (28.0f, 90.0f, colW * 0.24f);
+        // the readouts: as wide as their bar (a little wider on narrow bars), never taller than before
+        float numH = juce::jlimit (34.0f, 70.0f, r.getHeight() * 0.16f) * gTextMul;
+        {
+            const float w100 = juce::GlyphArrangement::getStringWidth (juce::Font (juce::FontOptions (100.0f)), "-88.8");
+            numH = juce::jlimit (14.0f, numH, juce::jmax (barW * 1.05f, 60.0f * gTextMul) / w100 * 100.0f);
+        }
+        const float titleH = 15.0f * 1.5f * gTextMul;
+        auto numbers = r.removeFromBottom (numH * 1.1f + titleH);
         const float scaleW = 40.0f * gTextMul;
         const double tgt = target();
         auto lab = [&] (double v) { const double x = relative() ? v - tgt : v; return (relative() && x > 0 ? "+" : "") + juce::String ((int) std::lround (x)); };
@@ -469,9 +497,9 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
             for (double mk : marks)
             {
                 if (mk > hi() + 0.01 || mk < lo() - 0.01) continue;
-                text (g, lab (mk), { sc.getX(), yOf (mk) - 8, sc.getWidth(), 16 }, 12.0f, kDim, juce::Justification::left);
+                text (g, lab (mk), { sc.getX(), yOf (mk) - 8, sc.getWidth(), 16 }, 12.5f, kScaleText, juce::Justification::left);
             }
-            text (g, relative() ? "LU" : "-Inf", { sc.getX(), bar.getBottom() - 8, sc.getWidth(), 16 }, 12.0f, kFaint, juce::Justification::left);
+            text (g, relative() ? "LU" : "-Inf", { sc.getX(), bar.getBottom() - 8, sc.getWidth(), 16 }, 12.5f, kScaleText, juce::Justification::left);
 
             // the title and the readout, centred on the bar
             auto nb = juce::Rectangle<float> (cx - colW * 0.5f, numbers.getY(), colW, numbers.getHeight());
@@ -479,9 +507,9 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
             const double shown = bars[i].shown;
             const auto c = i == 1 ? integratedColour (shown) : levelColour (shown);
             const auto str = relative() && shown > -70 ? num (shown - tgt, 1) : plain (shown, 1);
-            g.setFont (juce::FontOptions (juce::jmin (numH * gTextMul, nb.getHeight())));
+            g.setFont (juce::FontOptions (juce::jmin (numH, nb.getHeight())));
             const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), str);
-            text (g, str, nb, numH, c);
+            text (g, str, nb, numH / gTextMul, c);
             const auto unit = relative() ? juce::String (i == 2 ? "Max\nLU" : "LU") : juce::String (bars[i].unit);
             g.setColour (kFaint); g.setFont (juce::FontOptions (12.0f * gTextMul));
             g.drawFittedText (unit, juce::Rectangle<float> (cx + tw * 0.5f + 4, nb.getCentreY() - 4, 70, nb.getHeight() * 0.5f).toNearestInt(),
@@ -540,6 +568,7 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
 // Dynamics: PSR now, PLR for the take, a zoned PSR scale, and the PSR history
 struct MonitorPage::DynamicsModule : public MonitorPage::Module
 {
+    juce::String helpText() const override { return "Dynamics: PSR (true peak minus short-term loudness, how punchy the music is now) and PLR (peak minus integrated loudness, for the whole take). Low values mean heavy limiting"; }
     using Module::Module;
     static constexpr double kScaleMax = 20.0;
 
@@ -670,6 +699,7 @@ struct MonitorPage::DynamicsModule : public MonitorPage::Module
 // Levels: peak and RMS bars for L R (and M S)
 struct MonitorPage::LevelsModule : public MonitorPage::Module
 {
+    juce::String helpText() const override { return "Levels: sample peak and RMS for Left and Right (Mid and Side optional), with peak hold and clip markers. Double-click to clear the holds; hover for a value line"; }
     using Module::Module;
     std::array<juce::Rectangle<int>, 4> numbersR;
     juce::Rectangle<float> metersR;
@@ -791,6 +821,7 @@ struct MonitorPage::LevelsModule : public MonitorPage::Module
 // Sound Field: polar sample / polar level / Lissajous, a correlation bar, width and balance
 struct MonitorPage::FieldModule : public MonitorPage::Module
 {
+    juce::String helpText() const override { return "Sound Field: where the stereo image sits. Vertical is mono (Mid), the sides are Left and Right only; wider spread means a wider mix. The bar below is the correlation (+1 mono, 0 wide, -1 out of phase)"; }
     FieldModule (MonitorPage& p, int i) : Module (p, i)
     {
         const char* names[] = { "Polar Sample", "Polar Level", "Lissajous" };
@@ -1087,6 +1118,7 @@ struct MonitorPage::FieldModule : public MonitorPage::Module
 // Phase: correlation (fast bar, slow marker, minimum), per band, balance, history
 struct MonitorPage::PhaseModule : public MonitorPage::Module
 {
+    juce::String helpText() const override { return "Phase: correlation between Left and Right over time and per band (low / mid / high). Below 0 the channels partly cancel in mono"; }
     using Module::Module;
 
     void meter (juce::Graphics& g, juce::Rectangle<float> r, double v, double slow, double minV, bool active, bool ticks)
@@ -1201,6 +1233,7 @@ struct MonitorPage::PhaseModule : public MonitorPage::Module
 // line, the Integrated trace red where it's above the target; hover for the values at that moment
 struct MonitorPage::HistoryModule : public MonitorPage::Module
 {
+    juce::String helpText() const override { return "History: momentary, short-term and integrated loudness over time, against the target"; }
     using Module::Module;
     int hoverX = -1, hoverY = -1;
     juce::Rectangle<float> plotR;
@@ -1348,7 +1381,7 @@ MonitorPage::MonitorPage (FifoTap& t, Settings& st, std::function<void()> settin
         c.setColour (juce::TextButton::buttonOnColourId, kOn);
         c.setConnectedEdges ((i > 0 ? juce::Button::ConnectedOnLeft : 0) | (i < NumModules - 1 ? juce::Button::ConnectedOnRight : 0));
         c.setTooltip ("Show or hide the " + juce::String (kModuleNames[i]) + " module");
-        c.onClick = [this, i] { setShown (i, ! (s.monitorShown & (1 << i))); };
+        c.onClick = [this, i] { setShown (i, ! (layShown() & (1 << i))); };
         addAndMakeVisible (c);
     }
     pauseBtn.setClickingTogglesState (true);
@@ -1360,7 +1393,7 @@ MonitorPage::MonitorPage (FifoTap& t, Settings& st, std::function<void()> settin
         b->setColour (juce::TextButton::buttonColourId, kButton);
         addAndMakeVisible (b);
     }
-    layoutBtn.setTooltip ("Columns, and resetting the layout");
+    layoutBtn.setTooltip ("Columns, which modules are shown, and resetting the layout");
     layoutBtn.onClick = [this] { showLayoutMenu(); };
     resetBtn.setTooltip ("Restart the integrated loudness, LRA, PLR, maxima and history (the bottom bar's too)");
     resetBtn.onClick = [this] { resetMeasurements(); };
@@ -1427,7 +1460,7 @@ void MonitorPage::paint (juce::Graphics& g)
 {
     g.fillAll (kBg);
     text (g, "Monitor", titleArea.toFloat(), ui::fs (20), kHeaderText, juce::Justification::centredLeft, true);
-    if ((s.monitorShown & 63) == 0)
+    if ((layShown() & 63) == 0)
         text (g, "All modules are hidden. Turn them on with the buttons above.", getLocalBounds().withTrimmedTop (toolbar.getBottom()).toFloat(), ui::fs (14), kDim);
 }
 
@@ -1436,7 +1469,7 @@ void MonitorPage::resized()
     auto r = getLocalBounds();
     toolbar = r.removeFromTop (ui::px (44)).reduced (ui::px (10), ui::px (8));
     auto tb = toolbar;
-    titleArea = tb.removeFromLeft (ui::px (110));
+    titleArea = tb.removeFromLeft (ui::px (getWidth() < ui::px (640) ? 84 : 110));
     resetBtn.setBounds (tb.removeFromRight (ui::px (64)));
     tb.removeFromRight (ui::px (6));
     pauseBtn.setBounds (tb.removeFromRight (ui::px (64)));
@@ -1445,7 +1478,16 @@ void MonitorPage::resized()
     const int cw = juce::jmin (ui::px (104), (tb.getWidth() - ui::px (12)) / NumModules);
     auto chipsR = tb.withSizeKeepingCentre (cw * NumModules, tb.getHeight());
     if (chipsR.getX() < titleArea.getRight()) chipsR.setX (titleArea.getRight());
-    for (auto& c : chips) c.setBounds (chipsR.removeFromLeft (cw));
+    const bool roomChips = cw >= ui::px (46);          // narrow (a Custom pane): the modules are in the Layout menu instead
+    for (int i = 0; i < NumModules; ++i)
+    {
+        auto& c = chips[(size_t) i];
+        c.setVisible (roomChips);
+        c.setBounds (chipsR.removeFromLeft (cw));
+        // short names when the chips are narrow (a Custom pane)
+        const juce::Font f (juce::FontOptions (juce::jmin (16.0f, (float) c.getHeight() * 0.6f)));
+        c.setButtonText (juce::GlyphArrangement::getStringWidth (f, kModuleNames[i]) + ui::px (10) > cw * 1.0f ? kModuleShort[i] : kModuleNames[i]);
+    }
     layoutModules();
 }
 
@@ -1456,7 +1498,7 @@ void MonitorPage::resized()
 std::vector<int> MonitorPage::order() const
 {
     std::vector<int> o;
-    for (auto& t : juce::StringArray::fromTokens (s.monitorOrder, ",", {}))
+    for (auto& t : juce::StringArray::fromTokens (layOrder(), ",", {}))
     {
         const int v = t.getIntValue();
         if (v >= 0 && v < NumModules && std::find (o.begin(), o.end(), v) == o.end() && t.trim().isNotEmpty()) o.push_back (v);
@@ -1468,7 +1510,7 @@ std::vector<int> MonitorPage::order() const
 void MonitorPage::setOrder (const std::vector<int>& o)
 {
     juce::StringArray a; for (int v : o) a.add (juce::String (v));
-    s.monitorOrder = a.joinIntoString (",");
+    layOrder() = a.joinIntoString (",");
 }
 
 void MonitorPage::applyTargetPreset (int i)
@@ -1518,7 +1560,7 @@ void MonitorPage::setTextScale (int id, float k)
     changed();
 }
 
-bool MonitorPage::isWide (int id) const { return (s.monitorWide >> id) & 1; }
+bool MonitorPage::isWide (int id) const { return (layWide() >> id) & 1; }
 
 void MonitorPage::layoutModules()
 {
@@ -1527,17 +1569,17 @@ void MonitorPage::layoutModules()
     if (area.isEmpty()) return;
     const int gap = ui::px (8);
 
-    if (s.monitorMax >= 0 && ((s.monitorShown >> s.monitorMax) & 1))
+    if (layMax() >= 0 && ((layShown() >> layMax()) & 1))
     {
-        modules[(size_t) s.monitorMax]->setBounds (area);
-        modules[(size_t) s.monitorMax]->setVisible (active);
+        modules[(size_t) layMax()]->setBounds (area);
+        modules[(size_t) layMax()]->setVisible (active);
         return;
     }
-    const int cols = s.monitorCols > 0 ? s.monitorCols : (area.getWidth() >= ui::px (1150) ? 3 : (area.getWidth() >= ui::px (760) ? 2 : 1));
+    const int cols = layCols() > 0 ? layCols() : (area.getWidth() >= ui::px (1150) ? 3 : (area.getWidth() >= ui::px (760) ? 2 : 1));
     std::vector<std::vector<int>> rows;
     for (int id : order())
     {
-        if (! ((s.monitorShown >> id) & 1)) continue;
+        if (! ((layShown() >> id) & 1)) continue;
         if (isWide (id) || cols == 1) { rows.push_back ({ id }); continue; }
         if (rows.empty() || isWide (rows.back().front()) || (int) rows.back().size() >= cols) rows.push_back ({});
         rows.back().push_back (id);
@@ -1567,26 +1609,26 @@ void MonitorPage::layoutModules()
 
 void MonitorPage::updateChips()
 {
-    for (int i = 0; i < NumModules; ++i) chips[(size_t) i].setToggleState ((s.monitorShown >> i) & 1, juce::dontSendNotification);
+    for (int i = 0; i < NumModules; ++i) chips[(size_t) i].setToggleState ((layShown() >> i) & 1, juce::dontSendNotification);
 }
 
 void MonitorPage::setShown (int id, bool shown)
 {
-    if (shown) s.monitorShown |= (1 << id); else s.monitorShown &= ~(1 << id);
-    if (! shown && s.monitorMax == id) s.monitorMax = -1;
-    if (shown && s.monitorMax >= 0 && s.monitorMax != id) s.monitorMax = -1;   // showing another module restores the grid
+    if (shown) layShown() |= (1 << id); else layShown() &= ~(1 << id);
+    if (! shown && layMax() == id) layMax() = -1;
+    if (shown && layMax() >= 0 && layMax() != id) layMax() = -1;   // showing another module restores the grid
     updateChips(); layoutModules(); repaint(); changed();
 }
 
 void MonitorPage::setWide (int id, bool wide)
 {
-    if (wide) s.monitorWide |= (1 << id); else s.monitorWide &= ~(1 << id);
+    if (wide) layWide() |= (1 << id); else layWide() &= ~(1 << id);
     layoutModules(); changed();
 }
 
 void MonitorPage::toggleMax (int id)
 {
-    s.monitorMax = s.monitorMax == id ? -1 : id;
+    layMax() = layMax() == id ? -1 : id;
     layoutModules();
     for (auto& m : modules) m->repaint();
     changed();
@@ -1627,12 +1669,15 @@ void MonitorPage::showLayoutMenu()
 {
     juce::PopupMenu menu, cols;
     const char* names[] = { "Automatic", "1", "2", "3" };
-    for (int i = 0; i < 4; ++i) cols.addItem (names[i], true, s.monitorCols == i, [this, i] { s.monitorCols = i; layoutModules(); changed(); });
+    for (int i = 0; i < 4; ++i) cols.addItem (names[i], true, layCols() == i, [this, i] { layCols() = i; layoutModules(); changed(); });
     menu.addSubMenu ("Columns", cols);
-    menu.addItem ("Show all modules", (s.monitorShown & 63) != 63, false, [this] { s.monitorShown = 63; s.monitorMax = -1; updateChips(); layoutModules(); repaint(); changed(); });
+    juce::PopupMenu mods;
+    for (int i = 0; i < NumModules; ++i) mods.addItem (kModuleNames[i], true, (layShown() >> i) & 1, [this, i] { setShown (i, ! ((layShown() >> i) & 1)); });
+    menu.addSubMenu ("Modules", mods);
+    menu.addItem ("Show all modules", (layShown() & 63) != 63, false, [this] { layShown() = 63; layMax() = -1; updateChips(); layoutModules(); repaint(); changed(); });
     menu.addItem ("Reset layout", [this]
     {
-        s.monitorOrder = "0,1,2,3,4,5"; s.monitorShown = 63; s.monitorWide = 35; s.monitorMax = -1; s.monitorCols = 0;
+        layOrder() = "0,1,2,3,4,5"; layShown() = 63; layWide() = 35; layMax() = -1; layCols() = 0;
         updateChips(); layoutModules(); repaint(); changed();
     });
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&layoutBtn));
