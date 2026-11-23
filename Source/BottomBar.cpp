@@ -296,6 +296,8 @@ void BottomBar::resized()
         return;
     }
 
+    if (s.viewMode != Analyzer) return;               // the Key view has no controls here (they're on its page)
+
     const bool roomForCombos = r.getWidth() >= ui::px (66 + 6 + 64 + 4 + 122 + 4 + 84 + 10 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
     for (auto* c : { &bpoBox, &chanBox, &gridBox }) c->setVisible (roomForCombos);
     const int wButtons = ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72);
