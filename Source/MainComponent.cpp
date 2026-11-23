@@ -636,7 +636,13 @@ void MainComponent::layoutOptions()
 bool MainComponent::keyPressed (const juce::KeyPress& k)
 {
     const bool ana = settings.viewMode == BottomBar::Analyzer, bal = settings.viewMode == BottomBar::Balance || settings.viewMode == BottomBar::Key;
-    if (k == juce::KeyPress::spaceKey)          { if (ana) analyzerPanel.getView().toggleFreeze(); else if (! bal) view.togglePause(); return true; }
+    if (k == juce::KeyPress::spaceKey)
+    {
+        if (settings.viewMode == BottomBar::Key) keyPage.togglePlay();
+        else if (ana) analyzerPanel.getView().toggleFreeze();
+        else if (! bal) view.togglePause();
+        return true;
+    }
     if (k.getTextCharacter() == 'v' || k.getTextCharacter() == 'V') { setView ((settings.viewMode + 1) % 4); return true; }
     if (k.getTextCharacter() >= '1' && k.getTextCharacter() <= '4') { setView ((int) (k.getTextCharacter() - '1')); return true; }
     if (k == juce::KeyPress::F11Key)            { toggleFullscreen(); return true; }

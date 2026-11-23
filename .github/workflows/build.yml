@@ -112,6 +112,9 @@ jobs:
           build\transcribe_test.exe tiny.gguf
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Key page playback test (original, synth, mix, seeking; no sound card)
+        run: build\player_test_artefacts\Release\player_test.exe
+
       - name: Target loader test
         run: build\target_loader_test_artefacts\Release\target_loader_test.exe
 

@@ -1,5 +1,6 @@
 #include "TranscriptionSession.h"
 #include "Resample.h"
+#include "NoteFilter.h"
 #include <map>
 
 TranscriptionSession::TranscriptionSession() : juce::Thread ("Transcription")
@@ -37,6 +38,13 @@ std::vector<transcribe::Note> TranscriptionSession::notes() const
     return noteList;
 }
 
+std::shared_ptr<const std::vector<float>> TranscriptionSession::recording (double& rate) const
+{
+    const std::lock_guard<std::mutex> g (lock);
+    rate = takeRate;
+    return take;
+}
+
 juce::File TranscriptionSession::sourceFile() const
 {
     const std::lock_guard<std::mutex> g (lock);
@@ -52,13 +60,19 @@ std::vector<float> TranscriptionSession::peaks (int perSecond) const
     return p;
 }
 
+std::vector<float> TranscriptionSession::strengths (const std::vector<transcribe::Note>& n) const
+{
+    const std::lock_guard<std::mutex> g (lock);
+    return transcribe::noteStrengths (n, audio.data(), audio.size());
+}
+
 //==============================================================================
 void TranscriptionSession::clear()
 {
     cancel();
     stopThread (30000);
     const std::lock_guard<std::mutex> g (lock);
-    audio.clear(); noteList.clear(); srcFile = juce::File();
+    audio.clear(); noteList.clear(); srcFile = juce::File(); take.reset(); takeRate = 0;
     const int v = st.version;
     st = {};
     st.version = v + 1;
@@ -95,13 +109,13 @@ void TranscriptionSession::setAudio (std::vector<float> mono, double sampleRate,
     startThread (juce::Thread::Priority::low);                 // resampling minutes of audio takes a moment
 }
 
-void TranscriptionSession::transcribe (const juce::File& model, int device, std::vector<int> instruments)
+void TranscriptionSession::transcribe (const juce::File& model, int device, std::vector<int> instruments, float gateDbfs)
 {
     if (isThreadRunning()) return;
     {
         const std::lock_guard<std::mutex> g (lock);
         if (audio.empty()) return;
-        modelFile = model; deviceIndex = device; instrumentIds = std::move (instruments);
+        modelFile = model; deviceIndex = device; instrumentIds = std::move (instruments); gate = gateDbfs;
         noteList.clear();
         st.noteCount = 0; st.speed = 0; st.deviceName = {};
         task = Task::Transcribe;
@@ -123,6 +137,8 @@ void TranscriptionSession::run()
         auto a = transcribe::resample (raw.data(), raw.size(), rate, transcribe::kSampleRate);
         {
             const std::lock_guard<std::mutex> g (lock);
+            take = std::make_shared<const std::vector<float>> (std::move (raw));      // full quality, for playback
+            takeRate = rate;
             audio = std::move (a);
             st.seconds = (double) audio.size() / transcribe::kSampleRate;
         }
@@ -177,10 +193,21 @@ void TranscriptionSession::runEngine()
         const std::lock_guard<std::mutex> g (lock);
         a = audio;                                  // the engine reads its own copy; the UI keeps drawing ours
         rq.modelPath = modelFile.getFullPathName().toStdString();
+        rq.silenceGateDbfs = gate;
         rq.device = deviceIndex;
         rq.instruments = instrumentIds;
     }
     rq.cancel = [this] { return cancelRequest.load() || threadShouldExit(); };
+
+    // The model is sensitive to level: bring quiet audio up to a -1 dBFS peak (at most +24 dB) before it
+    // listens (the silence gate then applies to the raised level, so a quiet recording isn't gated away).
+    float peak = 0;
+    for (float v : a) peak = std::max (peak, std::abs (v));
+    if (peak > 1e-6f)
+    {
+        const float gain = juce::jlimit (1.0f, 15.85f, 0.891f / peak);
+        if (gain > 1.0f) for (float& v : a) v *= gain;
+    }
     const double audioSeconds = (double) a.size() / transcribe::kSampleRate;
     const double t0 = juce::Time::getMillisecondCounterHiRes();
     bool running = false;

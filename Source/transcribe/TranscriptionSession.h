@@ -34,14 +34,18 @@ public:
     bool canRead (const juce::File& f) const;
     juce::String wildcard() const;
 
-    void transcribe (const juce::File& model, int device, std::vector<int> instruments);
+    // gateDbfs: the engine's silence gate (see NoteFilter.h, Sensitivity::gateDbfs)
+    void transcribe (const juce::File& model, int device, std::vector<int> instruments, float gateDbfs = -60.0f);
     void cancel();
     void clear();
 
     Status status() const;
     std::vector<transcribe::Note> notes() const;
     std::vector<float> peaks (int perSecond = 100) const;   // |max| envelope of the audio, for drawing
+    std::vector<float> strengths (const std::vector<transcribe::Note>& notes) const;   // NoteFilter, on this audio
     juce::File sourceFile() const;                            // the file the audio came from, if any
+    // a recording at its original rate (mono), for playback; null for files
+    std::shared_ptr<const std::vector<float>> recording (double& sampleRate) const;
 
 private:
     void run() override;
@@ -57,8 +61,11 @@ private:
     juce::File pendingFile, srcFile, modelFile;
     int deviceIndex = -1;
     std::vector<int> instrumentIds;
+    float gate = -60.0f;
     enum class Task { None, Decode, Resample, Transcribe } task = Task::None;
     std::vector<float> pendingRaw;
+    std::shared_ptr<const std::vector<float>> take;
+    double takeRate = 0;
     double pendingRate = 0;
     std::atomic<bool> cancelRequest { false };
 };

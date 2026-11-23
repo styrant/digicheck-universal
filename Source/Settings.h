@@ -38,6 +38,11 @@ struct Settings
     bool   keyAuto       = true;  // transcribe as soon as a file is loaded (when the model is installed)
     bool   keySevenths   = true;  // 7th and 6th chords (off: triads and sus only)
     bool   keyShowNotes  = true;  // all transcribed notes in the piano roll (melody is always shown)
+    int    keyListen     = 1;     // playback: 0 original, 1 mix, 2 transcription only
+    int    keySynth      = 0;     // what the synth plays: 0 melody + chords, 1 all notes, 2 melody, 3 chords
+    float  keyVolume     = 0.8f;
+    int    keySensitivity = 70;   // 0..100, see transcribe/NoteFilter.h
+    juce::String keyOutput;       // playback output device; empty = system default
     double bpm        = 120.0;    // tempo calculator
     bool   tempoTriplets = false, tempoDotted = false;
     juce::String analyzerState;   // Spectrum Analyzer settings (XML)
@@ -108,6 +113,11 @@ struct Settings
         keyAuto       = p.getBoolValue ("keyAuto", keyAuto);
         keySevenths   = p.getBoolValue ("keySevenths", keySevenths);
         keyShowNotes  = p.getBoolValue ("keyShowNotes", keyShowNotes);
+        keyListen     = juce::jlimit (0, 2, p.getIntValue ("keyListen", keyListen));
+        keySynth      = juce::jlimit (0, 3, p.getIntValue ("keySynth", keySynth));
+        keyVolume     = juce::jlimit (0.0f, 1.0f, (float) p.getDoubleValue ("keyVolume", keyVolume));
+        keySensitivity = juce::jlimit (0, 100, p.getIntValue ("keySensitivity", keySensitivity));
+        keyOutput     = p.getValue ("keyOutput", keyOutput);
         bpm        = p.getDoubleValue ("bpm", bpm);
         tempoTriplets = p.getBoolValue ("tempoTriplets", tempoTriplets);
         tempoDotted   = p.getBoolValue ("tempoDotted", tempoDotted);
@@ -137,6 +147,8 @@ struct Settings
         p.setValue ("balanceTarget", balanceTarget); p.setValue ("balanceWindow2", balanceWindow); p.setValue ("balanceMode", balanceMode);
         p.setValue ("keyModel", keyModel); p.setValue ("keyDevice", keyDevice); p.setValue ("keyInstruments", keyInstruments);
         p.setValue ("keyAuto", keyAuto); p.setValue ("keySevenths", keySevenths); p.setValue ("keyShowNotes", keyShowNotes);
+        p.setValue ("keyListen", keyListen); p.setValue ("keySynth", keySynth); p.setValue ("keyVolume", keyVolume);
+        p.setValue ("keySensitivity", keySensitivity); p.setValue ("keyOutput", keyOutput);
         p.setValue ("bpm", bpm);               p.setValue ("tempoTriplets", tempoTriplets);
         p.setValue ("tempoDotted", tempoDotted);
         if (auto* file = dynamic_cast<juce::PropertiesFile*> (&p)) file->saveIfNeeded();     // the app writes its file at once

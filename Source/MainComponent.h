@@ -101,12 +101,14 @@ private:
     LiveRecorder recorder;
     TranscriptionSession transcription;
     ModelStore modelStore;
+    TranscriptionPlayer keyPlayer;
+    PlaybackOutput keyOutput { keyPlayer };
     TargetLibrary targetLibrary;
     AudioEngine engine;
     SpectrogramView view;
     AnalyzerPanel analyzerPanel { analyzerProc };
     BalanceView balanceView { liveBalance, targetLibrary };
-    KeyPage keyPage { keyFinder, transcription, recorder, modelStore, settings, [this] { saveAll(); } };
+    KeyPage keyPage { keyFinder, transcription, recorder, modelStore, keyPlayer, &keyOutput, settings, [this] { saveAll(); } };
     void refreshBalanceTargets();
     void balanceTargetsAction (int action);
     static juce::File targetBuilderExe();

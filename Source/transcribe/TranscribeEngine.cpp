@@ -133,6 +133,7 @@ namespace transcribe
         msl::TranscribeOptions opt;
         for (int id : rq.instruments) opt.instruments.push_back ((msl::InstrumentGroup) id);
         opt.n_threads = rq.threads;
+        opt.silence_gate.threshold_dbfs = rq.silenceGateDbfs;
         opt.should_cancel = rq.cancel;
 
         std::vector<Note> batch;

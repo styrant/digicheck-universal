@@ -106,6 +106,19 @@ Switch with the **Spectrogram | Analyzer | Balance | Key** buttons at the bottom
     - **Copy chords** (text with times), **Save MIDI...** or **Drag MIDI** straight into a DAW: one track per
       instrument plus Melody and Chords tracks, at 120 BPM with the key signature.
     - The key for chord names and numerals comes from the key finder, or from the notes when there's no key yet.
+  - **Listen** (the row under the header): **Play** (or Space) plays the song or recording with a playhead; click the
+    timeline, waveform or a chord to jump there (a chord: its start). *Listen: Original / Mix / Transcription* plays
+    the source, both, or only a built-in synth playing what was transcribed, to hear where they differ. *Synth:
+    Melody + chords* (melody, chord pad and bass), *All notes* (every note, drums too), *Melody* or *Chords*. Volume,
+    and the output device (Windows Audio, shared; the system default unless you choose one).
+  - **Sensitivity** (0-100, default 70): lower it when the transcription has notes that aren't there; raise it when
+    notes are missing. The model gives no confidence per note, so each note's strength is measured from the audio
+    (its fundamental and first harmonics over its first half second, relative to the strongest note around it; a
+    note an octave, a twelfth or two octaves above a much stronger one is marked down as its likely overtone).
+    Lowering the sensitivity drops weak and very short notes at once, for the chords, melody, MIDI and playback too;
+    nothing is transcribed again. Raising it keeps everything found and makes the next transcription listen to
+    quieter passages (the engine's silence gate: -39 dBFS at 0, -60 at 70, -69 at 100). Quiet audio is also brought
+    up to a -1 dBFS peak (at most +24 dB) before the model listens, since it is sensitive to level.
   - **Model:** downloaded once inside the app, not part of the install: Small 210 MB (about real time on a CPU),
     Medium 620 MB or Large 2.7 GB (a GPU recommended). They're stored in `%APPDATA%\DigiCheck Universal\Models`;
     models that NeuralNote has already downloaded (`%APPDATA%\NeuralNote\models`) are used in place. Each
@@ -151,7 +164,8 @@ the Vulkan SDK the engine builds CPU-only. The version is `VERSION` (major.minor
 Self-test: `Spectroscope.exe --test-screenshot out.png` writes a screenshot of every view. With
 `SPECTROSCOPE_TEST_KEYFILE=song.wav` the Key page loads a song, with `SPECTROSCOPE_TEST_MODEL=model.gguf` it uses that
 model, `SPECTROSCOPE_TEST_RECORD=10` records 10 s of the input instead, and `SPECTROSCOPE_TEST_KEYWAIT=ms` sets how
-long to wait (it also writes `out_key.mid`). `python tools/make_tiny_model.py tiny.gguf` makes a 3 MB random model
+long to wait (it also writes `out_key.mid`; `SPECTROSCOPE_TEST_PLAYWAV=out.wav` renders 16 s of playback, with
+`SPECTROSCOPE_TEST_LISTEN=0/1/2` for Original / Mix / Transcription). `python tools/make_tiny_model.py tiny.gguf` makes a 3 MB random model
 that runs through the whole engine, for tests (CI runs `transcribe_test tiny.gguf`).
 
 ## Licensing

@@ -240,7 +240,7 @@ struct KeyPage::Roll : public juce::Component, private juce::ScrollBar::Listener
     int lo = 48, hi = 84;
     juce::Point<int> hover { -1, -1 };
     float level = 0;
-    juce::Point<int> dragFrom;
+    juce::Point<int> dragFrom { -1, -1 };            // while the mouse is down (no page-turning then)
     double dragStart = 0;
 
     juce::Rectangle<int> chordLane, waveLane, rollArea, ruler, gutter;
@@ -320,6 +320,17 @@ struct KeyPage::Roll : public juce::Component, private juce::ScrollBar::Listener
         clampView(); repaint();
     }
     void mouseDoubleClick (const juce::MouseEvent&) override { fit (true); repaint(); }
+    // a click (not a drag) jumps playback there; on a chord, to the chord's start
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        const bool click = e.getDistanceFromDragStart() <= 3;
+        dragFrom = { -1, -1 };
+        if (! click || ! page.player.hasAudio() || e.x < rollArea.getX()) return;
+        double t = tAt ((float) e.x);
+        if (chordLane.contains (e.getPosition()))
+            for (auto& c : page.chordList) if (t >= c.start && t < c.end) { t = c.start; break; }
+        page.seekTo (juce::jmax (0.0, t));
+    }
     void mouseMove (const juce::MouseEvent& e) override { hover = e.getPosition(); repaint(); }
     void mouseExit (const juce::MouseEvent&) override   { hover = { -1, -1 }; repaint(); }
 
@@ -430,6 +441,25 @@ struct KeyPage::Roll : public juce::Component, private juce::ScrollBar::Listener
             g.setColour (juce::Colours::black.withAlpha (0.35f));
             g.fillRect (juce::Rectangle<float>::leftTopRightBottom (x, (float) chordLane.getY(), (float) rollArea.getRight(), (float) rollArea.getBottom()));
             g.setColour (kAccent); g.drawVerticalLine ((int) x, (float) chordLane.getY(), (float) rollArea.getBottom());
+        }
+
+        // ---- playhead; while playing, the view turns the page to follow it
+        if (page.player.hasAudio())
+        {
+            const double pos = page.player.position();
+            if (page.player.isPlaying() && dragFrom.x < 0)
+            {
+                const double visible = rollArea.getWidth() / pxPerSec;
+                if (pos > viewStart + visible * 0.92 || pos < viewStart) { viewStart = pos - visible * 0.08; clampView(); }
+            }
+            const float x = xOf (pos);
+            if (x >= (float) rollArea.getX() && x <= (float) rollArea.getRight())
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.85f));
+                g.drawLine (x, (float) chordLane.getY(), x, (float) rollArea.getBottom(), 1.5f);
+                juce::Path tri; tri.addTriangle (x - 5, (float) ruler.getY(), x + 5, (float) ruler.getY(), x, (float) ruler.getY() + 7);
+                g.fillPath (tri);
+            }
         }
 
         // ---- chord lane
@@ -595,10 +625,12 @@ struct KeyPage::DragMidi : public juce::TextButton
 };
 
 //==============================================================================
-KeyPage::KeyPage (KeyFinder& kf, TranscriptionSession& ts, LiveRecorder& lr, ModelStore& ms, Settings& st, std::function<void()> ch)
-    : finder (kf), session (ts), recorder (lr), models (ms), s (st), changed (std::move (ch))
+KeyPage::KeyPage (KeyFinder& kf, TranscriptionSession& ts, LiveRecorder& lr, ModelStore& ms, TranscriptionPlayer& pl, PlaybackOutput* out,
+                  Settings& st, std::function<void()> ch)
+    : finder (kf), session (ts), recorder (lr), models (ms), player (pl), output (out), s (st), changed (std::move (ch))
 {
     setOpaque (true);
+    formats.registerBasicFormats();
     sidebar = std::make_unique<Sidebar> (*this);
     roll = std::make_unique<Roll> (*this);
     card = std::make_unique<ModelCard> (*this);
@@ -658,6 +690,60 @@ KeyPage::KeyPage (KeyFinder& kf, TranscriptionSession& ts, LiveRecorder& lr, Mod
     saveBtn.setTooltip ("Save a MIDI file: one track per instrument, plus Melody and Chords tracks");
     saveBtn.onClick = [this] { saveMidi(); };
 
+    // ---- player
+    addAndMakeVisible (playBtn);
+    playBtn.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2d33));
+    playBtn.setTooltip ("Play / pause (Space). Click the timeline, waveform or a chord to jump there");
+    playBtn.onClick = [this] { togglePlay(); };
+    listenBox.addItemList ({ "Listen: Original", "Listen: Mix", "Listen: Transcription" }, 1);
+    listenBox.setSelectedId (s.keyListen + 1, juce::dontSendNotification);
+    listenBox.setTooltip ("Original: the song or recording. Transcription: only the synth playing the notes found. Mix: both, to hear where they differ");
+    listenBox.onChange = [this] { s.keyListen = listenBox.getSelectedId() - 1; player.setListen (s.keyListen); if (changed) changed(); };
+    synthBox.addItemList ({ "Synth: Melody + chords", "Synth: All notes", "Synth: Melody", "Synth: Chords" }, 1);
+    synthBox.setSelectedId (s.keySynth + 1, juce::dontSendNotification);
+    synthBox.setTooltip ("What the synth plays: the melody line with the chords (bass + pad), every transcribed note (drums too), or one of them");
+    synthBox.onChange = [this] { s.keySynth = synthBox.getSelectedId() - 1; rebuildEvents(); if (changed) changed(); };
+    volumeSlider.setRange (0.0, 1.0);
+    volumeSlider.setValue (s.keyVolume, juce::dontSendNotification);
+    volumeSlider.setTooltip ("Playback volume");
+    volumeSlider.onValueChange = [this] { s.keyVolume = (float) volumeSlider.getValue(); player.setVolume (s.keyVolume); };
+    volumeSlider.onDragEnd = [this] { if (changed) changed(); };
+    sensSlider.setRange (0, 100, 1);
+    sensSlider.setValue (s.keySensitivity, juce::dontSendNotification);
+    sensSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, ui::px (34), ui::px (20));
+    sensSlider.setTooltip ("Sensitivity. Lower it when the transcription has notes that aren't there (overtones, ghost notes): weak and very short "
+                           "notes are dropped at once. Raise it when notes are missing: everything found is kept, and the next transcription "
+                           "also listens to quieter passages (press Transcribe again)");
+    sensSlider.onValueChange = [this] { s.keySensitivity = (int) sensSlider.getValue(); filterNotes(); };
+    sensSlider.onDragEnd = [this] { if (changed) changed(); };
+    for (auto* c : std::initializer_list<juce::Component*> { &listenBox, &synthBox, &volumeSlider, &sensSlider }) addAndMakeVisible (c);
+    if (output != nullptr)
+    {
+        addAndMakeVisible (outputBox);
+        outputBox.setTooltip ("Where playback goes (Windows Audio, shared)");
+        outputBox.onChange = [this]
+        {
+            const int id = outputBox.getSelectedId();
+            s.keyOutput = id <= 1 ? juce::String() : outputBox.getItemText (outputBox.getSelectedItemIndex());
+            if (changed) changed();
+            const bool wasPlaying = player.isPlaying();
+            player.pause();
+            output->close();                          // reopened on the next Play
+            if (wasPlaying) togglePlay();
+        };
+        outputBox.addItem ("Output: System default", 1);
+        outputBox.setSelectedId (1, juce::dontSendNotification);
+        auto names = output->outputNames();
+        if (s.keyOutput.isNotEmpty()) names.addIfNotAlreadyThere (s.keyOutput);
+        for (int i = 0; i < names.size(); ++i)
+        {
+            outputBox.addItem (names[i], i + 2);
+            if (names[i] == s.keyOutput) outputBox.setSelectedId (i + 2, juce::dontSendNotification);
+        }
+    }
+    player.setListen (s.keyListen);
+    player.setVolume (s.keyVolume);
+
     // GPU start-up can take seconds: list the devices off the message thread
     deviceThread = std::thread ([this]
     {
@@ -702,6 +788,7 @@ void KeyPage::loadSource (const juce::File& f)
     lastFile = f;
     finder.analyzeFile (f);
     session.loadFile (f);
+    player.loadFile (f, formats);
     autoPending = s.keyAuto;
     refreshData (true);
     updateHeader();
@@ -724,6 +811,7 @@ void KeyPage::toggleRecording()
     else
     {
         session.clear();
+        player.unload();
         finder.reset();
         finder.setActive (true);
         recorder.start();
@@ -769,7 +857,7 @@ void KeyPage::startTranscription()
     if (model == juce::File()) { card->update(); updateHeader(); return; }
     std::vector<int> ids;
     for (auto& t : juce::StringArray::fromTokens (s.keyInstruments, ",", {})) if (t.trim().isNotEmpty()) ids.push_back (t.getIntValue());
-    session.transcribe (model, selectedDevice(), ids);
+    session.transcribe (model, selectedDevice(), ids, transcribe::Sensitivity::gateDbfs (s.keySensitivity));
     updateHeader();
 }
 
@@ -839,12 +927,99 @@ void KeyPage::refreshData (bool force)
     if (! force && st.version == lastVersion && ! keyChanged) return;
     const bool audioChanged = force || lastVersion < 0 || peaks.empty() != (st.seconds <= 0);
     lastVersion = st.version;
-    notes = session.notes();
+    rawNotes = session.notes();
+    strengths = session.strengths (rawNotes);
     key = k; keySource = from;
+    if (audioChanged || st.state == TranscriptionSession::State::Ready) peaks = session.peaks (100);
+    filterNotes();
+}
+
+void KeyPage::filterNotes()
+{
+    // the sensitivity filter, then everything that depends on the notes
+    notes = transcribe::filterNotes (rawNotes, strengths, s.keySensitivity);
+    if (! notes.empty() && key.valid && keySource == "the notes") key = harmony::estimateKey (notes);
     melodyNotes = harmony::melody (notes, harmonyOptions());
     chordList = harmony::chords (notes, key, harmonyOptions());
-    if (audioChanged || st.state == TranscriptionSession::State::Ready) peaks = session.peaks (100);
+    rebuildEvents();
     roll->dataChanged();
+    repaint (footer);
+}
+
+void KeyPage::rebuildEvents()
+{
+    using P = TranscriptionPlayer;
+    std::vector<P::Event> ev;
+    auto add = [&] (double on, double off, int pitch, int layer, float vel = 0.8f)
+    {
+        ev.push_back ({ on, pitch, layer, true, vel });
+        ev.push_back ({ std::max (on + 0.02, off), pitch, layer, false, vel });
+    };
+    const int what = s.keySynth;                     // 0 melody + chords, 1 all notes, 2 melody, 3 chords
+    if (what == 0 || what == 2)
+        for (auto& m : melodyNotes) add (m.onset, m.offset, m.pitch, P::Melody);
+    if (what == 0 || what == 3)
+        for (auto& c : chordList)
+        {
+            if (c.root < 0) continue;
+            const auto& t = harmony::qualityTemplate (c.quality);
+            for (int i = 0; i < 12; ++i)
+                if (t[(size_t) i]) add (c.start, c.end, 55 + (c.root + i - 7 + 24) % 12, P::Chords);   // voiced G3..F#4
+            add (c.start, c.end, 36 + (c.bass >= 0 ? c.bass : c.root), P::Bass);
+        }
+    if (what == 1)
+        for (auto& n : notes) add (n.onset, n.offset, n.pitch, n.drum ? P::Drums : P::Notes);
+    player.setEvents (std::move (ev));
+}
+
+void KeyPage::togglePlay()
+{
+    if (! player.hasAudio()) return;
+    if (! player.isPlaying() && output != nullptr && ! output->isOpen())
+    {
+        juce::String err;
+        if (! output->open (s.keyOutput, err) && ! output->open ({}, err))
+        {
+            playError = "Can't play: " + err;
+            repaint (footer);
+            return;
+        }
+    }
+    playError = {};
+    player.toggle();
+    updateHeader();
+}
+
+void KeyPage::renderPreview (const juce::File& wav, double seconds, int listen)
+{
+    if (! player.hasAudio() || (output != nullptr && output->isOpen())) return;
+    const double sr = 48000;
+    const int block = 512;
+    player.prepareToPlay (block, sr);
+    player.setListen (listen);
+    player.seek (0);
+    juce::Thread::sleep (200);
+    player.play();
+    juce::AudioBuffer<float> all (2, (int) (seconds * sr)), buf (2, block);
+    for (int pos = 0; pos + block <= all.getNumSamples(); pos += block)
+    {
+        buf.clear();
+        player.getNextAudioBlock ({ &buf, 0, block });
+        for (int c = 0; c < 2; ++c) all.copyFrom (c, pos, buf, c, 0, block);
+        juce::Thread::sleep (1);
+    }
+    player.pause();
+    player.setListen (s.keyListen);
+    wav.deleteFile();
+    juce::WavAudioFormat fmt;
+    if (auto w = std::unique_ptr<juce::AudioFormatWriter> (fmt.createWriterFor (new juce::FileOutputStream (wav), sr, 2, 16, {}, 0)))
+        w->writeFromAudioSampleBuffer (all, 0, all.getNumSamples());
+}
+
+void KeyPage::seekTo (double t)
+{
+    player.seek (t);
+    roll->repaint();
 }
 
 void KeyPage::updateHeader()
@@ -854,6 +1029,10 @@ void KeyPage::updateHeader()
     recordBtn.setButtonText (rec ? "Stop" : juce::String::fromUTF8 ("\xe2\x97\x8f  Record"));
     recordBtn.setColour (juce::TextButton::buttonColourId, rec ? kRed.withAlpha (0.85f) : juce::Colour (0xff2a2d33));
     recordBtn.setColour (juce::TextButton::textColourOffId, rec ? juce::Colours::white : kRed.brighter (0.3f));
+
+    playBtn.setButtonText (player.isPlaying() ? juce::String::fromUTF8 ("\xe2\x9d\x9a\xe2\x9d\x9a") : juce::String::fromUTF8 ("\xe2\x96\xb6"));
+    playBtn.setEnabled (player.hasAudio() && ! rec);
+    playBtn.setColour (juce::TextButton::buttonColourId, player.hasAudio() && ! rec ? kAccent : juce::Colour (0xff2a2d33));
 
     const bool haveModel = ModelStore::isInstalled (s.keyModel);
     const bool haveAudio = st.seconds > 0 && ! rec;
@@ -893,13 +1072,20 @@ void KeyPage::timerCallback()
         wasBusy[i] = busy;
     }
     if (card->isVisible()) card->update();
+    if (source == Source::Recorded && ! player.hasAudio())
+    {
+        double rate = 0;
+        if (auto take = session.recording (rate)) player.loadRecording (take, rate);
+    }
     if (recorder.full() && recorder.isRecording()) toggleRecording();
 
     if (! active) return;
     sidebar->update();
     refreshData (false);
     updateHeader();
-    if (st.busy() || recorder.isRecording()) roll->repaint();
+    if (st.busy() || recorder.isRecording() || player.isPlaying()) { roll->repaint(); repaint (timeArea); }
+    if (player.isPlaying() != (getTimerInterval() < 50)) startTimerHz (player.isPlaying() ? 30 : 15);
+    if (playBtn.getButtonText().isEmpty() || (player.isPlaying() != (playBtn.getButtonText() == juce::String::fromUTF8 ("\xe2\x9d\x9a\xe2\x9d\x9a")))) updateHeader();
 }
 
 //==============================================================================
@@ -935,7 +1121,27 @@ void KeyPage::resized()
 {
     auto r = getLocalBounds().reduced (ui::px (12), ui::px (8));
     header = r.removeFromTop (ui::px (36));
+    r.removeFromTop (ui::px (6));
+    playerRow = r.removeFromTop (ui::px (30));
     r.removeFromTop (ui::px (8));
+    {
+        auto p = playerRow;
+        playBtn.setBounds (p.removeFromLeft (ui::px (52)).reduced (0, 1)); p.removeFromLeft (ui::px (8));
+        timeArea = p.removeFromLeft (ui::px (110));
+        p.removeFromLeft (ui::px (6));
+        listenBox.setBounds (p.removeFromLeft (ui::px (170)).reduced (0, 1)); p.removeFromLeft (ui::px (6));
+        synthBox.setBounds (p.removeFromLeft (ui::px (190)).reduced (0, 1)); p.removeFromLeft (ui::px (10));
+        volumeSlider.setBounds (p.removeFromLeft (ui::px (110))); p.removeFromLeft (ui::px (10));
+        if (output != nullptr)
+        {
+            const bool room = p.getWidth() > ui::px (300 + 210);
+            outputBox.setVisible (room);
+            if (room) { outputBox.setBounds (p.removeFromRight (ui::px (210)).reduced (0, 1)); p.removeFromRight (ui::px (12)); }
+        }
+        auto sens = p.removeFromRight (juce::jmin (p.getWidth(), ui::px (300)));
+        sensLabel = sens.removeFromLeft (ui::px (80));
+        sensSlider.setBounds (sens);
+    }
     footer = r.removeFromBottom (ui::px (34));
     r.removeFromBottom (ui::px (6));
 
@@ -985,6 +1191,15 @@ void KeyPage::paint (juce::Graphics& g)
         g.drawText ("   " + detail, r, juce::Justification::centredLeft, true);
     }
 
+    // player row: position / length, and the sensitivity label
+    {
+        g.setColour (player.hasAudio() ? kText : kMuted); g.setFont (juce::FontOptions (ui::fs (13.5f)));
+        const double pos = player.position(), len = player.hasAudio() ? player.length() : st.seconds;
+        g.drawText (mmss (pos) + " / " + mmss (len), timeArea, juce::Justification::centredLeft);
+        g.setColour (kMuted); g.setFont (juce::FontOptions (ui::fs (12.5f)));
+        g.drawText ("Sensitivity", sensLabel, juce::Justification::centredRight);
+    }
+
     // footer: what the transcription is doing, or what was found
     {
         auto r = footer.withTrimmedRight (ui::px (8));
@@ -999,7 +1214,9 @@ void KeyPage::paint (juce::Graphics& g)
                     + (st.speed > 0 ? "   " + juce::String (st.speed, 1) + "x real time" : juce::String());
                 break;
             case TranscriptionSession::State::Done:
-                txt = juce::String (st.noteCount) + " notes, " + juce::String ((int) std::count_if (chordList.begin(), chordList.end(), [] (auto& ch) { return ch.root >= 0; }))
+                txt = (notes.size() == rawNotes.size() ? juce::String (st.noteCount) + " notes, "
+                                                        : juce::String ((int) notes.size()) + " of " + juce::String ((int) rawNotes.size()) + " notes (sensitivity), ")
+                    + juce::String ((int) std::count_if (chordList.begin(), chordList.end(), [] (auto& ch) { return ch.root >= 0; }))
                     + " chords, " + juce::String ((int) melodyNotes.size()) + " melody notes"
                     + (key.valid ? "   Key " + juce::String (key.name()) + " (from " + keySource + ")" : juce::String())
                     + (st.deviceName.isNotEmpty() ? "   on " + st.deviceName : juce::String())
@@ -1015,6 +1232,7 @@ void KeyPage::paint (juce::Graphics& g)
                 if (recorder.isRecording()) txt = "Recording. Press Stop to transcribe what was played";
                 break;
         }
+        if (playError.isNotEmpty()) { txt = playError; c = kRed; }
         if (st.busy())
         {
             bar (g, r.removeFromLeft (ui::px (140)).withSizeKeepingCentre (ui::px (140), ui::px (6)), st.progress, kAccent);

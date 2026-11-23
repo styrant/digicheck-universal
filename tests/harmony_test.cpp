@@ -2,6 +2,8 @@
 // model's transcription of a synthetic progression (tests/data/model_progression_notes.inc).
 #include "../Source/transcribe/Harmony.h"
 #include "../Source/transcribe/Resample.h"
+#include "../Source/transcribe/NoteFilter.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -101,6 +103,63 @@ int main()
         expect (harmony::melody (v, only).size() == 1, "melody from a chosen instrument");
         const auto sheet = harmony::chordSheet (harmony::chords (v, harmony::estimateKey (v)), harmony::estimateKey (v));
         expect (sheet.find ("0:00  C") != std::string::npos, "chord sheet: " + sheet.substr (0, sheet.find ('\n', sheet.find ("0:00"))));
+    }
+
+    // ---- sensitivity: the model's notes are all kept at the default; injected ghosts are dropped when lowered
+    {
+        const std::vector<Note> real {
+#include "data/model_progression_notes.inc"
+        };
+        // the same synthetic audio the model transcribed (tests/transcribe_test.cpp), at 16 kHz
+        const int prog[4][4] = { { 48, 55, 60, 64 }, { 45, 52, 57, 60 }, { 41, 53, 57, 60 }, { 43, 55, 59, 62 } };
+        const int mel[4][4]  = { { 76, 74, 72, 74 }, { 72, 71, 69, 71 }, { 69, 72, 77, 76 }, { 74, 71, 67, 74 } };
+        const double sr = 16000;
+        std::vector<float> x ((size_t) (sr * 8.5));
+        auto tone = [&] (int midi, double start, double dur, double amp)
+        {
+            const double f = 440 * std::pow (2.0, (midi - 69) / 12.0);
+            for (size_t i = (size_t) (start * sr); i < (size_t) ((start + dur) * sr) && i < x.size(); ++i)
+            {
+                const double t = (double) i / sr - start, env = std::exp (-t * 2.5) * std::min (1.0, t * 200);
+                double v = 0, a = 1;
+                for (int k = 1; k <= 6; ++k, a *= 0.6) v += a * std::sin (2 * 3.14159265358979 * f * k * t);
+                x[i] += (float) (amp * env * v);
+            }
+        };
+        for (int c = 0; c < 4; ++c)
+        {
+            for (int m : prog[c]) tone (m, c * 2.0, 2.0, 0.12);
+            for (int j = 0; j < 4; ++j) tone (mel[c][j], c * 2.0 + j * 0.5, 0.5, 0.2);
+        }
+        // which of the model's notes were really played (the model also wrote four octave errors)
+        auto played = [&] (const Note& n)
+        {
+            const int c = std::min (3, (int) ((n.onset + 0.05) / 2)), j = std::min (3, (int) ((n.onset - c * 2 + 0.05) / 0.5));
+            return std::find (std::begin (prog[c]), std::end (prog[c]), n.pitch) != std::end (prog[c]) || mel[c][j] == n.pitch;
+        };
+        auto notes = real;
+        notes.push_back ({ 1.0, 1.4, 98, 0, false });                  // nothing there
+        notes.push_back ({ 3.0, 3.3, 30, 0, false });                  // a sub-bass ghost
+        notes.push_back ({ 4.5, 4.9, 72 + 12, 0, false });             // the melody note's octave (its 2nd harmonic)
+        const auto st = transcribe::noteStrengths (notes, x.data(), x.size());
+        auto count = [&] (const std::vector<Note>& kept, bool wantPlayed)
+        {
+            size_t k = 0;
+            for (auto& n : kept)
+            {
+                const bool fromModel = std::any_of (real.begin(), real.end(), [&] (const Note& r) { return r.pitch == n.pitch && r.onset == n.onset && r.program == n.program; });
+                if ((fromModel && played (n)) == wantPlayed) ++k;
+            }
+            return k;
+        };
+        size_t nPlayed = count (notes, true);
+        const auto keepDefault = transcribe::filterNotes (notes, st, transcribe::Sensitivity::kDefault);
+        const auto keep10 = transcribe::filterNotes (notes, st, 10);
+        char msg[240];
+        std::snprintf (msg, sizeof msg, "sensitivity: %zu played notes, %zu excess (4 model octave errors + 3 ghosts). Default keeps %zu played + %zu excess; 10 keeps %zu played + %zu excess",
+                       nPlayed, notes.size() - nPlayed, count (keepDefault, true), count (keepDefault, false), count (keep10, true), count (keep10, false));
+        expect (count (keepDefault, true) == nPlayed && count (keepDefault, false) >= 4 && count (keep10, true) == nPlayed && count (keep10, false) == 0, msg);
+        expect (transcribe::filterNotes (notes, st, 100).size() == notes.size(), "sensitivity 100 keeps everything");
     }
 
     // ---- resampling to the model's 16 kHz: flat to 6.5 kHz, nothing folds back from above 8 kHz

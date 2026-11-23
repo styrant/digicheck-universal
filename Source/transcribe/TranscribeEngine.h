@@ -57,6 +57,7 @@ namespace transcribe
         int device = -1;                          // index into devices(), -1 = Auto
         std::vector<int> instruments;             // Instrument ids; empty = let the model decide
         int threads = 0;                          // 0 = all cores
+        float silenceGateDbfs = -60.0f;           // quieter 10 ms frames count as silence (lower: quiet passages too)
         std::function<bool()> cancel;             // polled often; return true to stop
         std::function<void (float)> loadProgress; // 0..1 while the weights load
         // Called after every 5 s chunk with the notes that became final (never repeated) and the
