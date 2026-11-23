@@ -222,6 +222,13 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     fpsBox.onChange = [this] { settings.fpsCap = fpsBox.getSelectedId() - 1; frameclock::capHz = settings.fpsCap; saveAll(); };
     frameclock::capHz = settings.fpsCap;
 
+    hdrBox.addItemList ({ "Keep HDR (1 px gap at the bottom)", "Keep HDR (CPU rendering while full screen)", "Exact full screen (may turn HDR off)" }, 1);
+    hdrBox.setSelectedItemIndex (settings.hdrFullscreen, juce::dontSendNotification);
+    hdrBox.setTooltip ("On an HDR monitor, some graphics drivers switch a full-screen OpenGL window to exclusive mode and Windows turns HDR off. "
+                       "The 1 px gap avoids it with GPU rendering; CPU rendering avoids it on HDR monitors only, at some speed cost.");
+    hdrBox.onChange = [this] { settings.hdrFullscreen = hdrBox.getSelectedItemIndex(); saveAll(); };
+    for (auto* c : std::initializer_list<juce::Component*> { &lblHdr, &hdrBox }) options.addAndMakeVisible (c);
+    lblHdr.setFont (juce::FontOptions (ui::fs (15.0f)));
     textBox.addItemList ({ "Small", "Medium (default)", "Large", "Custom" }, 1);
     textBox.setSelectedItemIndex (juce::jlimit (0, 3, settings.textSize), juce::dontSendNotification);
     textBox.onChange = [this] { settings.textSize = textBox.getSelectedItemIndex(); applyTextScale(); };
@@ -305,12 +312,13 @@ void MainComponent::saveAll()
 
 void MainComponent::applyRenderer()
 {
-    if (settings.gpu && ! glContext.isAttached())
+    const bool wantGpu = settings.gpu && ! cpuOverride;
+    if (wantGpu && ! glContext.isAttached())
     {
         view.setGpuMode (true);
         glContext.attachTo (*this);
     }
-    else if (! settings.gpu && glContext.isAttached())
+    else if (! wantGpu && glContext.isAttached())
     {
         glContext.detach();
         view.setGpuMode (false);
@@ -360,7 +368,7 @@ void MainComponent::applyTextScale()
 {
     ui::textScale = ui::presetScale (settings.textSize, settings.textScaleCustom);
     textSlider.setVisible (settings.textSize == 3);
-    for (auto* l : { &lblL, &lblR, &lblFps, &lblText }) l->setFont (juce::FontOptions (ui::fs (15.0f)));
+    for (auto* l : { &lblL, &lblR, &lblFps, &lblText, &lblHdr }) l->setFont (juce::FontOptions (ui::fs (15.0f)));
     status.setFont (juce::FontOptions (ui::fs (12.5f)));
     saveAll();
     if (auto* top = getTopLevelComponent()) top->sendLookAndFeelChange();
@@ -676,7 +684,7 @@ void MainComponent::resized()
 void MainComponent::layoutOptions()
 {
     using ui::px;
-    const int w = juce::jmin (px (470), getWidth() - 16), h = px (settings.textSize == 3 ? 404 : 372);
+    const int w = juce::jmin (px (470), getWidth() - 16), h = px ((settings.textSize == 3 ? 404 : 372) + (device != nullptr ? 34 : 0));
     options.setBounds (8, getHeight() - BottomBar::height() - h - 6, w, h);
     options.headings.clear();
     auto r = options.getLocalBounds().reduced (14, 10);
@@ -701,6 +709,13 @@ void MainComponent::layoutOptions()
     row = r.removeFromTop (px (28));
     lblFps.setBounds (row.removeFromLeft (px (130))); fpsBox.setBounds (row.removeFromLeft (px (190)));
     r.removeFromTop (px (6));
+    if (device != nullptr)                          // the standalone's full screen (the plugin has none)
+    {
+        row = r.removeFromTop (px (28));
+        lblHdr.setBounds (row.removeFromLeft (px (130))); hdrBox.setBounds (row.removeFromLeft (px (300)));
+        r.removeFromTop (px (6));
+    }
+    lblHdr.setVisible (device != nullptr); hdrBox.setVisible (device != nullptr);
     row = r.removeFromTop (px (28));
     lblText.setBounds (row.removeFromLeft (px (130))); textBox.setBounds (row.removeFromLeft (px (190)));
     if (settings.textSize == 3)

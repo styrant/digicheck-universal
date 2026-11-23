@@ -109,6 +109,7 @@ set(DCU_SHARED_SOURCES
 
 target_sources(Spectroscope PRIVATE
     Source/Main.cpp
+    Source/HdrInfo.cpp
     ${DCU_SHARED_SOURCES})
 
 # Key finder model (OpenKeyScan KeyNet, MIT; exported by tools/export_keynet.py)

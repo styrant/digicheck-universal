@@ -2,6 +2,7 @@
 #include "MainComponent.h"
 #include "SettingsDialog.h"
 #include "AppLookAndFeel.h"
+#include "HdrInfo.h"
 
 class SpectroscopeApp : public juce::JUCEApplication
 {
@@ -50,8 +51,9 @@ private:
         void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (0xff0b0c0e)); }
         void resized() override
         {
-            if (auto* c = getChildComponent (0)) c->setBounds (0, 0, getWidth(), getHeight() - 1);
+            if (auto* c = getChildComponent (0)) c->setBounds (0, 0, getWidth(), getHeight() - extra);
         }
+        int extra = 0;                 // the 1 px hidden below the monitor (exact mode)
     };
 
     struct MainWindow : public juce::DocumentWindow
@@ -94,7 +96,16 @@ private:
                 host = std::make_unique<FullscreenHost>();
                 host->setName (getName());
                 host->addAndMakeVisible (content.get());
-                host->setBounds (area.withHeight (area.getHeight() + 1));  // 1 px taller: see FullscreenHost
+                // HDR monitors: a GPU (OpenGL) window covering the whole monitor can be switched by the driver to
+                // exclusive / independent-flip presentation, and Windows then drops the monitor out of HDR.
+                //  0 (default): 1 px short of the monitor's height, so it never covers it: HDR stays on
+                //  1: on a monitor with HDR on, CPU rendering while full screen (GPU again on leaving)
+                //  2: exact full screen, 1 px taller than the monitor (some drivers still promote it)
+                const int mode = content->getSettings().hdrFullscreen;
+                const bool hdrOn = hdr::isOnAt (juce::Desktop::getInstance().getDisplays().logicalToPhysical (area.getCentre()));
+                if (mode == 1 && hdrOn) content->setCpuOverride (true);
+                host->extra = mode == 2 ? 1 : 0;
+                host->setBounds (mode == 0 ? area.withHeight (area.getHeight() - 1) : area.withHeight (area.getHeight() + host->extra));
                 host->addToDesktop (juce::ComponentPeer::windowAppearsOnTaskbar);
                 host->setVisible (true);
                 host->toFront (true);
@@ -107,6 +118,7 @@ private:
                 setVisible (true);
                 toFront (true);
                 host.reset();
+                content->setCpuOverride (false);
             }
             content->setFullscreenState (full);
             content->resumeGpu();

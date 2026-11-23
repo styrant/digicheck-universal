@@ -32,6 +32,7 @@ public:
     void toggleFullscreen();
     void setFullscreenState (bool isFullscreen);     // called by the window owner
     void suspendGpu();                               // around moving to another window
+    void setCpuOverride (bool on)                    { cpuOverride = on; applyRenderer(); }   // full screen on an HDR monitor (mode 1)
     void resumeGpu();
     std::function<void (bool wantFullscreen)> onFullscreenRequest;
     void toggleTempoWindow();
@@ -137,10 +138,10 @@ private:
     BottomBar bottom { settings, engine, analyzerProc };
 
     juce::Label status;
-    juce::ComboBox source, chL, chR, fpsBox, textBox;
+    juce::ComboBox source, chL, chR, fpsBox, textBox, hdrBox;
     juce::Slider textSlider;
-    juce::Label lblL { {}, "L" }, lblR { {}, "R" }, lblFps { {}, "Frame rate limit" }, lblText { {}, "Text size" };
-    bool fullscreen = false, gpuSuspended = false;
+    juce::Label lblL { {}, "L" }, lblR { {}, "R" }, lblFps { {}, "Frame rate limit" }, lblText { {}, "Text size" }, lblHdr { {}, "HDR full screen" };
+    bool fullscreen = false, gpuSuspended = false, cpuOverride = false;
     juce::TextButton startBtn { "Start" }, settingsBtn { "View settings" }, rescanBtn { "Rescan" };
     juce::ToggleButton gpuToggle { "GPU rendering (OpenGL)" };
     juce::VBlankAttachment frameTick { this, [this] (double t) { onFrame (t); } };

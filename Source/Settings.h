@@ -22,6 +22,7 @@ struct Settings
     int    noteRef    = 440;      // 0 = off
     bool   showLufs   = true;
     bool   gpu        = true;     // OpenGL rendering
+    int    hdrFullscreen = 0;     // 0 keep HDR: 1 px gap, 1 keep HDR: CPU rendering while full screen on an HDR monitor, 2 exact
     int    fpsCap     = 60;       // frame-rate limit, 0 = follow the monitor (60 by default: smooth, and no wasted GPU work)
     int    textSize   = 1;        // 0 small, 1 medium (default), 2 large, 3 custom
     double textScaleCustom = 1.0;
@@ -162,6 +163,7 @@ struct Settings
         showLufs   = p.getBoolValue ("showLufs", showLufs);
         gpu        = p.getBoolValue ("gpu", gpu);
         fpsCap     = p.getIntValue ("fpsCap", fpsCap);
+        hdrFullscreen = juce::jlimit (0, 2, p.getIntValue ("hdrFullscreen", hdrFullscreen));
         if (p.getIntValue ("settingsVersion", 1) < 2 && fpsCap == 0) fpsCap = 60;   // v2: 60 fps became the default
         textSize   = p.getIntValue ("textSize", textSize);
         textScaleCustom = p.getDoubleValue ("textScaleCustom", textScaleCustom);
@@ -280,7 +282,7 @@ struct Settings
         p.setValue ("hidePanel", hidePanel);   p.setValue ("showScale", showScale);
         p.setValue ("noteRef", noteRef);       p.setValue ("source", source);
         p.setValue ("showLufs", showLufs);     p.setValue ("gpu", gpu);
-        p.setValue ("fpsCap", fpsCap);
+        p.setValue ("fpsCap", fpsCap); p.setValue ("hdrFullscreen", hdrFullscreen);
         p.setValue ("settingsVersion", 4);
         p.setValue ("textSize", textSize);     p.setValue ("textScaleCustom", textScaleCustom);     p.setValue ("autoHideBar", autoHideBar);
         p.setValue ("chL", chL);               p.setValue ("chR", chR);
