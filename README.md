@@ -88,7 +88,8 @@ Switch with the **Spectrogram | Analyzer | Balance | Key** buttons at the bottom
     from it sits on the target line. It only runs while the Balance view is shown.
 - **Key** (Key view, 4 or K): every key-related tool on one page, sharing one audio source.
   - **Source:** **Record** (the selected input; **R**), **Browse...**, or **drag & drop** a song anywhere on the page
-    (WAV, AIFF, FLAC, OGG, MP3). Nothing is analysed until you choose.
+    (WAV, AIFF, FLAC, OGG, MP3). Nothing is analysed until you choose. **Clear** empties the page (audio, notes, chords, melody and
+    key; stops playback and any transcription) to start again; loading another song or recording also replaces them.
   - **Key (left):** the key finder. For a file, the whole file's key with the two runners-up, Camelot (8A), Open Key
     (1m) and the keys that mix well. While recording, *Now* (the last 20 s, every 3 s) and *Session* (everything
     heard). The key chart below marks the key (filled) and the session key (outlined). The model is OpenKeyScan's

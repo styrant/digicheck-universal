@@ -36,6 +36,7 @@ public:
     void setInputRunning (bool r)                 { inputRunning = r; }
     void loadSource (const juce::File& f);        // Browse / drop / --test-screenshot
     void toggleRecording();
+    void clearAll();                              // back to an empty page: no audio, notes or key
     void startTranscription();
     void togglePlay();
     // renders the player offline (no output device) to a WAV file: for the self-test
@@ -95,7 +96,7 @@ private:
     std::atomic<bool> devicesReady { false };
     std::thread deviceThread;
 
-    juce::TextButton recordBtn, browseBtn { "Browse..." }, instrumentsBtn, transcribeBtn { "Transcribe" };
+    juce::TextButton recordBtn, browseBtn { "Browse..." }, clearBtn { "Clear" }, instrumentsBtn, transcribeBtn { "Transcribe" };
     juce::ComboBox modelBox, deviceBox;
     juce::ToggleButton autoToggle { "Auto" }, seventhsToggle { "7th chords" }, notesToggle { "All notes" };
     juce::TextButton copyBtn { "Copy chords" }, saveBtn { "Save MIDI..." };

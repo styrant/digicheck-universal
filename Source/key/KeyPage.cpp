@@ -639,7 +639,7 @@ KeyPage::KeyPage (KeyFinder& kf, TranscriptionSession& ts, LiveRecorder& lr, Mod
     addAndMakeVisible (*roll);
     addChildComponent (*card);
 
-    for (auto* b : { &recordBtn, &browseBtn, &instrumentsBtn, &transcribeBtn, &copyBtn, &saveBtn, static_cast<juce::TextButton*> (dragMidi.get()) })
+    for (auto* b : { &recordBtn, &browseBtn, &clearBtn, &instrumentsBtn, &transcribeBtn, &copyBtn, &saveBtn, static_cast<juce::TextButton*> (dragMidi.get()) })
     {
         addAndMakeVisible (b);
         b->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2d33));
@@ -652,6 +652,8 @@ KeyPage::KeyPage (KeyFinder& kf, TranscriptionSession& ts, LiveRecorder& lr, Mod
     recordBtn.onClick = [this] { toggleRecording(); };
     browseBtn.setTooltip ("Analyse an audio file (or drop one anywhere on this page)");
     browseBtn.onClick = [this] { browse(); };
+    clearBtn.setTooltip ("Clear the page: stops playback and any transcription, and removes the audio, notes, chords and key, to start again");
+    clearBtn.onClick = [this] { clearAll(); };
     transcribeBtn.onClick = [this]
     {
         if (session.status().busy()) session.cancel();
@@ -819,6 +821,25 @@ void KeyPage::toggleRecording()
     }
     refreshData (true);
     updateHeader();
+}
+
+void KeyPage::clearAll()
+{
+    if (recorder.isRecording()) recorder.stop();
+    player.unload();                              // stops playback
+    session.clear();                              // cancels a transcription and drops the audio and notes
+    finder.setActive (false);
+    finder.reset();
+    source = Source::None;
+    lastFile = juce::File();
+    autoPending = false;
+    playError = {};
+    rawNotes.clear(); strengths.clear();
+    peaks.clear();
+    refreshData (true);
+    roll->fit (true);
+    updateHeader();
+    repaint();
 }
 
 void KeyPage::browse()
@@ -1034,6 +1055,8 @@ void KeyPage::updateHeader()
     playBtn.setEnabled (player.hasAudio() && ! rec);
     playBtn.setColour (juce::TextButton::buttonColourId, player.hasAudio() && ! rec ? kAccent : juce::Colour (0xff2a2d33));
 
+    clearBtn.setEnabled (rec || st.seconds > 0 || st.busy() || source != Source::None);
+
     const bool haveModel = ModelStore::isInstalled (s.keyModel);
     const bool haveAudio = st.seconds > 0 && ! rec;
     transcribeBtn.setButtonText (st.busy() && st.state != TranscriptionSession::State::Preparing ? "Stop" : "Transcribe");
@@ -1147,7 +1170,8 @@ void KeyPage::resized()
 
     auto h = header;
     recordBtn.setBounds (h.removeFromLeft (ui::px (96)).reduced (0, 2)); h.removeFromLeft (ui::px (6));
-    browseBtn.setBounds (h.removeFromLeft (ui::px (90)).reduced (0, 2)); h.removeFromLeft (ui::px (12));
+    browseBtn.setBounds (h.removeFromLeft (ui::px (90)).reduced (0, 2)); h.removeFromLeft (ui::px (6));
+    clearBtn.setBounds (h.removeFromLeft (ui::px (64)).reduced (0, 2)); h.removeFromLeft (ui::px (12));
     transcribeBtn.setBounds (h.removeFromRight (ui::px (104)).reduced (0, 2)); h.removeFromRight (ui::px (6));
     autoToggle.setBounds (h.removeFromRight (ui::px (62))); h.removeFromRight (ui::px (4));
     const bool wide = h.getWidth() > ui::px (230 + 136 + 190 + 150 + 30);

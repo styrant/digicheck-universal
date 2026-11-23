@@ -155,6 +155,12 @@ private:
             if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_key.png")); s.openedOk())
             { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
             mc->getKeyPage().writeMidi (out.getSiblingFile (out.getFileNameWithoutExtension() + "_key.mid"));
+            if (juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_CLEAR", {}).isNotEmpty())
+            {
+                mc->getKeyPage().clearAll();
+                if (auto s = juce::FileOutputStream (out.getSiblingFile (out.getFileNameWithoutExtension() + "_key_cleared.png")); s.openedOk())
+                { s.setPosition (0); s.truncate(); juce::PNGImageFormat().writeImageToStream (mc->createComponentSnapshot (mc->getLocalBounds()), s); }
+            }
             if (auto playWav = juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_PLAYWAV", {}); playWav.isNotEmpty())
                 mc->getKeyPage().renderPreview (juce::File (playWav), 16.0, juce::SystemStats::getEnvironmentVariable ("SPECTROSCOPE_TEST_LISTEN", "1").getIntValue());
             mc->setView (0);
