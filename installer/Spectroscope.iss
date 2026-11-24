@@ -68,8 +68,7 @@ begin
       ExpandConstant ('{localappdata}') + '\Programs\Common\VST3' + #13#10#13#10 +
       'Some DAWs (for example older Ableton Live or FL Studio versions) only look in' + #13#10 +
       'C:\Program Files\Common Files\VST3, which needs an install for all users.',
-      mbConfirmation, MB_YESNO,
-      ['Install for all users (recommended)', 'Keep the install for me only'], IDYES);
+      mbConfirmation, MB_YESNO, ['Install for all users (recommended)', 'Keep the install for me only'], IDYES);
     if Choice = IDYES then
     begin
       // the same Setup again, elevated, in all-users mode; this one closes
