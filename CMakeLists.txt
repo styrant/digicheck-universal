@@ -168,6 +168,7 @@ option(DCU_BUILD_VST3 "Build the VST3 plugin" ON)
 # Symbols for crash reports (Source/CrashReport.h): debug info in the objects (/Z7, works with ccache) and
 # a PDB per binary in build/symbols (kept out of the exe / VST3 bundle; CI keeps them as an artifact).
 # /OPT:REF and /OPT:ICF are restated because /DEBUG would otherwise turn them off.
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/symbols)
 function(dcu_symbols target binary pdbname)
     if(MSVC)
         target_compile_options(${target} PRIVATE /Z7)
