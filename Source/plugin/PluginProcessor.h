@@ -15,6 +15,7 @@
 #include "../Core.h"
 #include "../listen/BandIsolator.h"
 #include "InstanceLink.h"
+#include "../bridge/Bridge.h"
 
 class DcuProcessor : public juce::AudioProcessor, public HostLink, private juce::Timer
 {
@@ -58,6 +59,8 @@ public:
     juce::String linkName() const override           { return core.settings.linkName; }
     bool linkLive() const override                   { return linkOk.load(); }
     void updateTrackProperties (const TrackProperties&) override;
+    void setBridgeSend (bool on) override            { core.settings.bridgeSend = on; core.save(); bridgeSender.setEnabled (on); }
+    bool bridgeSending() const override              { return core.settings.bridgeSend && bridgeSender.isSending(); }
 
     Core& getCore()                                  { return core; }
     AnalysisEngine& getEngine()                      { return engine; }
@@ -87,6 +90,7 @@ private:
     juce::SpinLock linkLock;
     std::vector<float> linkL, linkR;
     std::atomic<bool> linkOk { false };
+    bridge::Sender bridgeSender;                     // to the app (see bridge/Bridge.h)
     void resolveLink();
     std::unique_ptr<juce::PropertiesFile> global;
     juce::PropertySet state;                         // this instance's settings, saved in the project

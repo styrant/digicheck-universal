@@ -79,3 +79,6 @@ and editor.
 ## Closed window, memory
 - With the editor closed only the Monitor (and a running Key recording, Link and the Reference) keeps working; the spectrogram, analyzer, scope, FFT and balance analysis stop until the window opens (MainComponent's destructor; setView turns them on again).
 - References are decoded once per process per file, as 16-bit, and shared by every instance that loads the same file (ReferenceTrack::Data); the FFT averages are computed on a background job per FFT size.
+
+## DAW bridge (to the app)
+Each instance writes its input to a slot of the process-independent shared memory `DigiCheckUniversal.Bridge.1` (bridge/Bridge.h), named after its track. The standalone app's *From DAW* source reads one slot, so the app can monitor a DAW running ASIO. Claiming a slot is a compare-and-swap in the audio thread (real-time safe); a slot whose heartbeat stopped for 3 s is reclaimed. Off per instance with *Send to the DigiCheck Universal app* (Options).

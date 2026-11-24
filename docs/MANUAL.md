@@ -46,13 +46,28 @@ The builds aren't code-signed yet, so Windows may warn once:
 | Windows Audio (shared) | The default. Reads your interface's inputs through Windows, even while your DAW uses ASIO. |
 | Windows Audio (exclusive) | Bit-exact input when nothing else is using the device. |
 | ASIO | Bit-exact, lowest latency. May be unavailable while your DAW holds the ASIO driver. |
-| Windows playback (loopback) | Whatever Windows is playing (Spotify, YouTube, your DAW's output), with no cables or routing. |
+| Windows playback (loopback) | Whatever Windows is playing (Spotify, YouTube, a DAW using Windows Audio), with no cables or routing. It can't hear a DAW that uses ASIO. |
+| From DAW (DigiCheck plugin) | What the DigiCheck Universal VST3 sees in your DAW, **even when the DAW uses ASIO**. See [Monitoring your DAW](#monitoring-your-daw-even-with-asio). |
 | Test signal | A sweep, chord, clicks and tones, for trying the app without an interface. |
 
 3. Pick the **L** and **R** channels (for example inputs 1/2, or your interface's loopback channels).
 4. Press **Start**. The status line underneath shows the sample rate, latency, DSP load and renderer.
 
 Click anywhere else, or press Esc, to close Options. Your source and channels are remembered.
+
+### Monitoring your DAW, even with ASIO
+A DAW that uses ASIO talks to your interface directly, past Windows' audio system, so ordinary Windows apps (and *Windows playback (loopback)*) can't hear it. The DigiCheck VST3 can hand the app what it sees instead:
+
+1. Put the **DigiCheck Universal** VST3 on your DAW's **master** track (last in the chain, to see what you hear). Save it in your default template and it's always there.
+2. In the app, choose **From DAW: automatic (the master track)** under *From your DAW* in Options, and press Start.
+
+That's all: no routing, no driver or Windows settings, any interface. The app then measures your DAW's master like any other input, and every page works.
+
+- **Automatic** follows the plugin on the track named like a master (Master, Stereo Out, Main...), else the one added most recently. To follow a particular track instead, put the plugin there and choose **From DAW: <track name>** (press Rescan to list tracks that have just started sending).
+- The Options status line says which track the app is hearing, or that it's waiting for the plugin. While nothing is sending, the meters fall to silence; they pick up again as soon as the DAW plays.
+- Each plugin instance sends by default; turn it off with *Send to the DigiCheck Universal app* in the plugin's Options. Up to 16 tracks can send at once.
+- It works between the DAW and the app on the same computer, with any DAW that loads VST3 plugins (including ones that run plugins in separate processes). The plugin's own pages work as before.
+- If your interface has loopback channels in its driver (many Focusrite, RME, MOTU and UA interfaces do), choosing those channels under *Windows Audio (shared)* also hears an ASIO DAW, without a plugin.
 
 ---
 
@@ -314,6 +329,7 @@ Some graphics drivers switch a full-screen OpenGL window to *exclusive* mode. Wi
 - The audio passes through untouched (bit for bit, no latency) unless you use Listen.
 
 What the plugin adds:
+- **Send to the app:** the plugin hands what it sees to the standalone app, whose **From DAW** input then monitors your DAW even when it uses ASIO ([Monitoring your DAW](#monitoring-your-daw-even-with-asio)). On by default; *Send to the DigiCheck Universal app* in the plugin's Options turns it off.
 - **Tempo** follows the project, and the **Scope's Sync** mode locks the window to your bars.
 - **Sidechain:** route another track to the plugin's sidechain input to see it together with the track:
   - over the **spectrogram** (**SC** button: tint or contour lines, colour and strength)
@@ -387,7 +403,9 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
 ## 16. Troubleshooting
 
 - **No picture, or "No input":** open Options, pick a source and channels, and press Start. ASIO may be busy while your DAW uses it; use *Windows Audio (shared)* instead.
-- **I want to see what Spotify / YouTube / my DAW is playing:** choose *Windows playback (loopback)*.
+- **I want to see what Spotify / YouTube is playing:** choose *Windows playback (loopback)*.
+- **I want to see what my DAW plays, and it uses ASIO:** put the DigiCheck VST3 on the master track and choose *From DAW* in Options ([how](#monitoring-your-daw-even-with-asio)).
+- **"From DAW: waiting for the DigiCheck VST3":** check the plugin is on a track that's playing and that *Send to the DigiCheck Universal app* is on in its Options; press Rescan to see the tracks that are sending.
 - **HDR turns off in full screen:** see [HDR monitors](#hdr-monitors-options--hdr-full-screen).
 - **Stutter or high GPU use:**
   - Keep the frame rate limit at 60 fps.

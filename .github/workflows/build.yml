@@ -103,6 +103,9 @@ jobs:
       - name: Key finder test (vs PyTorch / librosa)
         run: build\key_test.exe Resources\keynet.bin tests\data
 
+      - name: DAW bridge test (shared memory between the plugin and the app)
+        run: build\bridge_test_artefacts\Release\bridge_test.exe
+
       - name: Key finder test, the build for CPUs without AVX2
         env:
           KEYNET_NO_AVX2: "1"

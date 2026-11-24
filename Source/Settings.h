@@ -44,7 +44,8 @@ struct Settings
     bool   colourSafe = false;
     // reference track (Ref): the file (reloaded at start), where it's drawn, loudness matching
     juce::String refFile;
-    juce::String linkName;        // VST3: another instance's track used as the comparison signal ("" none)
+    juce::String linkName;
+    bool   bridgeSend = true;     // VST3: send what this instance sees to the app ("From DAW" input)        // VST3: another instance's track used as the comparison signal ("" none)
     bool   refShowBalance = true, refShowFft = true, refShowMonitor = true, refMatch = true;    // colour-blind-friendly meter colours (ui::colourSafe)   // look for a newer Latest build at start-up      // bottom bar "?": descriptions when hovering over controls
     juce::String balanceTarget;   // name of the tonal balance target
     int    balanceWindow = 3;     // 0: realtime, 1: 1 s, 2: 3 s, 3: 10 s, 4: 30 s, 5: since reset
@@ -272,6 +273,7 @@ struct Settings
         colourSafe = p.getBoolValue ("colourSafe", colourSafe);
         refFile = p.getValue ("refFile", refFile);
         linkName = p.getValue ("linkName", linkName);
+        bridgeSend = p.getBoolValue ("bridgeSend", bridgeSend);
         refShowBalance = p.getBoolValue ("refShowBalance", refShowBalance);
         refShowFft = p.getBoolValue ("refShowFft", refShowFft);
         refShowMonitor = p.getBoolValue ("refShowMonitor", refShowMonitor);
@@ -357,7 +359,7 @@ struct Settings
         p.setValue ("customSplitA", customSplitA); p.setValue ("customSplitB", customSplitB);
         p.setValue ("customMonOrder", customMonOrder); p.setValue ("customMonShown", customMonShown); p.setValue ("customMonWide", customMonWide);
         p.setValue ("customMonMax", customMonMax); p.setValue ("customMonCols", customMonCols); p.setValue ("helpMode", helpMode); p.setValue ("checkUpdates", checkUpdates); p.setValue ("colourSafe", colourSafe);
-        p.setValue ("refFile", refFile); p.setValue ("linkName", linkName); p.setValue ("refShowBalance", refShowBalance); p.setValue ("refShowFft", refShowFft);
+        p.setValue ("refFile", refFile); p.setValue ("linkName", linkName); p.setValue ("bridgeSend", bridgeSend); p.setValue ("refShowBalance", refShowBalance); p.setValue ("refShowFft", refShowFft);
         p.setValue ("refShowMonitor", refShowMonitor); p.setValue ("refMatch", refMatch);
         p.setValue ("customFocus", customFocus); p.setValue ("customName", customName); p.setValue ("monitorShown", monitorShown); p.setValue ("monitorWide", monitorWide);
         p.setValue ("monitorMax", monitorMax); p.setValue ("monitorCols", monitorCols); p.setValue ("monitorTarget", monitorTarget);

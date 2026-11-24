@@ -26,6 +26,8 @@ DcuProcessor::DcuProcessor()
                               .withInput ("Sidechain", juce::AudioChannelSet::stereo(), false)),
       global (openGlobal())
 {
+    bridgeSender.setName ("Track " + juce::String (hubId));
+    bridgeSender.setEnabled (core.settings.bridgeSend);
     if (liveInstances++ == 0) crashreport::install ("DigiCheck Universal VST3", JucePlugin_VersionString, true);
     core.registerWith (engine);
     core.monitorTap.setActive (true);
@@ -106,6 +108,7 @@ void DcuProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     {
         const float* L = main.getReadPointer (0); const float* R = nch > 1 ? main.getReadPointer (1) : L;
         ownRing->write (L, R, total);
+        bridgeSender.write (L, R, total, sr);         // to the app's "From DAW" input (if on)
         const juce::SpinLock::ScopedTryLockType sl (linkLock);
         bool ok = false;
         if (sl.isLocked() && linked != nullptr && (int) linkL.size() >= total)
@@ -209,6 +212,7 @@ void DcuProcessor::setStateInformation (const void* data, int size)
     {
         state.restoreFromXml (*xml);
         core.settings.load (state);
+        bridgeSender.setEnabled (core.settings.bridgeSend);
         if (core.settings.analyzerState.isNotEmpty()) core.analyzerProc.restoreStateXml (core.settings.analyzerState);
         auto splits = juce::StringArray::fromTokens (core.settings.listenSplits, ",", {});
         for (int k = 0; k < 4 && k < splits.size(); ++k) iso.splits[(size_t) k] = splits[k].getFloatValue();
@@ -225,7 +229,7 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new DcuProcess
 // Instance linking
 void DcuProcessor::updateTrackProperties (const TrackProperties& p)
 {
-    if (p.name.has_value()) instancelink::Hub::get().rename (hubId, *p.name);
+    if (p.name.has_value()) { instancelink::Hub::get().rename (hubId, *p.name); bridgeSender.setName (*p.name); }
 }
 
 juce::StringArray DcuProcessor::otherInstances() const

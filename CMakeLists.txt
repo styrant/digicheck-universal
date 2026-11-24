@@ -107,6 +107,7 @@ set(DCU_SHARED_SOURCES
     Source/listen/ListenPanel.cpp
     Source/ClipboardImage.cpp
     Source/CrashReport.cpp
+    Source/bridge/Bridge.cpp
     Source/reference/ReferenceTrack.cpp
     Source/reference/ReferencePanel.cpp
     Source/MainComponent.cpp            # the main view: the app window and the plugin editor both show it
@@ -251,6 +252,12 @@ target_sources(player_test PRIVATE tests/player_test.cpp Source/transcribe/Trans
 target_compile_definitions(player_test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_STANDALONE_APPLICATION=1)
 target_link_libraries(player_test PRIVATE juce::juce_audio_utils juce::juce_recommended_config_flags)
 juce_generate_juce_header(player_test)
+
+juce_add_console_app(bridge_test)                                                           # the DAW bridge's shared memory
+juce_generate_juce_header(bridge_test)
+target_sources(bridge_test PRIVATE tests/bridge_test.cpp Source/bridge/Bridge.cpp)
+target_compile_definitions(bridge_test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(bridge_test PRIVATE juce::juce_core PUBLIC juce::juce_recommended_config_flags)
 
 juce_add_console_app(target_loader_test)                                                    # reading target files
 juce_generate_juce_header(target_loader_test)

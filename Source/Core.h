@@ -94,4 +94,7 @@ struct HostLink
     virtual void setLink (const juce::String& trackName) = 0;
     virtual juce::String linkName() const = 0;
     virtual bool linkLive() const = 0;                      // linked and its audio is arriving
+    // the DAW bridge: this instance sends its audio to the app (its "From DAW" input)
+    virtual void setBridgeSend (bool on) = 0;
+    virtual bool bridgeSending() const = 0;
 };

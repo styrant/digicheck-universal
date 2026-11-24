@@ -174,7 +174,9 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     status.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.6f));
     status.setFont (juce::FontOptions (ui::fs (12.5f)));
     for (auto* l : { &lblL, &lblR, &lblFps, &lblText }) l->setFont (juce::FontOptions (ui::fs (15.0f)));
-    source.setTooltip ("Signal source");
+    source.setTooltip ("What to analyse. Windows Audio (shared): your interface's inputs, next to your DAW. ASIO: bit-exact, if your DAW "
+                       "isn't using it. Windows playback (loopback): whatever Windows plays. From DAW: what the DigiCheck VST3 sees in your "
+                       "DAW (put it on the master track), which works even when the DAW uses ASIO. Test signal: no interface needed");
     for (auto* l : { &lblL, &lblR }) { l->setBorderSize ({}); l->setJustificationType (juce::Justification::centred); }
     startBtn.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff4c8dff));
 
@@ -713,6 +715,11 @@ void MainComponent::setUpPlugin()
         m.addSubMenu ("Strength", op);
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&anchor));
     };
+    bridgeToggle.setToggleState (settings.bridgeSend, juce::dontSendNotification);
+    bridgeToggle.setTooltip ("The app (Spectroscope) can monitor what this plugin sees, even when your DAW uses ASIO: "
+                             "choose From DAW as its input. Put this plugin on the master track for the whole mix");
+    bridgeToggle.onClick = [this] { host->setBridgeSend (bridgeToggle.getToggleState()); };
+    options.addAndMakeVisible (bridgeToggle);
     bottom.onLinkMenu = [this] (juce::Component& anchor)
     {
         juce::PopupMenu m;
@@ -799,6 +806,7 @@ void MainComponent::updateStatus()
         const auto& src = device->getCurrentSource();
         const juce::String kind = src.kind == AudioEngine::Source::Loopback ? "Loopback"
                                 : src.kind == AudioEngine::Source::Test     ? "Test signal"
+                                : src.kind == AudioEngine::Source::Bridge   ? device->bridgeStatus()
                                 : src.typeName;
         text = kind + "  |  " + juce::String (engine.getSampleRate() / 1000.0, 1) + " kHz  |  "
              + juce::String (device->getChannelNames().size()) + " ch  |  latency "
@@ -1245,7 +1253,7 @@ void MainComponent::setHelpMode (bool on)
 void MainComponent::layoutOptions()
 {
     using ui::px;
-    const int w = juce::jmin (px (470), getWidth() - 16), h = px ((settings.textSize == 3 ? 404 : 372) + (device != nullptr ? 34 : 0) + 38 + 30 + 28);
+    const int w = juce::jmin (px (470), getWidth() - 16), h = px ((settings.textSize == 3 ? 404 : 372) + (device != nullptr ? 34 : 0) + 38 + 30 + 28 + (host != nullptr ? 24 : 0));
     options.setBounds (8, getHeight() - BottomBar::height() - h - 6, w, h);
     options.headings.clear();
     auto r = options.getLocalBounds().reduced (14, 10);
@@ -1293,6 +1301,8 @@ void MainComponent::layoutOptions()
     updateToggle.setBounds (row.removeFromLeft (px (170))); row.removeFromLeft (px (6));
     updateBtn.setBounds (row.removeFromLeft (px (200)));
     safeToggle.setBounds (r.removeFromTop (px (24)).withWidth (px (280)));
+    bridgeToggle.setVisible (host != nullptr);
+    if (host != nullptr) bridgeToggle.setBounds (r.removeFromTop (px (24)).withWidth (px (420)));
     heading ("SETTINGS");
     row = r.removeFromTop (px (28));
     backupBtn.setBounds (row.removeFromLeft (px (100))); row.removeFromLeft (px (6));
