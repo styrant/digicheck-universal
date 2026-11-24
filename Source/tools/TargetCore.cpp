@@ -1,10 +1,11 @@
 #include "TargetCore.h"
+#include "../AppInfo.h"
 
 namespace targets
 {
 juce::File defaultFolder()
 {
-    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("DigiCheck Universal").getChildFile ("Targets");
+    return appinfo::documentsFolder().getChildFile ("Targets");
 }
 
 void registerFormats (juce::AudioFormatManager& fm) { fm.registerBasicFormats(); }

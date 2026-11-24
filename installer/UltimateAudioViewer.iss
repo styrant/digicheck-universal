@@ -1,4 +1,6 @@
-; Inno Setup script for Spectroscope (built by GitHub Actions: iscc /DAppVersion=x.y.z installer\Spectroscope.iss)
+; Inno Setup script for Ultimate Audio Viewer (built by GitHub Actions: iscc /DAppVersion=x.y.z installer\UltimateAudioViewer.iss)
+; Earlier builds were "Spectroscope" / "DigiCheck Universal": same AppId, so this upgrades them, and their old
+; files (exe, shortcuts, the old VST3 bundle) are removed below.
 ; Installs for all users by default (Windows asks for administrator rights), so the VST3 plugin goes to
 ; C:\Program Files\Common Files\VST3, the folder every DAW scans. Setup always asks (all users / me only).
 ; "For me only" needs no administrator rights; the plugin then goes to the per-user VST3 folder, which not
@@ -11,12 +13,12 @@
 
 [Setup]
 AppId={{8F3C2A51-6B0E-4D2B-9C1A-5E7D3F2B9A10}
-AppName=Spectroscope
+AppName=Ultimate Audio Viewer
 AppVersion={#AppVersion}
-AppVerName=Spectroscope {#AppVersion}
-AppPublisher=DigiCheck Universal
-DefaultDirName={autopf}\Spectroscope
-DefaultGroupName=Spectroscope
+AppVerName=Ultimate Audio Viewer {#AppVersion}
+AppPublisher=Ultimate Audio Viewer
+DefaultDirName={autopf}\Ultimate Audio Viewer
+DefaultGroupName=Ultimate Audio Viewer
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog commandline
@@ -26,10 +28,10 @@ UsePreviousPrivileges=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
-OutputBaseFilename=SpectroscopeSetup
+OutputBaseFilename=Ultimate-Audio-Viewer-Setup
 SetupIconFile=..\Resources\icon.ico
-UninstallDisplayIcon={app}\Spectroscope.exe
-UninstallDisplayName=Spectroscope
+UninstallDisplayIcon={app}\Ultimate Audio Viewer.exe
+UninstallDisplayName=Ultimate Audio Viewer
 WizardStyle=modern
 Compression=lzma2
 SolidCompression=yes
@@ -37,20 +39,28 @@ CloseApplications=yes
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "vst3"; Description: "Install the VST3 plugin (DigiCheck Universal.vst3, for your DAW)"; GroupDescription: "Plugin:"
+Name: "vst3"; Description: "Install the VST3 plugin (Ultimate Audio Viewer.vst3, for your DAW)"; GroupDescription: "Plugin:"
 
 [InstallDelete]
 ; an earlier copy of the plugin: a whole old bundle, or a single file of the same name (the older one-file
 ; VST3 layout, e.g. copied in by hand), which would otherwise block the bundle folder (error 183)
-Type: filesandordirs; Name: "{autocf}\VST3\DigiCheck Universal.vst3"; Tasks: vst3
+Type: filesandordirs; Name: "{autocf}\VST3\Ultimate Audio Viewer.vst3"; Tasks: vst3
+; the plugin's earlier name: two bundles with the same plugin ID would confuse DAWs
+Type: filesandordirs; Name: "{autocf}\VST3\DigiCheck Universal.vst3"
+; the app's earlier names and shortcuts
+Type: files; Name: "{app}\Spectroscope.exe"
+Type: files; Name: "{app}\TargetBuilder.exe"
+Type: files; Name: "{autoprograms}\Spectroscope.lnk"
+Type: files; Name: "{autoprograms}\Spectroscope Target Builder.lnk"
+Type: files; Name: "{autodesktop}\Spectroscope.lnk"
 
 [Files]
-Source: "..\build\Spectroscope_artefacts\Release\Spectroscope.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\build\TargetBuilder_artefacts\Release\TargetBuilder.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\Spectroscope_artefacts\Release\Ultimate Audio Viewer.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\TargetBuilder_artefacts\Release\Ultimate Audio Viewer Target Builder.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 ; the VST3 bundle: Common Files\VST3 for an administrator install, else the per-user VST3 folder
 ; (%LOCALAPPDATA%\Programs\Common\VST3, the VST3 specification's user location)
-Source: "..\build\DigiCheckUniversal_artefacts\Release\VST3\DigiCheck Universal.vst3\*"; DestDir: "{autocf}\VST3\DigiCheck Universal.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: vst3
+Source: "..\build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3\*"; DestDir: "{autocf}\VST3\Ultimate Audio Viewer.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: vst3
 
 [Code]
 const
@@ -95,20 +105,32 @@ begin
   if Relaunched then Confirm := False;          // closing because Setup restarted for all users
 end;
 
-// An install for all users replaces an earlier install "for me only" (earlier builds), so there's one
-procedure CurStepChanged (CurStep: TSetupStep);
+// An earlier install somewhere else (the old "Spectroscope" folder, or "for me only" when this one is for all
+// users) is uninstalled first, quietly, so there's one copy and nothing left behind
+procedure RemoveEarlier (Root: Integer);
 var
-  Uninstaller: String;
+  Path, Uninstaller: String;
   Code: Integer;
 begin
-  if (CurStep = ssInstall) and IsAdminInstallMode and RegQueryStringValue (HKCU, UninstallKey, 'UninstallString', Uninstaller) then
+  if RegQueryStringValue (Root, UninstallKey, 'Inno Setup: App Path', Path) and
+     (CompareText (RemoveBackslashUnlessRoot (Path), RemoveBackslashUnlessRoot (ExpandConstant ('{app}'))) <> 0) and
+     RegQueryStringValue (Root, UninstallKey, 'UninstallString', Uninstaller) then
     Exec (RemoveQuotes (Uninstaller), '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
+procedure CurStepChanged (CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+  begin
+    if IsAdminInstallMode then RemoveEarlier (HKLM64);
+    RemoveEarlier (HKCU);
+  end;
+end;
+
 [Icons]
-Name: "{autoprograms}\Spectroscope"; Filename: "{app}\Spectroscope.exe"
-Name: "{autoprograms}\Spectroscope Target Builder"; Filename: "{app}\TargetBuilder.exe"; Comment: "Drag in songs and save them as a tonal balance target"
-Name: "{autodesktop}\Spectroscope"; Filename: "{app}\Spectroscope.exe"; Tasks: desktopicon
+Name: "{autoprograms}\Ultimate Audio Viewer"; Filename: "{app}\Ultimate Audio Viewer.exe"
+Name: "{autoprograms}\Ultimate Audio Viewer Target Builder"; Filename: "{app}\Ultimate Audio Viewer Target Builder.exe"; Comment: "Drag in songs and save them as a tonal balance target"
+Name: "{autodesktop}\Ultimate Audio Viewer"; Filename: "{app}\Ultimate Audio Viewer.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\Spectroscope.exe"; Description: "{cm:LaunchProgram,Spectroscope}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Ultimate Audio Viewer.exe"; Description: "{cm:LaunchProgram,Ultimate Audio Viewer}"; Flags: nowait postinstall skipifsilent

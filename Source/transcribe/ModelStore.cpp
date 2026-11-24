@@ -1,4 +1,5 @@
 #include "ModelStore.h"
+#include "../AppInfo.h"
 
 namespace
 {
@@ -35,7 +36,7 @@ const ModelStore::Entry& ModelStore::entry (int size) { return kEntries[juce::jl
 
 juce::File ModelStore::ownFolder()
 {
-    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("DigiCheck Universal").getChildFile ("Models");
+    return appinfo::appDataFolder().getChildFile ("Models");
 }
 
 juce::File ModelStore::neuralNoteFolder()
@@ -120,7 +121,7 @@ private:
         const auto& e = kEntries[size];
         if (ModelStore::isInstalled (size)) return {};
 
-        juce::InterProcessLock lock ("DigiCheckUniversalModelDownload_" + juce::String (e.label));
+        juce::InterProcessLock lock ("UltimateAudioViewerModelDownload_" + juce::String (e.label));
         if (! lock.enter (0)) return "Another window is already downloading this model";
 
         const auto dir = ModelStore::ownFolder();

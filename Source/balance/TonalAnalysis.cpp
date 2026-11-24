@@ -345,7 +345,7 @@ std::string toJson (const Target& t, const std::string& name, const std::vector<
 {
     std::string o = "{\n";
     o += "  \"name\": \"" + escape (name) + "\",\n";
-    o += "  \"created_by\": \"Spectroscope TargetBuilder\",\n";
+    o += "  \"created_by\": \"Ultimate Audio Viewer Target Builder\",\n";
     o += "  \"track_count\": " + std::to_string (t.tracks) + ",\n";
     o += "  \"tracks\": [";
     for (size_t i = 0; i < trackNames.size(); ++i) o += (i ? ", \"" : "\"") + escape (trackNames[i]) + "\"";

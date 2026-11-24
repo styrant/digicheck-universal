@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "AppInfo.h"
 #include "ClipboardImage.h"
 #include "listen/ListenPanel.h"
 #include "SettingsDialog.h"
@@ -175,7 +176,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     status.setFont (juce::FontOptions (ui::fs (12.5f)));
     for (auto* l : { &lblL, &lblR, &lblFps, &lblText }) l->setFont (juce::FontOptions (ui::fs (15.0f)));
     source.setTooltip ("What to analyse. Windows Audio (shared): your interface's inputs, next to your DAW. ASIO: bit-exact, if your DAW "
-                       "isn't using it. Windows playback (loopback): whatever Windows plays. From DAW: what the DigiCheck VST3 sees in your "
+                       "isn't using it. Windows playback (loopback): whatever Windows plays. From DAW: what the UAV VST3 sees in your "
                        "DAW (put it on the master track), which works even when the DAW uses ASIO. Test signal: no interface needed");
     for (auto* l : { &lblL, &lblR }) { l->setBorderSize ({}); l->setJustificationType (juce::Justification::centred); }
     startBtn.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff4c8dff));
@@ -232,7 +233,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     manualBtn.onClick = [] { juce::URL ("https://github.com/styrant/digicheck-universal/blob/main/docs/MANUAL.md").launchInDefaultBrowser(); };
     options.addAndMakeVisible (manualBtn);
     copyImgBtn.setTooltip ("Copy the page as an image (Ctrl+C; on the Custom page Ctrl+Shift+C copies the pane last clicked). "
-                           "It's also saved in Documents\\DigiCheck Universal\\Screenshots");
+                           "It's also saved in Documents\\Ultimate Audio Viewer\\Screenshots");
     copyImgBtn.onClick = [this] { setOptionsVisible (false); juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this)] { if (safe) safe->copyViewImage (false); }); };
     backupBtn.setTooltip ("Save all settings, presets, Custom layouts, Scope themes and Balance targets to one file");
     restoreBtn.setTooltip ("Load a backup file (takes effect after a restart)");
@@ -716,7 +717,7 @@ void MainComponent::setUpPlugin()
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&anchor));
     };
     bridgeToggle.setToggleState (settings.bridgeSend, juce::dontSendNotification);
-    bridgeToggle.setTooltip ("The app (Spectroscope) can monitor what this plugin sees, even when your DAW uses ASIO: "
+    bridgeToggle.setTooltip ("The UAV app can monitor what this plugin sees, even when your DAW uses ASIO: "
                              "choose From DAW as its input. Put this plugin on the master track for the whole mix");
     bridgeToggle.onClick = [this] { host->setBridgeSend (bridgeToggle.getToggleState()); };
     options.addAndMakeVisible (bridgeToggle);
@@ -727,7 +728,7 @@ void MainComponent::setUpPlugin()
         const auto cur = host->linkName();
         m.addSectionHeader ("Compare with another track");
         for (auto& n : others) m.addItem (n, true, n == cur, [this, n] { host->setLink (n); settings.specSc = true; saveAll(); });
-        if (others.isEmpty()) m.addItem ("(no other DigiCheck instances in this project)", false, false, [] {});
+        if (others.isEmpty()) m.addItem ("(no other UAV instances in this project)", false, false, [] {});
         if (cur.isNotEmpty() && ! others.contains (cur)) m.addItem (cur + " (not found)", true, true, [] {});
         m.addSeparator();
         m.addItem ("None (use the sidechain input)", true, cur.isEmpty(), [this] { host->setLink ({}); });
@@ -972,7 +973,7 @@ void MainComponent::copyViewImage (bool paneOnly)
     view.forSnapshot = false;
 
     const bool copied = clipboard::copyImage (img);
-    auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("DigiCheck Universal").getChildFile ("Screenshots");
+    auto dir = appinfo::documentsFolder().getChildFile ("Screenshots");
     dir.createDirectory();
     auto file = dir.getNonexistentChildFile (what + " " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H%M%S"), ".png", false);
     bool saved = false;
@@ -1001,7 +1002,7 @@ struct MainComponent::UpdateCheck : public juce::Thread
         juce::String name;
         if (auto in = juce::URL ("https://api.github.com/repos/styrant/digicheck-universal/releases/tags/latest")
                           .createInputStream (juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
-                                                  .withConnectionTimeoutMs (5000).withExtraHeaders ("Accept: application/vnd.github+json\r\nUser-Agent: DigiCheck-Universal")))
+                                                  .withConnectionTimeoutMs (5000).withExtraHeaders ("Accept: application/vnd.github+json\r\nUser-Agent: Ultimate-Audio-Viewer")))
             name = juce::JSON::parse (in->readEntireStreamAsString()).getProperty ("name", {}).toString();
         const auto ver = name.fromLastOccurrenceOf ("(", false, false).upToFirstOccurrenceOf (")", false, false).trim();
         juce::MessageManager::callAsync ([o = owner, ver] { if (o != nullptr) o->onUpdateResult (ver); });
@@ -1034,7 +1035,7 @@ void MainComponent::onUpdateResult (const juce::String& latest)
 void MainComponent::backupSettings()
 {
     saveAll();
-    juce::XmlElement root ("DIGICHECK_UNIVERSAL_BACKUP");
+    juce::XmlElement root ("UAV_BACKUP");
     root.setAttribute ("version", ProjectInfo::versionString);
     root.setAttribute ("plugin", core.plugin ? 1 : 0);
     auto addProps = [&] (const char* tag, juce::PropertySet& p)
@@ -1055,8 +1056,8 @@ void MainComponent::backupSettings()
     addFolder ("TARGETS", TargetLibrary::folder());
 
     chooser = std::make_unique<juce::FileChooser> ("Back up settings",
-        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("DigiCheck Universal backup " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d") + ".dcubackup"),
-        "*.dcubackup");
+        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Ultimate Audio Viewer backup " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d") + ".uavbackup"),
+        "*.uavbackup");
     auto xml = std::make_shared<juce::String> (root.toString());
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
                           [safe = juce::Component::SafePointer<MainComponent> (this), xml] (const juce::FileChooser& fc)
@@ -1069,14 +1070,14 @@ void MainComponent::backupSettings()
 
 void MainComponent::restoreSettings()
 {
-    chooser = std::make_unique<juce::FileChooser> ("Restore settings", juce::File::getSpecialLocation (juce::File::userDocumentsDirectory), "*.dcubackup");
+    chooser = std::make_unique<juce::FileChooser> ("Restore settings", juce::File::getSpecialLocation (juce::File::userDocumentsDirectory), "*.uavbackup;*.dcubackup");
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [safe = juce::Component::SafePointer<MainComponent> (this)] (const juce::FileChooser& fc)
     {
         const auto f = fc.getResult();
         if (safe == nullptr || ! f.existsAsFile()) return;
         auto root = juce::XmlDocument::parse (f);
-        if (root == nullptr || ! root->hasTagName ("DIGICHECK_UNIVERSAL_BACKUP")) { safe->showToast ("That isn't a DigiCheck Universal backup"); return; }
+        if (root == nullptr || ! (root->hasTagName ("UAV_BACKUP") || root->hasTagName ("DIGICHECK_UNIVERSAL_BACKUP"))) { safe->showToast ("That isn't a UAV backup"); return; }
         auto& self = *safe;
         auto readProps = [&] (const char* tag, juce::PropertySet& p)
         {
@@ -1104,7 +1105,7 @@ void MainComponent::restoreSettings()
         self.core.saveBlocked = true;            // keep what was restored: nothing overwrites it before the restart
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Settings restored",
             self.core.plugin ? "Close and reopen the project (or remove and re-add the plugin) to use the restored settings."
-                             : "Restart DigiCheck Universal to use the restored settings.");
+                             : "Restart UAV to use the restored settings.");
     });
 }
 
@@ -1124,7 +1125,7 @@ void MainComponent::resetDefaults()
         if (auto* pf = dynamic_cast<juce::PropertiesFile*> (&safe->core.state)) pf->saveIfNeeded();
         safe->core.saveBlocked = true;
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Settings reset",
-            safe->core.plugin ? "Close and reopen the project to use the default settings." : "Restart DigiCheck Universal to use the default settings.");
+            safe->core.plugin ? "Close and reopen the project to use the default settings." : "Restart UAV to use the default settings.");
     });
 }
 
@@ -1545,9 +1546,9 @@ juce::File MainComponent::targetBuilderExe()
 {
     const auto dir = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory();
    #if JUCE_WINDOWS
-    return dir.getChildFile ("TargetBuilder.exe");
+    return dir.getChildFile ("Ultimate Audio Viewer Target Builder.exe");
    #else
-    return dir.getChildFile ("TargetBuilder");
+    return dir.getChildFile ("Ultimate Audio Viewer Target Builder");
    #endif
 }
 
@@ -1575,7 +1576,7 @@ void MainComponent::balanceTargetsAction (int action)
     {
         if (targetBuilderExe().existsAsFile()) targetBuilderExe().startAsProcess();
         else juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Target Builder",
-                 "TargetBuilder.exe isn't next to Spectroscope.exe. It comes with the installer, or download it from the release page.");
+                 "Ultimate Audio Viewer Target Builder.exe isn't next to Ultimate Audio Viewer.exe. It comes with the installer, or download it from the release page.");
     }
     if (action == 2)
     {

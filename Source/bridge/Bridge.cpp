@@ -21,12 +21,12 @@ Header* shared()
         const size_t size = sizeof (Header);
        #if JUCE_WINDOWS
         HANDLE m = CreateFileMappingW (INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, (DWORD) ((uint64_t) size >> 32), (DWORD) size,
-                                       L"Local\\DigiCheckUniversal.Bridge.1");
+                                       L"Local\\UltimateAudioViewer.Bridge.1");
         if (m == nullptr) return nullptr;
         void* p = MapViewOfFile (m, FILE_MAP_ALL_ACCESS, 0, 0, size);      // the handle stays open for the process's life
         if (p == nullptr) { CloseHandle (m); return nullptr; }
        #else
-        const int fd = shm_open ("/DigiCheckUniversal.Bridge.1", O_CREAT | O_RDWR, 0600);
+        const int fd = shm_open ("/UltimateAudioViewer.Bridge.1", O_CREAT | O_RDWR, 0600);
         if (fd < 0) return nullptr;
         if (ftruncate (fd, (off_t) size) != 0) { close (fd); return nullptr; }
         void* p = mmap (nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);

@@ -3,7 +3,7 @@
 //   - the audio passes through bit for bit
 //   - the editor follows the host's tempo (128 BPM from the play head) and the state round-trips
 //   - screenshots of the views with a sidechain routed (plugin_<view>.png), for a human to look at
-// usage: plugin_host_test "<path to DigiCheck Universal.vst3>" <output folder>
+// usage: plugin_host_test "<path to Ultimate Audio Viewer.vst3>" <output folder>
 #include <JuceHeader.h>
 
 namespace

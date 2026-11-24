@@ -173,7 +173,7 @@ void SettingsDialog::show (Settings& s, std::function<void (Change)> notify, juc
 {
     juce::DialogWindow::LaunchOptions o;
     o.content.setOwned (new SettingsDialog (s, std::move (notify)));
-    o.dialogTitle = "Spectroscope Settings";
+    o.dialogTitle = "UAV Settings";
     o.dialogBackgroundColour = juce::Colour (0xff1b1d22);
     o.componentToCentreAround = parent;
     o.escapeKeyTriggersCloseButton = true;

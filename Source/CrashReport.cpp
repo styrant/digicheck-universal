@@ -96,7 +96,7 @@ void crashreport::install (const char* product, const char* version, bool plugin
 {
     PWSTR docs = nullptr;
     if (FAILED (SHGetKnownFolderPath (FOLDERID_Documents, 0, nullptr, &docs))) return;
-    swprintf (folder, MAX_PATH, L"%ls\\DigiCheck Universal", docs);
+    swprintf (folder, MAX_PATH, L"%ls\\Ultimate Audio Viewer", docs);
     CoTaskMemFree (docs);
     CreateDirectoryW (folder, nullptr);
     wcscat_s (folder, MAX_PATH, L"\\Crashes");

@@ -13,7 +13,7 @@ else()
 endif()
 
 project(Spectroscope VERSION ${DCU_VERSION} LANGUAGES C CXX)
-message(STATUS "DigiCheck Universal ${DCU_VERSION}")
+message(STATUS "Ultimate Audio Viewer ${DCU_VERSION}")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -59,9 +59,11 @@ if(MUSCRIPTOR_VULKAN)
     target_compile_definitions(dcu_transcribe PRIVATE DCU_TRANSCRIBE_GPU)
 endif()
 
+# Ultimate Audio Viewer (UAV): files carry the full name, the UI says UAV (Source/AppInfo.h). The CMake
+# target names (Spectroscope, DigiCheckUniversal, TargetBuilder) are the project's internal ones.
 juce_add_gui_app(Spectroscope
-    PRODUCT_NAME "Spectroscope"
-    COMPANY_NAME "DigiCheck Universal"
+    PRODUCT_NAME "Ultimate Audio Viewer"
+    COMPANY_NAME "Ultimate Audio Viewer"
     BUNDLE_ID "com.digicheckuniversal.spectroscope"      # fixed now so it never changes (docs/VST3.md)
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
     ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png")
@@ -105,6 +107,7 @@ set(DCU_SHARED_SOURCES
     Source/fft/FftView.cpp
     Source/listen/BandIsolator.cpp
     Source/listen/ListenPanel.cpp
+    Source/AppInfo.cpp
     Source/ClipboardImage.cpp
     Source/CrashReport.cpp
     Source/bridge/Bridge.cpp
@@ -180,8 +183,8 @@ dcu_symbols(Spectroscope Spectroscope Spectroscope)
 
 if(DCU_BUILD_VST3)
     juce_add_plugin(DigiCheckUniversal
-        PRODUCT_NAME "DigiCheck Universal"
-        COMPANY_NAME "DigiCheck Universal"
+        PRODUCT_NAME "Ultimate Audio Viewer"           # the bundle: Ultimate Audio Viewer.vst3
+        COMPANY_NAME "Ultimate Audio Viewer"           # (the plugin and manufacturer codes stay, so projects still find it)
         BUNDLE_ID "com.digicheckuniversal.plugin"
         PLUGIN_MANUFACTURER_CODE Dcun
         PLUGIN_CODE Dcu1
@@ -261,14 +264,14 @@ target_link_libraries(bridge_test PRIVATE juce::juce_core PUBLIC juce::juce_reco
 
 juce_add_console_app(target_loader_test)                                                    # reading target files
 juce_generate_juce_header(target_loader_test)
-target_sources(target_loader_test PRIVATE tests/target_loader_test.cpp Source/balance/TargetLibrary.cpp Source/balance/TonalAnalysis.cpp)
+target_sources(target_loader_test PRIVATE tests/target_loader_test.cpp Source/balance/TargetLibrary.cpp Source/balance/TonalAnalysis.cpp Source/AppInfo.cpp)
 target_compile_definitions(target_loader_test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
 target_link_libraries(target_loader_test PRIVATE juce::juce_core PUBLIC juce::juce_recommended_config_flags)
 
 # TargetBuilder: window app (and --cli mode) that makes tonal balance targets from songs
 juce_add_gui_app(TargetBuilder
-    PRODUCT_NAME "TargetBuilder"
-    COMPANY_NAME "DigiCheck Universal"
+    PRODUCT_NAME "Ultimate Audio Viewer Target Builder"
+    COMPANY_NAME "Ultimate Audio Viewer"
     BUNDLE_ID "com.digicheckuniversal.targetbuilder"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
     ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png")
@@ -277,6 +280,7 @@ target_sources(TargetBuilder PRIVATE
     Source/tools/TargetBuilderApp.cpp
     Source/tools/TargetBuilderCli.cpp
     Source/tools/TargetCore.cpp
+    Source/AppInfo.cpp
     Source/balance/TonalAnalysis.cpp)
 target_compile_definitions(TargetBuilder PRIVATE
     JUCE_WEB_BROWSER=0

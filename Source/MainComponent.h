@@ -180,7 +180,7 @@ private:
     juce::TextButton startBtn { "Start" }, settingsBtn { "View settings" }, rescanBtn { "Rescan" }, manualBtn { "User manual" }, copyImgBtn { "Copy view as image" },
                      backupBtn { "Back up..." }, restoreBtn { "Restore..." }, defaultsBtn { "Reset to defaults" }, updateBtn;
     juce::ToggleButton updateToggle { "Check for updates" }, safeToggle { "Colour-blind-friendly meters" },
-                       bridgeToggle { "Send to the DigiCheck Universal app (its From DAW input)" };
+                       bridgeToggle { "Send to the UAV app (its From DAW input)" };
     void backupSettings();
     void restoreSettings();
     void resetDefaults();

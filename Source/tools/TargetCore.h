@@ -15,7 +15,7 @@ namespace targets
         bool ok() const { return error.isEmpty() && ! db.empty(); }
     };
 
-    juce::File defaultFolder();                                   // Documents\DigiCheck Universal\Targets
+    juce::File defaultFolder();                                   // Documents\Ultimate Audio Viewer\Targets
     void registerFormats (juce::AudioFormatManager& fm);
     TrackResult analyse (juce::AudioFormatManager& fm, const juce::File& f, const std::atomic<bool>* cancel = nullptr);
     juce::Array<juce::File> audioFilesIn (const juce::File& dir, juce::AudioFormatManager& fm, bool recursive);

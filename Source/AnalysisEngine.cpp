@@ -1,7 +1,7 @@
 #include "AnalysisEngine.h"
 #include <chrono>
 
-AnalysisEngine::AnalysisEngine() : juce::Thread ("Spectroscope DSP")
+AnalysisEngine::AnalysisEngine() : juce::Thread ("UAV DSP")
 {
     colData.assign ((size_t) kSlots * kMaxRows, 0.0f);
     colGen.assign ((size_t) kSlots, -1);

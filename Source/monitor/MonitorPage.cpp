@@ -1,4 +1,5 @@
 #include "MonitorPage.h"
+#include "../AppInfo.h"
 #include "../UiScale.h"
 
 using monitor::MonitorModel;
@@ -1915,7 +1916,7 @@ juce::String MonitorPage::reportText (bool csv)
         return t;
     }
     juce::String t;
-    t << "DigiCheck Universal loudness report\n"
+    t << "Ultimate Audio Viewer (UAV) loudness report\n"
       << (fileModel != nullptr ? "File: " + fileName + "  (" + juce::String (fileSeconds, 1) + " s, whole file)" : juce::String ("Live input, since the last Reset")) << "\n"
       << "Date: " << juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H:%M") << "\n";
     if (hasT && s.monitorTarget >= 0 && s.monitorTarget < kNumTargets) t << "Target: " << kTargets[s.monitorTarget].name << "\n";
@@ -1942,9 +1943,9 @@ void MonitorPage::exportReport()
     const auto base = (fileModel != nullptr ? juce::File::createLegalFileName (juce::File (fileName).getFileNameWithoutExtension()) : juce::String ("Live"))
                       + " loudness " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H%M");
     chooser = std::make_unique<juce::FileChooser> ("Save loudness report",
-        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("DigiCheck Universal").getChildFile ("Reports").getChildFile (base + ".txt"),
+        appinfo::documentsFolder().getChildFile ("Reports").getChildFile (base + ".txt"),
         "*.txt;*.csv");
-    juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("DigiCheck Universal").getChildFile ("Reports").createDirectory();
+    appinfo::documentsFolder().getChildFile ("Reports").createDirectory();
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting, [this] (const juce::FileChooser& fc)
     {
         auto f = fc.getResult();

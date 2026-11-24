@@ -5,20 +5,22 @@
 #include "HdrInfo.h"
 #include "LayoutCheck.h"
 #include "CrashReport.h"
+#include "AppInfo.h"
 
 class SpectroscopeApp : public juce::JUCEApplication
 {
 public:
-    const juce::String getApplicationName() override    { return "Spectroscope"; }
+    const juce::String getApplicationName() override    { return appinfo::kFullName; }
     const juce::String getApplicationVersion() override { return ProjectInfo::versionString; }
     bool moreThanOneInstanceAllowed() override          { return true; }
 
     void initialise (const juce::String& commandLine) override
     {
-        crashreport::install ("Spectroscope", ProjectInfo::versionString, false);
+        crashreport::install (appinfo::kFullName, ProjectInfo::versionString, false);
+        appinfo::migrate();                       // an earlier DigiCheck Universal / Spectroscope install's files
         juce::PropertiesFile::Options o;
-        o.applicationName = "Spectroscope";
-        o.folderName = "DigiCheck Universal";
+        o.applicationName = appinfo::kFullName;
+        o.folderName = appinfo::kFullName;
         o.filenameSuffix = ".settings";
         o.osxLibrarySubFolder = "Application Support";
         props = std::make_unique<juce::PropertiesFile> (o);
@@ -80,7 +82,7 @@ private:
     struct MainWindow : public juce::DocumentWindow
     {
         explicit MainWindow (juce::PropertiesFile& p)
-            : DocumentWindow ("Spectroscope - DigiCheck Universal", juce::Colour (0xff0b0c0e), allButtons)
+            : DocumentWindow (appinfo::kShortName, juce::Colour (0xff0b0c0e), allButtons)
         {
             setUsingNativeTitleBar (true);
             // the analysis core and the audio input outlive the window's content; the input engine

@@ -1,6 +1,10 @@
-# DigiCheck Universal (Spectroscope): User Manual
+# Ultimate Audio Viewer (UAV): User Manual
 
-DigiCheck Universal is a set of tools for seeing and measuring music: a spectrogram, two spectrum analyzers, tonal balance against a target, a key, chord and melody finder, a tempo-synced oscilloscope and a loudness / stereo metering page. It works with any audio interface, with whatever Windows is playing, or as a VST3 plugin in your DAW.
+Ultimate Audio Viewer (UAV) is a set of tools for seeing and measuring music: a spectrogram, two spectrum analyzers, tonal balance against a target, a key, chord and melody finder, a tempo-synced oscilloscope and a loudness / stereo metering page. It works with any audio interface, with whatever Windows is playing, or as a VST3 plugin in your DAW.
+
+In the app and the plugin it's called **UAV**; files, folders and the installer use the full name.
+
+*Earlier builds were called DigiCheck Universal (the app: Spectroscope).* The installer replaces them, and on its first start UAV moves your settings, presets, layouts, targets, themes and downloaded models to the new folders (`Documents\Ultimate Audio Viewer`, `%APPDATA%\Ultimate Audio Viewer`). DAW projects that used the old plugin open with UAV in its place.
 
 Tip: press **?** at the bottom right (or F1). While it's on, resting the mouse on any button or control shows what it does.
 
@@ -29,11 +33,11 @@ Tip: press **?** at the bottom right (or F1). While it's on, resting the mouse o
 ## 1. Getting started
 
 ### Install
-Download **SpectroscopeSetup.exe** from the repository's *Latest build* release and run it. Setup first asks who to install for:
+Download **Ultimate-Audio-Viewer-Setup.exe** from the repository's *Latest build* release and run it. Setup first asks who to install for:
 - **Install for all users** (recommended; Windows asks for administrator rights): the VST3 plugin goes to `C:\Program Files\Common Files\VST3`, the folder every DAW scans. It also removes an earlier "for me only" install, so you have one.
 - **Install for me only** (no administrator rights): the plugin goes to your own VST3 folder (`%LOCALAPPDATA%\Programs\Common\VST3`), which some DAWs don't scan. If you tick the VST3 plugin, Setup offers to restart itself for all users.
 
-**Spectroscope.exe** is the same app as a single portable file.
+**Ultimate Audio Viewer.exe** is the same app as a single portable file.
 
 The builds aren't code-signed yet, so Windows may warn once:
 - **SmartScreen:** choose *More info → Run anyway*.
@@ -49,7 +53,7 @@ The builds aren't code-signed yet, so Windows may warn once:
 | Windows Audio (exclusive) | Bit-exact input when nothing else is using the device. |
 | ASIO | Bit-exact, lowest latency. May be unavailable while your DAW holds the ASIO driver. |
 | Windows playback (loopback) | Whatever Windows is playing (Spotify, YouTube, a DAW using Windows Audio), with no cables or routing. It can't hear a DAW that uses ASIO. |
-| From DAW (DigiCheck plugin) | What the DigiCheck Universal VST3 sees in your DAW, **even when the DAW uses ASIO**. See [Monitoring your DAW](#monitoring-your-daw-even-with-asio). |
+| From DAW (UAV plugin) | What the UAV VST3 sees in your DAW, **even when the DAW uses ASIO**. See [Monitoring your DAW](#monitoring-your-daw-even-with-asio). |
 | Test signal | A sweep, chord, clicks and tones, for trying the app without an interface. |
 
 3. Pick the **L** and **R** channels (for example inputs 1/2, or your interface's loopback channels).
@@ -58,16 +62,16 @@ The builds aren't code-signed yet, so Windows may warn once:
 Click anywhere else, or press Esc, to close Options. Your source and channels are remembered.
 
 ### Monitoring your DAW, even with ASIO
-A DAW that uses ASIO talks to your interface directly, past Windows' audio system, so ordinary Windows apps (and *Windows playback (loopback)*) can't hear it. The DigiCheck VST3 can hand the app what it sees instead:
+A DAW that uses ASIO talks to your interface directly, past Windows' audio system, so ordinary Windows apps (and *Windows playback (loopback)*) can't hear it. The UAV VST3 can hand the app what it sees instead:
 
-1. Put the **DigiCheck Universal** VST3 on your DAW's **master** track (last in the chain, to see what you hear). Save it in your default template and it's always there.
+1. Put the **Ultimate Audio Viewer** VST3 on your DAW's **master** track (last in the chain, to see what you hear). Save it in your default template and it's always there.
 2. In the app, choose **From DAW: automatic (the master track)** under *From your DAW* in Options, and press Start.
 
 That's all: no routing, no driver or Windows settings, any interface. The app then measures your DAW's master like any other input, and every page works.
 
 - **Automatic** follows the plugin on the track named like a master (Master, Stereo Out, Main...), else the one added most recently. To follow a particular track instead, put the plugin there and choose **From DAW: <track name>** (press Rescan to list tracks that have just started sending).
 - The Options status line says which track the app is hearing, or that it's waiting for the plugin. While nothing is sending, the meters fall to silence; they pick up again as soon as the DAW plays.
-- Each plugin instance sends by default; turn it off with *Send to the DigiCheck Universal app* in the plugin's Options. Up to 16 tracks can send at once.
+- Each plugin instance sends by default; turn it off with *Send to the UAV app* in the plugin's Options. Up to 16 tracks can send at once.
 - It works between the DAW and the app on the same computer, with any DAW that loads VST3 plugins (including ones that run plugins in separate processes). The plugin's own pages work as before.
 - If your interface has loopback channels in its driver (many Focusrite, RME, MOTU and UA interfaces do), choosing those channels under *Windows Audio (shared)* also hears an ASIO DAW, without a plugin.
 
@@ -151,7 +155,7 @@ Compares the tonal balance of your audio with a **target**, like iZotope Tonal B
 - **Curve / Diff**, and **Reset** (start the measurement again).
 - **Snapshot** (top of the curve panel): keeps the current measurement as a dashed ghost curve, to compare before and after a change (an EQ move, a different master). The hover readout adds how far you've moved from it. Click **Clear snapshot** to remove it.
 
-**Targets** are JSON files in `Documents\DigiCheck Universal\Targets`: ones made with [Target Builder](#13-target-builder) from your own reference songs, or Tonal Balance Control-style target files. New files are picked up automatically.
+**Targets** are JSON files in `Documents\Ultimate Audio Viewer\Targets`: ones made with [Target Builder](#13-target-builder) from your own reference songs, or Tonal Balance Control-style target files. New files are picked up automatically.
 
 How to read it:
 - Use a long window (10-30 s, or *Since reset* over a whole song) to judge the mix as a whole.
@@ -216,7 +220,7 @@ A modular metering page, like iZotope Insight 2. It keeps measuring while you lo
 **Toolbar:**
 - The module buttons show or hide modules (on narrow pages they move into **Layout → Modules**).
 - **Measure file...** (or drop an audio file onto the page) measures a whole file faster than real time. A two-minute song takes a few seconds; a bar shows the progress. Every module then shows the file's results: integrated loudness, LRA, true peak, PLR and PSR, levels, phase, and its History (set the History length to 5 or 10 min for a whole song). The live input keeps being measured meanwhile; **Live** (or Reset) goes back to it.
-- **Report...** saves the results, of the live take or the measured file: a text report with pass / FAIL against the target (integrated loudness, true peak, LRA), maxima, PLR, PSR range, clipped samples and lowest correlation, plus a PNG of the page and a CSV of the loudness history (every 100 ms). Save as `.csv` to get only the history. Reports go to `Documents\DigiCheck Universal\Reports` by default.
+- **Report...** saves the results, of the live take or the measured file: a text report with pass / FAIL against the target (integrated loudness, true peak, LRA), maxima, PLR, PSR range, clipped samples and lowest correlation, plus a PNG of the page and a CSV of the loudness history (every 100 ms). Save as `.csv` to get only the history. Reports go to `Documents\Ultimate Audio Viewer\Reports` by default.
 - **Layout** has the number of columns, Show all and Reset layout.
 - **Pause** freezes the display.
 - **Reset** restarts the measurements.
@@ -309,7 +313,7 @@ Some graphics drivers switch a full-screen OpenGL window to *exclusive* mode. Wi
 - On NVIDIA you can also set the app's *Vulkan/OpenGL present method* to *Prefer layered on DXGI Swapchain* in the NVIDIA Control Panel.
 
 ### Copy as image
-**Ctrl+C** copies the page as a picture (paste it into a chat, an email or a document); on the Custom page **Ctrl+Shift+C** copies only the pane you last clicked. Every copy is also saved as a PNG in `Documents\DigiCheck Universal\Screenshots`. *Options → Copy view as image* does the same (useful in a DAW that keeps Ctrl+C for itself).
+**Ctrl+C** copies the page as a picture (paste it into a chat, an email or a document); on the Custom page **Ctrl+Shift+C** copies only the pane you last clicked. Every copy is also saved as a PNG in `Documents\Ultimate Audio Viewer\Screenshots`. *Options → Copy view as image* does the same (useful in a DAW that keeps Ctrl+C for itself).
 
 ### Display (Options)
 - **GPU rendering (OpenGL):** on by default. Turn it off if your graphics driver has OpenGL problems.
@@ -319,25 +323,25 @@ Some graphics drivers switch a full-screen OpenGL window to *exclusive* mode. Wi
 
 ### Updates and settings (Options)
 - **Check for updates** (on by default): at start-up the app asks GitHub whether there's a newer *Latest build*; if so, a small green "1.3.x available" button appears at the bottom right (and in Options). Nothing else is sent.
-- **Back up...** saves everything to one `.dcubackup` file: all settings, presets, Custom layouts, Scope themes and Balance targets. **Restore...** loads one (restart the app, or reopen the project in a DAW, to use it).
+- **Back up...** saves everything to one `.uavbackup` file: all settings, presets, Custom layouts, Scope themes and Balance targets. **Restore...** loads one (restart the app, or reopen the project in a DAW, to use it).
 - **Reset to defaults** puts every setting back to its default; presets, layouts, themes and targets are kept, and so is the audio input. Restart to use it.
 
 ---
 
 ## 12. The VST3 plugin
 
-**DigiCheck Universal.vst3** puts the same pages (Custom included) on a track in your DAW.
-- The installer can install it, or unzip *DigiCheckUniversal-VST3.zip* into `C:\Program Files\Common Files\VST3`.
+**Ultimate Audio Viewer.vst3** puts the same pages (Custom included) on a track in your DAW.
+- The installer can install it, or unzip *Ultimate-Audio-Viewer-VST3.zip* into `C:\Program Files\Common Files\VST3`.
 - The audio passes through untouched (bit for bit, no latency) unless you use Listen.
 
 What the plugin adds:
-- **Send to the app:** the plugin hands what it sees to the standalone app, whose **From DAW** input then monitors your DAW even when it uses ASIO ([Monitoring your DAW](#monitoring-your-daw-even-with-asio)). On by default; *Send to the DigiCheck Universal app* in the plugin's Options turns it off.
+- **Send to the app:** the plugin hands what it sees to the standalone app, whose **From DAW** input then monitors your DAW even when it uses ASIO ([Monitoring your DAW](#monitoring-your-daw-even-with-asio)). On by default; *Send to the UAV app* in the plugin's Options turns it off.
 - **Tempo** follows the project, and the **Scope's Sync** mode locks the window to your bars.
 - **Sidechain:** route another track to the plugin's sidechain input to see it together with the track:
   - over the **spectrogram** (**SC** button: tint or contour lines, colour and strength)
   - on the **Scope** (filled or outline)
   - as the **FFT** analyzer's second curve
-- **Link** (bottom bar): compare with another track without routing anything. Every DigiCheck Universal instance in the project publishes its track's audio under the track's name; click **Link** and pick another track (say, the bass on the kick's instance). It's then used exactly like a sidechain: the Spectrogram overlay (SC), the Scope's SC overlay and the FFT's second curve (choose *Sidechain*). The button shows the linked track (teal while its audio arrives). *None* goes back to the real sidechain input. The link is saved with the project by track name. The linked audio can be up to one audio block behind, depending on the order the DAW processes the tracks; DAWs that run each plugin in its own process can't link.
+- **Link** (bottom bar): compare with another track without routing anything. Every UAV instance in the project publishes its track's audio under the track's name; click **Link** and pick another track (say, the bass on the kick's instance). It's then used exactly like a sidechain: the Spectrogram overlay (SC), the Scope's SC overlay and the FFT's second curve (choose *Sidechain*). The button shows the linked track (teal while its audio arrives). *None* goes back to the real sidechain input. The link is saved with the project by track name. The linked audio can be up to one audio block behind, depending on the order the DAW processes the tracks; DAWs that run each plugin in its own process can't link.
 - **Listen** (bottom bar): hear only some bands (Sub, Low, Low-mid, High-mid, High, with movable crossovers), and/or only Mid, Side, Left or Right.
   - Click a band to toggle it; double-click to solo it.
   - The button turns orange while you're listening to part of the signal. **Off** restores everything.
@@ -351,7 +355,7 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
 
 ## 13. Target Builder
 
-**Spectroscope Target Builder** (installed next to the app) makes Balance targets from your own reference songs.
+**UAV Target Builder** (installed next to the app) makes Balance targets from your own reference songs.
 
 1. Drag songs or folders into the window (WAV, AIFF, FLAC, OGG, MP3).
 2. Check the list: songs that don't match the others are marked **Outlier** (select them and press Delete).
@@ -359,7 +363,7 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
    - **Wide, like Tonal Balance Control** (the default) gives ranges as wide as iZotope's targets.
    - The *songs 5-95 %*, *10-90 %* and *20-80 %* options use only your songs' spread, which is tighter.
 
-10-20 or more songs per genre give a trustworthy target. Targets are saved to `Documents\DigiCheck Universal\Targets` and appear in Balance right away. A command-line mode is described in the README.
+10-20 or more songs per genre give a trustworthy target. Targets are saved to `Documents\Ultimate Audio Viewer\Targets` and appear in Balance right away. A command-line mode is described in the README.
 
 ---
 
@@ -391,14 +395,14 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
 
 | What | Where |
 |---|---|
-| Balance targets | `Documents\DigiCheck Universal\Targets` |
-| Scope recordings | `Documents\DigiCheck Universal\Scope Recordings` |
-| Scope themes | `Documents\DigiCheck Universal\Scope Themes` |
-| Copied images | `Documents\DigiCheck Universal\Screenshots` |
-| Loudness reports | `Documents\DigiCheck Universal\Reports` |
-| Crash reports | `Documents\DigiCheck Universal\Crashes` |
-| Transcription models | `%APPDATA%\DigiCheck Universal\Models` |
-| Settings | `%APPDATA%\DigiCheck Universal\Spectroscope.settings` |
+| Balance targets | `Documents\Ultimate Audio Viewer\Targets` |
+| Scope recordings | `Documents\Ultimate Audio Viewer\Scope Recordings` |
+| Scope themes | `Documents\Ultimate Audio Viewer\Scope Themes` |
+| Copied images | `Documents\Ultimate Audio Viewer\Screenshots` |
+| Loudness reports | `Documents\Ultimate Audio Viewer\Reports` |
+| Crash reports | `Documents\Ultimate Audio Viewer\Crashes` |
+| Transcription models | `%APPDATA%\Ultimate Audio Viewer\Models` |
+| Settings | `%APPDATA%\Ultimate Audio Viewer\Ultimate Audio Viewer.settings` |
 
 ---
 
@@ -406,8 +410,8 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
 
 - **No picture, or "No input":** open Options, pick a source and channels, and press Start. ASIO may be busy while your DAW uses it; use *Windows Audio (shared)* instead.
 - **I want to see what Spotify / YouTube is playing:** choose *Windows playback (loopback)*.
-- **I want to see what my DAW plays, and it uses ASIO:** put the DigiCheck VST3 on the master track and choose *From DAW* in Options ([how](#monitoring-your-daw-even-with-asio)).
-- **"From DAW: waiting for the DigiCheck VST3":** check the plugin is on a track that's playing and that *Send to the DigiCheck Universal app* is on in its Options; press Rescan to see the tracks that are sending.
+- **I want to see what my DAW plays, and it uses ASIO:** put the UAV VST3 on the master track and choose *From DAW* in Options ([how](#monitoring-your-daw-even-with-asio)).
+- **"From DAW: waiting for the UAV VST3":** check the plugin is on a track that's playing and that *Send to the UAV app* is on in its Options; press Rescan to see the tracks that are sending.
 - **HDR turns off in full screen:** see [HDR monitors](#hdr-monitors-options--hdr-full-screen).
 - **Stutter or high GPU use:**
   - Keep the frame rate limit at 60 fps.
@@ -416,5 +420,5 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
 - **Text too small:** Options → Text size, or a Monitor module's gear → Text size.
 - **Windows warns about the download:** the builds are unsigned (see [Install](#install)).
 - **Not sure what a control does:** press **?** and hover over it.
-- **The plugin doesn't show up in my DAW:** check that `DigiCheck Universal.vst3` is in `C:\Program Files\Common Files\VST3` (reinstall choosing *Install for all users*), then rescan plugins in the DAW.
-- **It crashed:** a report is saved in `Documents\DigiCheck Universal\Crashes` (a `.txt` and a `.dmp`). Send both and say what you were doing. The plugin only records crashes in its own code; the DAW's own crash reporting still works.
+- **The plugin doesn't show up in my DAW:** check that `Ultimate Audio Viewer.vst3` is in `C:\Program Files\Common Files\VST3` (reinstall choosing *Install for all users*), then rescan plugins in the DAW.
+- **It crashed:** a report is saved in `Documents\Ultimate Audio Viewer\Crashes` (a `.txt` and a `.dmp`). Send both and say what you were doing. The plugin only records crashes in its own code; the DAW's own crash reporting still works.

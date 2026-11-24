@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "../CrashReport.h"
+#include "../AppInfo.h"
 
 namespace { std::atomic<int> liveInstances { 0 }; }    // crash reports are on while any instance exists
 #include "PluginEditor.h"
@@ -9,8 +10,9 @@ namespace
     std::unique_ptr<juce::PropertiesFile> openGlobal()
     {
         juce::PropertiesFile::Options o;
-        o.applicationName = "DigiCheck Universal Plugin";
-        o.folderName = "DigiCheck Universal";
+        appinfo::migrate();                       // an earlier DigiCheck Universal install's files
+        o.applicationName = juce::String (appinfo::kFullName) + " Plugin";
+        o.folderName = appinfo::kFullName;
         o.filenameSuffix = ".settings";
         o.osxLibrarySubFolder = "Application Support";
         o.processLock = nullptr;
@@ -28,7 +30,7 @@ DcuProcessor::DcuProcessor()
 {
     bridgeSender.setName ("Track " + juce::String (hubId));
     bridgeSender.setEnabled (core.settings.bridgeSend);
-    if (liveInstances++ == 0) crashreport::install ("DigiCheck Universal VST3", JucePlugin_VersionString, true);
+    if (liveInstances++ == 0) crashreport::install ("Ultimate Audio Viewer VST3", JucePlugin_VersionString, true);
     core.registerWith (engine);
     core.monitorTap.setActive (true);
     core.monitorModel.configure (48000);

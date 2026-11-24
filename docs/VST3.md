@@ -1,7 +1,7 @@
 # The VST3 version
 
-DigiCheck Universal is built twice from the same sources, with the same version number: the
-standalone app (`Spectroscope`) and the VST3 plugin (`DigiCheckUniversal`, **DigiCheck Universal.vst3**).
+Ultimate Audio Viewer (UAV) is built twice from the same sources, with the same version number: the
+standalone app (`Spectroscope`) and the VST3 plugin (`DigiCheckUniversal`, **Ultimate Audio Viewer.vst3**).
 What the plugin does for the user is in the README ("VST3 plugin"); this page is how it's put together
 and what is still open.
 
@@ -44,7 +44,7 @@ and editor.
 - **Editor** (`plugin/PluginEditor`): its own `AppLookAndFeel` (never a static one), resizable, the size
   saved per instance; it rebuilds the views when the host loads another state.
 - **State.** The instance's `PropertySet` (all view settings) as XML in the project; app-wide things
-  (presets) in "DigiCheck Universal Plugin.settings".
+  (presets) in "Ultimate Audio Viewer (UAV) Plugin.settings".
 - **Tests.** `isolator_test` (band listening), `plugin_host_test` (loads the built .vst3 like a DAW:
   sidechain bus, bit-exact pass-through, state round trip; with a display also the editor, the project
   tempo and screenshots of the views with a sidechain), pluginval in CI (strictness 5, no GUI).
@@ -81,4 +81,4 @@ and editor.
 - References are decoded once per process per file, as 16-bit, and shared by every instance that loads the same file (ReferenceTrack::Data); the FFT averages are computed on a background job per FFT size.
 
 ## DAW bridge (to the app)
-Each instance writes its input to a slot of the process-independent shared memory `DigiCheckUniversal.Bridge.1` (bridge/Bridge.h), named after its track. The standalone app's *From DAW* source reads one slot, so the app can monitor a DAW running ASIO. Claiming a slot is a compare-and-swap in the audio thread (real-time safe); a slot whose heartbeat stopped for 3 s is reclaimed. Off per instance with *Send to the DigiCheck Universal app* (Options).
+Each instance writes its input to a slot of the process-independent shared memory `UltimateAudioViewer.Bridge.1` (bridge/Bridge.h), named after its track. The standalone app's *From DAW* source reads one slot, so the app can monitor a DAW running ASIO. Claiming a slot is a compare-and-swap in the audio thread (real-time safe); a slot whose heartbeat stopped for 3 s is reclaimed. Off per instance with *Send to the UAV app* (Options).

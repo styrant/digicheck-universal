@@ -1,13 +1,13 @@
-# Spectroscope — DigiCheck Universal
+# Ultimate Audio Viewer (UAV)
 
-A native Windows recreation of the Spectroscope (reassigned spectrogram) from RME's DigiCheck NG that works with any audio interface. It was built for a Focusrite Scarlett 16i16 Gen 4.
+Ultimate Audio Viewer (UAV; formerly DigiCheck Universal / Spectroscope) began as a native Windows recreation of the Spectroscope (reassigned spectrogram) from RME's DigiCheck NG that works with any audio interface, and grew into a set of views and meters for music. Files, folders, the exe, the VST3 and the installer use the full name; the UI says UAV (`Source/AppInfo.h`, which also moves an earlier install's folders and settings to the new names on first start). It was built for a Focusrite Scarlett 16i16 Gen 4.
 
 **[User manual](docs/MANUAL.md)**: how to use every page. In the app, **?** (bottom right, or F1) turns on Help: hover over any control to see what it does.
 
 ## Getting it
 Every push to `main` is built by GitHub Actions and published to the **Latest build** release:
-- **SpectroscopeSetup.exe** installs per user (no admin rights), with a Start menu entry, an optional desktop shortcut and an uninstaller.
-- **Spectroscope.exe** is the same app as a single portable file.
+- **Ultimate-Audio-Viewer-Setup.exe** installs for all users by default (so the VST3 goes to Common Files\VST3), with a Start menu entry, an optional desktop shortcut and an uninstaller; it replaces an earlier Spectroscope / DigiCheck Universal install.
+- **Ultimate-Audio-Viewer.exe** is the same app as a single portable file (installed as `Ultimate Audio Viewer.exe`).
 
 Until code signing is set up (below), Windows SmartScreen warns once when you run a freshly downloaded file: choose **More info → Run anyway**. Files the installer puts on disk don't carry the "downloaded from the internet" mark, so the installed app doesn't warn again.
 
@@ -27,7 +27,7 @@ Set-up in Azure: create an Artifact Signing account (Basic plan), complete ident
 
 ## VST3 plugin
 
-**DigiCheck Universal.vst3** puts the same pages (Custom included) on a track in your DAW. The setup installs it (the "Install the VST3 plugin" box), or unzip **DigiCheckUniversal-VST3.zip** into `C:\Program Files\Common Files\VST3`. It's an analysis plugin: the audio passes through untouched (bit for bit, no latency) unless you use Listen.
+**Ultimate Audio Viewer.vst3** puts the same pages (Custom included) on a track in your DAW. The setup installs it (the "Install the VST3 plugin" box), or unzip **Ultimate-Audio-Viewer-VST3.zip** into `C:\Program Files\Common Files\VST3`. It's an analysis plugin: the audio passes through untouched (bit for bit, no latency) unless you use Listen.
 
 What the plugin adds:
 - **The project's tempo.** The Tempo window and the Scope's bar lengths follow the DAW's tempo (you can still type another one; it follows again when the project's tempo changes).
@@ -36,8 +36,8 @@ What the plugin adds:
   - **Spectrogram:** the sidechain is drawn over the track in its own colour. **SC** in the bottom bar: show or hide it, **tint** (its colour, by level) or **contour lines** (the track's picture stays clear underneath), colour and strength.
   - **Scope:** **SC** draws the sidechain over the waveform (menu: the sidechain input or Side, L - R), **filled** or **outline** (its envelope as two lines, so you can see the kick against the bass it ducks). Its colour is Menu > Colours > Side2SC / sidechain.
   - **Analyzer (FFT):** **+ Curve > Sidechain** shows its spectrum as the second curve, in its own colour and line / filled / dashed style.
-- **DAW bridge** (`Source/bridge/`): the VST3 sends what it sees to the app through shared memory (`Local\DigiCheckUniversal.Bridge.1`: 16 slots, each a lock-free 65536-frame stereo ring with the track name, sample rate and a heartbeat). The app's **From DAW** input reads one slot (automatic: the master-named track, else the newest sender; or a chosen track), so it can monitor a DAW that uses ASIO with any interface and no routing. Senders are on by default (plugin Options: *Send to the DigiCheck Universal app*); the reader feeds silence while nothing sends and restarts at the sender's sample rate when it changes. `tests/bridge_test.cpp` (also `--send <seconds>` to play a test sender).
-- **Link** (bottom bar): another DigiCheck instance's track as the comparison signal, with no routing. Instances in the DAW's process publish their input to a lock-free ring under their track name (VST3 track properties); the linked one is read each block (the latest block, so it can trail by one block depending on processing order) and used in place of the sidechain bus for the Spectrogram, Scope and FFT. Saved per project by track name. `Source/plugin/InstanceLink.*`.
+- **DAW bridge** (`Source/bridge/`): the VST3 sends what it sees to the app through shared memory (`Local\UltimateAudioViewer.Bridge.1`: 16 slots, each a lock-free 65536-frame stereo ring with the track name, sample rate and a heartbeat). The app's **From DAW** input reads one slot (automatic: the master-named track, else the newest sender; or a chosen track), so it can monitor a DAW that uses ASIO with any interface and no routing. Senders are on by default (plugin Options: *Send to the UAV app*); the reader feeds silence while nothing sends and restarts at the sender's sample rate when it changes. `tests/bridge_test.cpp` (also `--send <seconds>` to play a test sender).
+- **Link** (bottom bar): another UAV instance's track as the comparison signal, with no routing. Instances in the DAW's process publish their input to a lock-free ring under their track name (VST3 track properties); the linked one is read each block (the latest block, so it can trail by one block depending on processing order) and used in place of the sidechain bus for the Spectrogram, Scope and FFT. Saved per project by track name. `Source/plugin/InstanceLink.*`.
 - **Listen** (bottom bar): hear only some bands, and / or only Mid, Side, Left or Right, like Metric AB's band solo or ISOL8. Five bands (Sub < 60, Low 60-250, Low-mid 250-2k, High-mid 2k-6k, High > 6k, with movable crossovers): click a band to hear it or not, double-click to hear it alone. The crossovers are Linkwitz-Riley (24 dB/oct) with allpass alignment, so any combination sums cleanly and all five together are flat. The button turns orange and says what you're hearing; **Off** puts everything back. Changes fade over 10 ms, so they never click. On the Scope, **Listen** next to the BP knob plays the band-pass you're looking at.
 - The views' settings are saved with the project; presets are shared by all instances.
 
@@ -50,7 +50,7 @@ Not in the plugin: the audio-input choice (the track is the input), full screen 
 | **Windows Audio (exclusive)** | Bit-exact input through Windows, when nothing else is using the device. |
 | **ASIO** | Bit-exact and lowest latency. It may be unavailable while your DAW is using the Focusrite ASIO driver. |
 | **Windows playback (loopback)** | Analyses whatever Windows is playing to any output device (e.g. the Scarlett's outputs), with no routing needed. It can't hear a DAW that uses ASIO. |
-| **From DAW** | What the DigiCheck VST3 sees in your DAW (put it on the master track), even when the DAW uses ASIO: the plugin hands its audio to the app through shared memory (see DAW bridge below). |
+| **From DAW** | What the UAV VST3 sees in your DAW (put it on the master track), even when the DAW uses ASIO: the plugin hands its audio to the app through shared memory (see DAW bridge below). |
 | **Test signal** | A sweep, chord, clicks and tones, for checking the display without an interface. |
 
 **L / R** choose which two channels of the source to analyse. The spectrogram then shows **Left**, **Right**, **Mid**
@@ -87,8 +87,8 @@ Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor | Cus
   - **BP** and its frequency knob show only a band (two cascaded band-passes, Q 1.4), e.g. 60 Hz to see the kick alone.
   - **Side2SC** overlays the Side signal (L−R) on the main wave; **Hold** freezes a ghost copy behind the live wave for comparison.
   - Mouse: the wheel zooms, Shift+wheel scrolls, Alt+wheel changes the length, drag zooms (vertical) and pans (horizontal), double-click shows everything. **Ctrl+drag selects** a region and shows its length, peak, RMS and crest factor. Ctrl+click pins a dB ruler.
-  - **Rec** arms the recorder: it starts with the next audio and records one window. Drag the wave icon into your DAW or Explorer to take it as a 24-bit WAV (right-click: Normalize, Trim silence, Snap to grid, Save as…). Recordings go to Documents\DigiCheck Universal\Scope Recordings.
-  - Menu: source (Stereo, Left, Right, Mid, Side, Peak), guide lines, and colour **themes**: Dark, Neon, DigiCheck, Amber, Phosphor, Ice, Sunset, Mono and Paper (light). Scyllascope-style JSON themes in Documents\DigiCheck Universal\Scope Themes are loaded too.
+  - **Rec** arms the recorder: it starts with the next audio and records one window. Drag the wave icon into your DAW or Explorer to take it as a 24-bit WAV (right-click: Normalize, Trim silence, Snap to grid, Save as…). Recordings go to Documents\Ultimate Audio Viewer\Scope Recordings.
+  - Menu: source (Stereo, Left, Right, Mid, Side, Peak), guide lines, and colour **themes**: Dark, Neon, DigiCheck, Amber, Phosphor, Ice, Sunset, Mono and Paper (light). Scyllascope-style JSON themes in Documents\Ultimate Audio Viewer\Scope Themes are loaded too.
   - **Colours** (in the menu): a **spectral palette** independent of the theme (Scyllascope, Heat, Ocean, Rainbow, Pastel, Forest, Mono), and your own colour for the wave, Side2SC / sidechain, hold, background, grid, playhead, clipping and accent (a picker that applies as you drag). **Save current colours as a theme...** writes a Scyllascope-compatible theme file.
   - Reserved for the VST3 version: Sync to the host transport, Sync to Start, sidechain from another track or instance, track name/colour, listening to the BP band, and REAPER's embedded mode. They are shown greyed out.
 
@@ -105,16 +105,16 @@ Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor | Cus
 - The display is synced to the monitor's refresh rate (60/120/144 Hz…). New spectrogram columns pass through a ~30 ms buffer and are released at exactly the display speed, so the scroll is even on every frame.
 - **GPU Rendering (OpenGL)** is on by default (Settings → GPU Rendering). The spectrogram history is an OpenGL texture: each frame uploads only the new columns and scrolls with sub-pixel precision. The rest of the interface, including the Analyzer, is drawn on the GPU too.
 - Turn it off to use the CPU renderer, e.g. if your graphics driver has OpenGL problems.
-- **HDR full screen** (in Options): on an HDR monitor, some graphics drivers switch a full-screen OpenGL window to exclusive mode, and Windows turns HDR off while it's there. **Keep HDR (1 px gap at the bottom)** (the default) makes the full-screen window 1 pixel short of the monitor, which drivers don't promote, so HDR stays on with GPU rendering. If your driver still does it, **Keep HDR (CPU rendering while full screen)** switches to CPU rendering only while full screen on a monitor with HDR on. **Exact full screen** covers the whole monitor. On NVIDIA, setting Spectroscope's "Vulkan/OpenGL present method" to "Prefer layered on DXGI Swapchain" in the NVIDIA Control Panel also keeps HDR.
+- **HDR full screen** (in Options): on an HDR monitor, some graphics drivers switch a full-screen OpenGL window to exclusive mode, and Windows turns HDR off while it's there. **Keep HDR (1 px gap at the bottom)** (the default) makes the full-screen window 1 pixel short of the monitor, which drivers don't promote, so HDR stays on with GPU rendering. If your driver still does it, **Keep HDR (CPU rendering while full screen)** switches to CPU rendering only while full screen on a monitor with HDR on. **Exact full screen** covers the whole monitor. On NVIDIA, setting Ultimate Audio Viewer's "Vulkan/OpenGL present method" to "Prefer layered on DXGI Swapchain" in the NVIDIA Control Panel also keeps HDR.
 - **Frame rate limit** (in Options): caps the whole window at a chosen rate; **60 fps by default**, which is smooth and saves the GPU redrawing at 144 or 240 Hz. Frames stay evenly spaced: well below the refresh rate the display draws every k-th refresh (60 on 60/120/240 Hz monitors, an even 72 on 144 Hz) instead of alternating gaps. Choose Off to follow the monitor. For a G-Sync / FreeSync monitor, pick about 3 below its maximum (e.g. 141 for 144 Hz) to stay inside the variable-refresh range. Vsync stays on, so frames never exceed the monitor's refresh rate.
 - The Options panel shows the renderer and the measured frame rate, e.g. `GPU (OpenGL), 141 fps (limit 141)`.
 
 ## Toolbar and windows
 - **Options** (bottom left, or O) opens a pop-up panel with the audio input (source, L/R channels, Start/Stop, Rescan), the status line and the display options (GPU rendering, frame rate limit). There is no top toolbar, so the analysis uses the full height. Click anywhere else or press Esc to close it.
 - **Full screen**: F11 or the small button at the bottom right; Esc leaves. This is *windowed* (borderless) full screen; see HDR full screen under Rendering. In full screen, **Hide bar** (or B; Shift+F11 goes straight there) hides the bottom bar too: move the mouse to the bottom edge and it slides back while you use it.
-- **Copy as image**: Ctrl+C (Custom page: Ctrl+Shift+C for the focused pane, or Options → Copy view as image) puts the page on the clipboard as a bitmap and PNG and saves it to Documents\DigiCheck Universal\Screenshots. The spectrogram's picture is included with the GPU renderer too.
+- **Copy as image**: Ctrl+C (Custom page: Ctrl+Shift+C for the focused pane, or Options → Copy view as image) puts the page on the clipboard as a bitmap and PNG and saves it to Documents\Ultimate Audio Viewer\Screenshots. The spectrogram's picture is included with the GPU renderer too.
 - **Snapshot** (Balance curve panel, FFT header): keeps the current curve as a dashed ghost for before / after comparisons; the hover readout shows the difference.
-- **Options → Check for updates** (start-up check of the Latest build release; a green "x.y.z available" button appears when there's a newer one), **Back up... / Restore...** (one `.dcubackup` XML file with all settings, app-wide presets and layouts, Scope themes and Balance targets) and **Reset to defaults** (settings only; keeps the audio input; takes effect after a restart).
+- **Options → Check for updates** (start-up check of the Latest build release; a green "x.y.z available" button appears when there's a newer one), **Back up... / Restore...** (one `.uavbackup` XML file with all settings, app-wide presets and layouts, Scope themes and Balance targets) and **Reset to defaults** (settings only; keeps the audio input; takes effect after a restart).
 - **Help** (**?** left of Full screen, or F1): while on, resting the mouse on a button, box or Monitor module header shows a short description.
 - **Tonal Balance view** (Balance button, or 3; V cycles the three views): your input's tonal balance against a target.
   - Left, four band meters (Low 0-250 Hz, Low-mid 250 Hz-2 kHz, High-mid 2-8 kHz, High 8 kHz+): the blue zone is the
@@ -133,7 +133,7 @@ Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor | Cus
     the GPU renderer is on. The curve and meters glide between measurements, so they move smoothly at the display's
     refresh rate; the grid, labels and target range are drawn once and cached. Set `SPECTROSCOPE_PAINT_LOG=1` to
     print the view's average paint time (about 2 ms at 1300x760 on a software renderer).
-  - Targets are read from `Documents\DigiCheck Universal\Targets` (nothing is built into the app): files made with
+  - Targets are read from `Documents\Ultimate Audio Viewer\Targets` (nothing is built into the app): files made with
     Target Builder and Tonal Balance Control-style target files (including the variant that wraps values as
     `{"Type", "Value"}`). New or changed files are picked up automatically.
   - The measurement is the same as Target Builder's (gated, level independent), so a song compared with a target built
@@ -173,7 +173,7 @@ Switch with the **Spectrogram | Analyzer | Balance | Key | Scope | Monitor | Cus
     quieter passages (the engine's silence gate: -39 dBFS at 0, -60 at 70, -69 at 100). Quiet audio is also brought
     up to a -1 dBFS peak (at most +24 dB) before the model listens, since it is sensitive to level.
   - **Model:** downloaded once inside the app, not part of the install: Small 210 MB (about real time on a CPU),
-    Medium 620 MB or Large 2.7 GB (a GPU recommended). They're stored in `%APPDATA%\DigiCheck Universal\Models`;
+    Medium 620 MB or Large 2.7 GB (a GPU recommended). They're stored in `%APPDATA%\Ultimate Audio Viewer\Models`;
     models that NeuralNote has already downloaded (`%APPDATA%\NeuralNote\models`) are used in place. Each
     download is checked against NeuralNote's pinned SHA-256. The weights are CC BY-NC 4.0 (non-commercial).
   - **Device:** Auto picks the best GPU (Vulkan) or the CPU; or choose one. **Instruments:** restrict what the model
@@ -216,13 +216,13 @@ cmake --build build
 JUCE 9.0.6 and the transcription engine (muscriptor.cpp, which fetches ggml) are downloaded automatically. Without
 the Vulkan SDK the engine builds CPU-only. The version is `VERSION` (major.minor) plus the CI build number.
 
-Crash reports (`Source/CrashReport.*`): the app installs an unhandled-exception filter, the plugin a vectored handler limited to fatal exceptions in its own module (removed with its last instance); both write a minidump and a note to Documents\DigiCheck Universal\Crashes. Release builds carry debug info (/Z7, /DEBUG) with the PDBs written to `build/symbols` and kept by CI as the `symbols` artifact (90 days).
+Crash reports (`Source/CrashReport.*`): the app installs an unhandled-exception filter, the plugin a vectored handler limited to fatal exceptions in its own module (removed with its last instance); both write a minidump and a note to Documents\Ultimate Audio Viewer\Crashes. Release builds carry debug info (/Z7, /DEBUG) with the PDBs written to `build/symbols` and kept by CI as the `symbols` artifact (90 days).
 
 CPU support: the key network's convolution is built twice (any x86-64, and AVX2 + FMA) and chosen at start (`KeyNetKernel.inc`); the transcription engine is built with `MUSCRIPTOR_CPU_VARIANTS` (x86-64-v2, v2 + AVX/F16C, v3, chosen at run time). Both used to need AVX(2) unconditionally.
 
-Layout check: `Spectroscope.exe --layout-check folder` shows every page (and two Custom layouts) at 1920x1050, 1300x760 and 1024x640, saves a PNG of each, and writes `layout_report.txt`: controls that overlap (errors, exit code 1), button / box text that doesn't fit and controls outside their parent (warnings), plus `layout.json` with every control's place. CI runs it on each build, flags findings as annotations, keeps the screenshots as the `layout-check` artifact, and `tools/layout_diff.py` lists in the run summary what moved since the previous build.
+Layout check: `"Ultimate Audio Viewer.exe" --layout-check folder` shows every page (and two Custom layouts) at 1920x1050, 1300x760 and 1024x640, saves a PNG of each, and writes `layout_report.txt`: controls that overlap (errors, exit code 1), button / box text that doesn't fit and controls outside their parent (warnings), plus `layout.json` with every control's place. CI runs it on each build, flags findings as annotations, keeps the screenshots as the `layout-check` artifact, and `tools/layout_diff.py` lists in the run summary what moved since the previous build.
 
-Self-test: `Spectroscope.exe --test-screenshot out.png` writes a screenshot of every view. With
+Self-test: `"Ultimate Audio Viewer.exe" --test-screenshot out.png` writes a screenshot of every view. With
 `SPECTROSCOPE_TEST_KEYFILE=song.wav` the Key page loads a song, with `SPECTROSCOPE_TEST_MODEL=model.gguf` it uses that
 model, `SPECTROSCOPE_TEST_RECORD=10` records 10 s of the input instead, and `SPECTROSCOPE_TEST_KEYWAIT=ms` sets how
 long to wait (it also writes `out_key.mid`; `SPECTROSCOPE_TEST_PLAYWAV=out.wav` renders 16 s of playback, with
@@ -236,7 +236,7 @@ MuScriptor model weights are CC BY-NC 4.0 (non-commercial only); they are downlo
 
 ## TargetBuilder (tonal balance targets from your own songs)
 
-**Spectroscope Target Builder** (`TargetBuilder.exe`: in the release, and installed next to the app with a Start menu
+**UAV Target Builder** (`Ultimate Audio Viewer Target Builder.exe`, released as `Ultimate-Audio-Viewer-Target-Builder.exe`: in the release, and installed next to the app with a Start menu
 entry) turns songs into tonal balance targets for the upcoming Balance view.
 
 1. Drag songs or folders into the window (or use Add songs / Add folder). WAV, AIFF, FLAC, OGG, MP3 (and WMA on
@@ -247,11 +247,11 @@ entry) turns songs into tonal balance targets for the upcoming Balance view.
 3. Type a name, pick the range, and press **Save target**. The default, **wide, like Tonal Balance Control**, gives
    ranges as wide as iZotope's own targets (about 11-17 dB from top to bottom, widest in the low end); the songs
    5-95 %, 10-90 % and 20-80 % options use only the spread of your songs, which is much tighter. It's written to
-   `Documents\DigiCheck Universal\Targets` as `<name>.json` (same layout as Tonal Balance Control target files)
+   `Documents\Ultimate Audio Viewer\Targets` as `<name>.json` (same layout as Tonal Balance Control target files)
    plus `<name> - report.txt`.
 
-Dragging songs or a folder onto `TargetBuilder.exe` opens the window with them already added.
-For batch runs there's a command-line mode: `TargetBuilder.exe --cli <folder>` (a folder of genre subfolders gives
+Dragging songs or a folder onto `Ultimate Audio Viewer Target Builder.exe` opens the window with them already added.
+For batch runs there's a command-line mode: `Ultimate Audio Viewer Target Builder.exe --cli <folder>` (a folder of genre subfolders gives
 one target per subfolder) or `--cli song1.wav song2.flac --name "My refs"`; options `--out DIR`, `--genres`,
 `--range 10 90`, `--tight` (only the songs' spread, no widening), `--threads N`.
 

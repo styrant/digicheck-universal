@@ -26,7 +26,7 @@ public:
     struct Entry { const char* label; const char* fileName; juce::int64 bytes; const char* sha256; const char* hint; };
     static const Entry& entry (int size);
 
-    static juce::File ownFolder();                 // %APPDATA%\DigiCheck Universal\Models (where downloads go)
+    static juce::File ownFolder();                 // %APPDATA%\Ultimate Audio Viewer\Models (where downloads go)
     static juce::File neuralNoteFolder();          // %APPDATA%\NeuralNote\models (used when present)
     static juce::File modelFile (int size);        // an installed checkpoint (ours or NeuralNote's), or {}
     static bool isInstalled (int size)             { return modelFile (size) != juce::File(); }

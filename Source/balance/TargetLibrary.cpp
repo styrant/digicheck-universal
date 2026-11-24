@@ -1,4 +1,5 @@
 #include "TargetLibrary.h"
+#include "../AppInfo.h"
 
 namespace
 {
@@ -47,7 +48,7 @@ namespace
 
 juce::File TargetLibrary::folder()
 {
-    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("DigiCheck Universal").getChildFile ("Targets");
+    return appinfo::documentsFolder().getChildFile ("Targets");
 }
 
 bool TargetLibrary::parse (const juce::var& json, tonal::Target& t, juce::String& name, juce::String& error)

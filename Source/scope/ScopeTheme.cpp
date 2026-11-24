@@ -1,4 +1,5 @@
 #include "ScopeTheme.h"
+#include "../AppInfo.h"
 
 namespace
 {
@@ -210,7 +211,7 @@ bool ScopeTheme::fromJson (const juce::var& v, ScopeTheme& t)
 
 juce::File ScopeTheme::folder()
 {
-    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("DigiCheck Universal").getChildFile ("Scope Themes");
+    return appinfo::documentsFolder().getChildFile ("Scope Themes");
 }
 
 juce::Array<ScopeTheme> ScopeTheme::all()

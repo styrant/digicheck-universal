@@ -467,7 +467,7 @@ namespace
     {
     public:
         explicit Window (const juce::StringArray& paths)
-            : DocumentWindow ("Spectroscope Target Builder", kBg, allButtons)
+            : DocumentWindow ("UAV Target Builder", kBg, allButtons)
         {
             setUsingNativeTitleBar (true);
             auto* p = new Panel();
@@ -486,7 +486,7 @@ namespace
 class TargetBuilderApp : public juce::JUCEApplication
 {
 public:
-    const juce::String getApplicationName() override    { return "Spectroscope Target Builder"; }
+    const juce::String getApplicationName() override    { return "Ultimate Audio Viewer Target Builder"; }
     const juce::String getApplicationVersion() override { return "1.0"; }
     bool moreThanOneInstanceAllowed() override          { return true; }
 

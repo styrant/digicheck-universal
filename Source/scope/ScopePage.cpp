@@ -1,4 +1,5 @@
 #include "ScopePage.h"
+#include "../AppInfo.h"
 #include "../UiScale.h"
 #include "../FrameClock.h"
 #include "../ColourPicker.h"
@@ -743,7 +744,7 @@ void ScopePage::repaintZoomBar() { if (zoomBar != nullptr) zoomBar->repaint(); }
 
 juce::File ScopePage::recordingsFolder()
 {
-    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("DigiCheck Universal").getChildFile ("Scope Recordings");
+    return appinfo::documentsFolder().getChildFile ("Scope Recordings");
 }
 
 juce::File ScopePage::nextRecordingFile() const

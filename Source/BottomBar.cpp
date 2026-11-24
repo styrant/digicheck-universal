@@ -62,7 +62,7 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
     listenBtn.onClick = [this] { if (onListen) onListen (listenBtn); };
     scBtn.setTooltip ("How the sidechain is drawn on the spectrogram");
     scBtn.onClick = [this] { if (onSidechainMenu) onSidechainMenu (scBtn); };
-    linkBtn.setTooltip ("Link: use another DigiCheck instance's track as the comparison signal (Spectrogram overlay, Scope SC, the FFT's second curve), "
+    linkBtn.setTooltip ("Link: use another UAV instance's track as the comparison signal (Spectrogram overlay, Scope SC, the FFT's second curve), "
                         "like a sidechain but with no routing");
     linkBtn.onClick = [this] { if (onLinkMenu) onLinkMenu (linkBtn); };
     viewSpec.onClick = [this] { if (onViewChange) onViewChange (Spectrogram); };

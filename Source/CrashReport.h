@@ -1,5 +1,5 @@
 // Crash reports (Windows): when the app, or the plugin's own code, crashes, a small minidump and a text
-// note (version, exception, address, module) are written to Documents\DigiCheck Universal\Crashes, so the
+// note (version, exception, address, module) are written to Documents\Ultimate Audio Viewer\Crashes, so the
 // crash can be found later from the release's symbols (CI keeps the PDBs as the "symbols" artifact).
 //
 // The app catches every unhandled crash (an unhandled-exception filter). The plugin shares the DAW's

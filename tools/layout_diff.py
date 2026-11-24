@@ -1,4 +1,4 @@
-"""Compares two layout.json files from `Spectroscope.exe --layout-check` (previous build, this build) and
+"""Compares two layout.json files from `"Ultimate Audio Viewer.exe" --layout-check` (previous build, this build) and
 prints a Markdown summary of the controls that moved, appeared or disappeared, per page and window size.
 Usage: python tools/layout_diff.py previous.json current.json"""
 import json, sys

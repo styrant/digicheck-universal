@@ -45,7 +45,7 @@ jobs:
           $root = "C:\VulkanSDK\$env:VULKAN_SDK_VERSION"
           if (-not (Test-Path "$root\Bin\glslc.exe")) {
             $exe = "$env:RUNNER_TEMP\vulkansdk.exe"
-            Invoke-WebRequest -UserAgent "DigiCheckUniversal-CI" -Uri "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_SDK_VERSION.exe" -OutFile $exe
+            Invoke-WebRequest -UserAgent "UltimateAudioViewer-CI" -Uri "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_SDK_VERSION.exe" -OutFile $exe
             if ((Get-FileHash $exe -Algorithm SHA256).Hash -ne $env:VULKAN_SDK_SHA256) { Write-Error "Vulkan SDK checksum mismatch"; exit 1 }
             & $exe --root $root --accept-licenses --default-answer --confirm-command install
             if (-not (Test-Path "$root\Bin\glslc.exe")) { Write-Error "glslc missing after the Vulkan SDK install"; exit 1 }
@@ -145,7 +145,7 @@ jobs:
         env:
           PHT_NO_EDITOR: "1"
         run: |
-          build\plugin_host_test_artefacts\Release\plugin_host_test.exe "build\DigiCheckUniversal_artefacts\Release\VST3\DigiCheck Universal.vst3" ph_out
+          build\plugin_host_test_artefacts\Release\plugin_host_test.exe "build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3" ph_out
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # Every page at three window sizes: overlapping controls are flagged as errors (the build goes on),
@@ -158,7 +158,7 @@ jobs:
           SPECTROSCOPE_NO_GPU: "1"
         run: |
           $out = Join-Path $PWD "layout"
-          $p = Start-Process -FilePath "build\Spectroscope_artefacts\Release\Spectroscope.exe" -ArgumentList "--layout-check", "`"$out`"" -WorkingDirectory $PWD -Wait -PassThru
+          $p = Start-Process -FilePath "build\Spectroscope_artefacts\Release\Ultimate Audio Viewer.exe" -ArgumentList "--layout-check", "`"$out`"" -WorkingDirectory $PWD -Wait -PassThru
           Write-Host "exit code $($p.ExitCode)"
           if (Test-Path layout\progress.log) { Get-Content layout\progress.log | Select-Object -Last 5 } else { Write-Host "no progress log" }
           if (-not (Test-Path layout\layout_report.txt)) { Write-Host "::error title=Layout check::the app wrote no report"; exit 1 }
@@ -197,7 +197,7 @@ jobs:
           Invoke-WebRequest https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
           Expand-Archive pluginval.zip -DestinationPath pluginval -Force
           $pv = Get-ChildItem pluginval -Recurse -Filter pluginval.exe | Select-Object -First 1
-          & $pv.FullName --strictness-level 5 --skip-gui-tests --validate "build\DigiCheckUniversal_artefacts\Release\VST3\DigiCheck Universal.vst3"
+          & $pv.FullName --strictness-level 5 --skip-gui-tests --validate "build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3"
           if ($LASTEXITCODE -ne 0) { Write-Host "::warning::pluginval reported problems"; exit $LASTEXITCODE }
 
       - name: Target loader test
@@ -207,7 +207,7 @@ jobs:
         shell: pwsh
         run: |
           python tools\make_test_songs.py tb_lib
-          $tb = "build\TargetBuilder_artefacts\Release\TargetBuilder.exe"
+          $tb = "build\TargetBuilder_artefacts\Release\Ultimate Audio Viewer Target Builder.exe"
           # TargetBuilder is a window app; --cli runs the command-line mode (Start-Process waits for it)
           $p = Start-Process -FilePath $tb -ArgumentList @("--cli", "tb_lib", "--out", "tb_out") -Wait -PassThru -NoNewWindow
           if ($p.ExitCode -ne 0) { Write-Error "TargetBuilder --cli failed ($($p.ExitCode))"; exit 1 }
@@ -217,7 +217,7 @@ jobs:
           if ($a.region_0_bounds[1] -le $b.region_0_bounds[1]) { Write-Error "bass-heavy genre should have more low end"; exit 1 }
           Write-Host "GenreA low band $($a.region_0_bounds), GenreB $($b.region_0_bounds)"
 
-      - name: Sign Spectroscope.exe
+      - name: Sign the app
         if: env.SIGN == 'true'
         uses: azure/artifact-signing-action@v2
         with:
@@ -227,12 +227,12 @@ jobs:
           endpoint: ${{ secrets.SIGNING_ENDPOINT }}
           signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\build\Spectroscope_artefacts\Release\Spectroscope.exe
+          files: ${{ github.workspace }}\build\Spectroscope_artefacts\Release\Ultimate Audio Viewer.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
-      - name: Sign TargetBuilder.exe
+      - name: Sign the Target Builder
         if: env.SIGN == 'true'
         uses: azure/artifact-signing-action@v2
         with:
@@ -242,7 +242,7 @@ jobs:
           endpoint: ${{ secrets.SIGNING_ENDPOINT }}
           signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\build\TargetBuilder_artefacts\Release\TargetBuilder.exe
+          files: ${{ github.workspace }}\build\TargetBuilder_artefacts\Release\Ultimate Audio Viewer Target Builder.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
@@ -257,7 +257,7 @@ jobs:
           endpoint: ${{ secrets.SIGNING_ENDPOINT }}
           signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\build\DigiCheckUniversal_artefacts\Release\VST3\DigiCheck Universal.vst3\Contents\x86_64-win\DigiCheck Universal.vst3
+          files: ${{ github.workspace }}\build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3\Contents\x86_64-win\Ultimate Audio Viewer.vst3
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
@@ -266,14 +266,14 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path "build\DigiCheckUniversal_artefacts\Release\VST3\DigiCheck Universal.vst3" -DestinationPath dist\DigiCheckUniversal-VST3.zip -Force
+          Compress-Archive -Path "build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3" -DestinationPath dist\Ultimate-Audio-Viewer-VST3.zip -Force
 
       - name: Build installer
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
-          & $iscc /Qp "/DAppVersion=$env:APP_VERSION" installer\Spectroscope.iss
+          & $iscc /Qp "/DAppVersion=$env:APP_VERSION" installer\UltimateAudioViewer.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Sign installer
@@ -286,20 +286,39 @@ jobs:
           endpoint: ${{ secrets.SIGNING_ENDPOINT }}
           signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\dist\SpectroscopeSetup.exe
+          files: ${{ github.workspace }}\dist\Ultimate-Audio-Viewer-Setup.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
+      # release files: the full name, hyphenated (GitHub turns spaces in asset names into dots); the files
+      # inside (installed exe, VST3 bundle) keep the spaces
+      - name: Name the release files
+        shell: pwsh
+        run: |
+          Copy-Item "build\Spectroscope_artefacts\Release\Ultimate Audio Viewer.exe" dist\Ultimate-Audio-Viewer.exe
+          Copy-Item "build\TargetBuilder_artefacts\Release\Ultimate Audio Viewer Target Builder.exe" dist\Ultimate-Audio-Viewer-Target-Builder.exe
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Spectroscope-windows-x64
+          name: Ultimate-Audio-Viewer-windows-x64
           path: |
-            dist/SpectroscopeSetup.exe
-            dist/DigiCheckUniversal-VST3.zip
-            build/Spectroscope_artefacts/Release/Spectroscope.exe
-            build/TargetBuilder_artefacts/Release/TargetBuilder.exe
+            dist/Ultimate-Audio-Viewer-Setup.exe
+            dist/Ultimate-Audio-Viewer-VST3.zip
+            dist/Ultimate-Audio-Viewer.exe
+            dist/Ultimate-Audio-Viewer-Target-Builder.exe
+
+      # the files under the earlier names would otherwise stay on the release, out of date
+      - name: Remove the earlier release files
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          foreach ($n in "SpectroscopeSetup.exe", "Spectroscope.exe", "TargetBuilder.exe", "DigiCheckUniversal-VST3.zip") {
+            gh release delete-asset latest $n -y 2>$null
+          }
+          exit 0
 
       - name: Publish as the "latest" release
         uses: softprops/action-gh-release@v2
@@ -310,13 +329,14 @@ jobs:
           make_latest: false
           body: |
             Version ${{ env.APP_VERSION }}, built from ${{ github.sha }}.
-            **SpectroscopeSetup.exe** installs it with Start menu / desktop shortcuts (no admin rights needed).
-            **Spectroscope.exe** is the same app as a single portable file.
-            **TargetBuilder.exe** makes tonal balance targets: drag songs into its window and save them as a target (also installed by the setup).
-            **DigiCheckUniversal-VST3.zip** is the VST3 plugin (the setup can install it too): unzip "DigiCheck Universal.vst3" into C:\Program Files\Common Files\VST3.
+            **Ultimate Audio Viewer (UAV)**
+            **Ultimate-Audio-Viewer-Setup.exe** installs the app, the Target Builder and the VST3 plugin (for all users by default, so the plugin goes to C:\Program Files\Common Files\VST3). It replaces an earlier Spectroscope / DigiCheck Universal install.
+            **Ultimate-Audio-Viewer.exe** is the same app as a single portable file.
+            **Ultimate-Audio-Viewer-Target-Builder.exe** makes tonal balance targets: drag songs into its window and save them as a target (also installed by the setup).
+            **Ultimate-Audio-Viewer-VST3.zip** is the VST3 plugin (the setup can install it too): unzip "Ultimate Audio Viewer.vst3" into C:\Program Files\Common Files\VST3 (and delete an old "DigiCheck Universal.vst3" there).
             Signed: ${{ env.SIGN }}
           files: |
-            dist/SpectroscopeSetup.exe
-            dist/DigiCheckUniversal-VST3.zip
-            build/Spectroscope_artefacts/Release/Spectroscope.exe
-            build/TargetBuilder_artefacts/Release/TargetBuilder.exe
+            dist/Ultimate-Audio-Viewer-Setup.exe
+            dist/Ultimate-Audio-Viewer-VST3.zip
+            dist/Ultimate-Audio-Viewer.exe
+            dist/Ultimate-Audio-Viewer-Target-Builder.exe
