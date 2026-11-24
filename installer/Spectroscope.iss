@@ -39,6 +39,11 @@ CloseApplications=yes
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "vst3"; Description: "Install the VST3 plugin (DigiCheck Universal.vst3, for your DAW)"; GroupDescription: "Plugin:"
 
+[InstallDelete]
+; an earlier copy of the plugin: a whole old bundle, or a single file of the same name (the older one-file
+; VST3 layout, e.g. copied in by hand), which would otherwise block the bundle folder (error 183)
+Type: filesandordirs; Name: "{autocf}\VST3\DigiCheck Universal.vst3"; Tasks: vst3
+
 [Files]
 Source: "..\build\Spectroscope_artefacts\Release\Spectroscope.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\TargetBuilder_artefacts\Release\TargetBuilder.exe"; DestDir: "{app}"; Flags: ignoreversion
