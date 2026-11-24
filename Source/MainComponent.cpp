@@ -375,6 +375,17 @@ MainComponent::~MainComponent()
     glContext.detach();
     saveAll();
     if (device != nullptr) { device->stop(); engine.setAnalyzer (nullptr); }
+    if (host != nullptr)
+    {
+        // the plugin's window closes: only what must keep going does (the Monitor, a Key recording, Link,
+        // the Reference); the views' analysis stops until the window opens again (setView turns it back on)
+        engine.setSpectrogramActive (false);
+        if (auto* e = host->sidechainEngine()) e->setSpectrogramActive (false);
+        core.analyzerProc.setUiActive (false);
+        liveBalance.setActive (false);
+        scopePage.setActive (false);
+        analyzerPanel.setActive (false);
+    }
 }
 
 void MainComponent::saveAll()

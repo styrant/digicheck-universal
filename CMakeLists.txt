@@ -81,6 +81,8 @@ set(DCU_SHARED_SOURCES
     Source/analyzer/ui/AnalyzerView.cpp
     Source/analyzer/ui/SettingsPanel.cpp
     Source/key/KeyNet.cpp
+    Source/key/KeyNetBase.cpp
+    Source/key/KeyNetAvx2.cpp
     Source/key/KeyCqt.cpp
     Source/key/KeyFinder.cpp
     Source/key/KeyPage.cpp
@@ -104,6 +106,7 @@ set(DCU_SHARED_SOURCES
     Source/listen/BandIsolator.cpp
     Source/listen/ListenPanel.cpp
     Source/ClipboardImage.cpp
+    Source/CrashReport.cpp
     Source/reference/ReferenceTrack.cpp
     Source/reference/ReferencePanel.cpp
     Source/MainComponent.cpp            # the main view: the app window and the plugin editor both show it
@@ -120,13 +123,17 @@ target_sources(Spectroscope PRIVATE
 juce_add_binary_data(SpectroscopeData SOURCES Resources/keynet.bin)
 target_link_libraries(Spectroscope PRIVATE SpectroscopeData)
 
-# the network's matrix maths is the only hot loop that benefits from AVX2 / FMA
+# the network's matrix maths is the only hot loop that benefits from AVX2 / FMA: KeyNetAvx2.cpp is built
+# with them and KeyNetBase.cpp without; KeyNet picks one at run time (CPUs without AVX2 must never run it)
 if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")     # clang-cl: /arch:AVX2 alone doesn't turn on FMA
-    set_source_files_properties(Source/key/KeyNet.cpp PROPERTIES COMPILE_OPTIONS "/O2;/arch:AVX2;/fp:fast;/clang:-mfma")
+    set_source_files_properties(Source/key/KeyNetAvx2.cpp PROPERTIES COMPILE_OPTIONS "/O2;/arch:AVX2;/fp:fast;/clang:-mfma")
+    set_source_files_properties(Source/key/KeyNetBase.cpp PROPERTIES COMPILE_OPTIONS "/O2;/fp:fast")
 elseif(MSVC)
-    set_source_files_properties(Source/key/KeyNet.cpp PROPERTIES COMPILE_OPTIONS "/O2;/arch:AVX2;/fp:fast")
+    set_source_files_properties(Source/key/KeyNetAvx2.cpp PROPERTIES COMPILE_OPTIONS "/O2;/arch:AVX2;/fp:fast")
+    set_source_files_properties(Source/key/KeyNetBase.cpp PROPERTIES COMPILE_OPTIONS "/O2;/fp:fast")
 else()
-    set_source_files_properties(Source/key/KeyNet.cpp PROPERTIES COMPILE_OPTIONS "-O3;-mavx2;-mfma")
+    set_source_files_properties(Source/key/KeyNetAvx2.cpp PROPERTIES COMPILE_OPTIONS "-O3;-mavx2;-mfma")
+    set_source_files_properties(Source/key/KeyNetBase.cpp PROPERTIES COMPILE_OPTIONS "-O3")
 endif()
 
 target_compile_definitions(Spectroscope PRIVATE
@@ -152,12 +159,23 @@ target_link_libraries(Spectroscope
         juce::juce_recommended_warning_flags)
 
 if(WIN32)
-    target_link_libraries(Spectroscope PRIVATE ole32)
+    target_link_libraries(Spectroscope PRIVATE ole32 dbghelp)
 endif()
 
 # ---- The VST3 version: the same views as an analysis plugin, with a sidechain input, the host's tempo and
 # transport (Scope Sync) and band listening. Codes fixed for good: hosts store them in their projects.
 option(DCU_BUILD_VST3 "Build the VST3 plugin" ON)
+# Symbols for crash reports (Source/CrashReport.h): debug info in the objects (/Z7, works with ccache) and
+# a PDB per binary in build/symbols (kept out of the exe / VST3 bundle; CI keeps them as an artifact).
+# /OPT:REF and /OPT:ICF are restated because /DEBUG would otherwise turn them off.
+function(dcu_symbols target binary pdbname)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /Z7)
+        target_link_options(${binary} PRIVATE /DEBUG /OPT:REF /OPT:ICF "/PDB:${CMAKE_BINARY_DIR}/symbols/${pdbname}.pdb")
+    endif()
+endfunction()
+dcu_symbols(Spectroscope Spectroscope Spectroscope)
+
 if(DCU_BUILD_VST3)
     juce_add_plugin(DigiCheckUniversal
         PRODUCT_NAME "DigiCheck Universal"
@@ -198,10 +216,13 @@ if(DCU_BUILD_VST3)
             juce::juce_opengl
         PUBLIC
             juce::juce_recommended_config_flags
+            juce::juce_recommended_lto_flags
             juce::juce_recommended_warning_flags)
     if(WIN32)
-        target_link_libraries(DigiCheckUniversal PRIVATE ole32)
+        target_link_libraries(DigiCheckUniversal PRIVATE ole32 dbghelp)
     endif()
+
+    dcu_symbols(DigiCheckUniversal DigiCheckUniversal_VST3 DigiCheckUniversal)
 
     # a minimal host: loads the built VST3 with a sidechain and a play head (tests/plugin_host_test.cpp)
     juce_add_console_app(plugin_host_test PRODUCT_NAME "plugin_host_test")
@@ -215,7 +236,7 @@ endif()
 add_executable(dsp_test tests/dsp_test.cpp Source/Reassigner.cpp)
 add_executable(loudness_test tests/loudness_test.cpp Source/LoudnessMeter.cpp)
 add_executable(analyzer_dsp_test tests/analyzer_dsp_test.cpp)   # Spectrum Analyzer 2's own DSP tests
-add_executable(key_test tests/key_test.cpp Source/key/KeyNet.cpp Source/key/KeyCqt.cpp)   # key finder vs PyTorch / librosa
+add_executable(key_test tests/key_test.cpp Source/key/KeyNet.cpp Source/key/KeyNetBase.cpp Source/key/KeyNetAvx2.cpp Source/key/KeyCqt.cpp)   # key finder vs PyTorch / librosa
 add_executable(balance_test tests/balance_test.cpp Source/balance/TonalAnalysis.cpp)       # tonal balance measurement
 add_executable(harmony_test tests/harmony_test.cpp Source/transcribe/Harmony.cpp Source/transcribe/Resample.cpp Source/transcribe/NoteFilter.cpp)   # chords, melody, key, resampling
 add_executable(fft_test tests/fft_test.cpp Source/fft/FftAnalyzer.cpp)                       # the Analyzer's FFT style

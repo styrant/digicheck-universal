@@ -1,4 +1,7 @@
 #include "PluginProcessor.h"
+#include "../CrashReport.h"
+
+namespace { std::atomic<int> liveInstances { 0 }; }    // crash reports are on while any instance exists
 #include "PluginEditor.h"
 
 namespace
@@ -23,6 +26,7 @@ DcuProcessor::DcuProcessor()
                               .withInput ("Sidechain", juce::AudioChannelSet::stereo(), false)),
       global (openGlobal())
 {
+    if (liveInstances++ == 0) crashreport::install ("DigiCheck Universal VST3", JucePlugin_VersionString, true);
     core.registerWith (engine);
     core.monitorTap.setActive (true);
     core.monitorModel.configure (48000);
@@ -36,6 +40,7 @@ DcuProcessor::DcuProcessor()
 
 DcuProcessor::~DcuProcessor()
 {
+    if (--liveInstances == 0) crashreport::uninstall();
     instancelink::Hub::get().remove (hubId);
     { const juce::SpinLock::ScopedLockType sl (linkLock); linked.reset(); }
     stopTimer();

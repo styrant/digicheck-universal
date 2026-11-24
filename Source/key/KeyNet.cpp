@@ -1,7 +1,13 @@
 #include "KeyNet.h"
+#if defined (_MSC_VER)
+ #include <intrin.h>
+#elif defined (__x86_64__) || defined (__i386__)
+ #include <cpuid.h>
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 
 namespace
 {
@@ -59,80 +65,48 @@ bool KeyNet::load (const void* data, size_t size, std::string& error)
     return true;
 }
 
-// 'same' convolution as im2col + blocked GEMM, then ELU.  in: [cin][H][W], out: [cout][H][W]
-// The im2col matrix is built one block of output positions at a time, so memory stays small
-// even for a whole song.
+namespace keynet_kernels
+{
+    void convEluBase (const float*, const float*, int, int, int, const float*, int, int, float*, float*);
+    void convEluAvx2 (const float*, const float*, int, int, int, const float*, int, int, float*, float*);
+}
+
+// AVX2 and FMA in the CPU, and the OS saving the YMM registers (XGETBV)
+static bool cpuHasAvx2Fma()
+{
+#if defined (_M_X64) || defined (__x86_64__)
+    unsigned a = 0, b = 0, c = 0, d = 0;
+   #if defined (_MSC_VER)
+    int r[4];
+    __cpuid (r, 1); c = (unsigned) r[2];
+    const bool osxsave = (c >> 27) & 1, avx = (c >> 28) & 1, fma = (c >> 12) & 1;
+    if (! (osxsave && avx && fma)) return false;
+    if ((_xgetbv (0) & 6) != 6) return false;
+    __cpuidex (r, 7, 0); b = (unsigned) r[1];
+   #else
+    __cpuid (1, a, b, c, d);
+    const bool osxsave = (c >> 27) & 1, avx = (c >> 28) & 1, fma = (c >> 12) & 1;
+    if (! (osxsave && avx && fma)) return false;
+    unsigned lo, hi;
+    __asm__ volatile ("xgetbv" : "=a" (lo), "=d" (hi) : "c" (0));
+    if ((lo & 6) != 6) return false;
+    __cpuid_count (7, 0, a, b, c, d);
+   #endif
+    return (b >> 5) & 1;                         // AVX2
+#else
+    return false;
+#endif
+}
+
+// 'same' convolution + ELU (KeyNetKernel.inc): the AVX2 build where the CPU has it
 void KeyNet::convElu (const Layer& L, const std::vector<float>& in, int H, int W, std::vector<float>& out,
                       std::vector<float>& col)
 {
-    const int k = L.k, pad = k / 2, P = H * W, K = L.cin * k * k;
-    constexpr int kBlock = 256;
-    col.resize ((size_t) K * kBlock);
-    out.assign ((size_t) L.cout * P, 0.0f);
-
-    for (int p0 = 0; p0 < P; p0 += kBlock)
-    {
-        const int n = std::min (kBlock, P - p0);
-        // im2col for positions p0 .. p0 + n: col[kk][i]
-        for (int c = 0; c < L.cin; ++c)
-        {
-            const float* src = in.data() + (size_t) c * P;
-            for (int dy = 0; dy < k; ++dy)
-                for (int dx = 0; dx < k; ++dx)
-                {
-                    float* dst = col.data() + (size_t) ((c * k + dy) * k + dx) * kBlock;
-                    int y = p0 / W, x = p0 % W;
-                    for (int i = 0; i < n; ++i)
-                    {
-                        const int sy = y + dy - pad, sx = x + dx - pad;
-                        dst[i] = (sy >= 0 && sy < H && sx >= 0 && sx < W) ? src[sy * W + sx] : 0.0f;
-                        if (++x == W) { x = 0; ++y; }
-                    }
-                }
-        }
-
-        // GEMM out[cout][block] = W[cout][K] x col[K][block], 4 output channels at a time, so each
-        // loaded column value feeds four multiply-adds (the compiler vectorises the inner loop)
-        int o = 0;
-        for (; o + 4 <= L.cout; o += 4)
-        {
-            float* __restrict d0 = out.data() + (size_t) o * P + p0;
-            float* __restrict d1 = d0 + P;
-            float* __restrict d2 = d1 + P;
-            float* __restrict d3 = d2 + P;
-            const float* w0 = L.w.data() + (size_t) o * K;
-            const float* w1 = w0 + K;
-            const float* w2 = w1 + K;
-            const float* w3 = w2 + K;
-            for (int kk = 0; kk < K; ++kk)
-            {
-                const float a0 = w0[kk], a1 = w1[kk], a2 = w2[kk], a3 = w3[kk];
-                const float* __restrict src = col.data() + (size_t) kk * kBlock;
-                for (int i = 0; i < n; ++i)
-                {
-                    const float v = src[i];
-                    d0[i] += a0 * v; d1[i] += a1 * v; d2[i] += a2 * v; d3[i] += a3 * v;
-                }
-            }
-        }
-        for (; o < L.cout; ++o)
-        {
-            float* __restrict dst = out.data() + (size_t) o * P + p0;
-            const float* wrow = L.w.data() + (size_t) o * K;
-            for (int kk = 0; kk < K; ++kk)
-            {
-                const float w = wrow[kk];
-                const float* __restrict src = col.data() + (size_t) kk * kBlock;
-                for (int i = 0; i < n; ++i) dst[i] += w * src[i];
-            }
-        }
-        for (o = 0; o < L.cout; ++o)
-        {
-            float* dst = out.data() + (size_t) o * P + p0;
-            const float b = L.b[(size_t) o];
-            for (int i = 0; i < n; ++i) { const float v = dst[i] + b; dst[i] = v > 0.0f ? v : std::expm1 (v); }
-        }
-    }
+    static const bool avx2 = cpuHasAvx2Fma() && std::getenv ("KEYNET_NO_AVX2") == nullptr;   // the env var: tests of the plain build
+    col.resize ((size_t) L.cin * L.k * L.k * 256);
+    out.resize ((size_t) L.cout * H * W);
+    (avx2 ? keynet_kernels::convEluAvx2 : keynet_kernels::convEluBase)
+        (L.w.data(), L.b.data(), L.cout, L.cin, L.k, in.data(), H, W, out.data(), col.data());
 }
 
 void KeyNet::maxPool (const std::vector<float>& in, int C, int H, int W, std::vector<float>& out)

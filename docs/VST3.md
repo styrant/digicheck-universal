@@ -75,3 +75,7 @@ and editor.
 ## Instance linking and the reference track
 - **Link:** `instancelink::Hub` (process-wide) lists every instance with its track name (`updateTrackProperties`) and a single-writer ring of its input. A linked instance's latest block replaces the sidechain pointers in `processBlock`, so every sidechain view works unchanged. The pointer to the linked ring is swapped on the message thread under a spin lock that the audio thread only try-locks.
 - **Reference:** `ReferenceTrack` (in `Core`) can replace the plugin's output with the reference at the host's song position (`renderSynced`, Hermite resampling, 10 ms crossfades), after the analysis has seen the mix and before band listening.
+
+## Closed window, memory
+- With the editor closed only the Monitor (and a running Key recording, Link and the Reference) keeps working; the spectrogram, analyzer, scope, FFT and balance analysis stop until the window opens (MainComponent's destructor; setView turns them on again).
+- References are decoded once per process per file, as 16-bit, and shared by every instance that loads the same file (ReferenceTrack::Data); the FFT averages are computed on a background job per FFT size.

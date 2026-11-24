@@ -322,12 +322,11 @@ void FftView::paint (juce::Graphics& g)
     if (refShown && reference != nullptr && reference->ready())
     {
         // the reference's long-term spectrum (orange): its loudness-matched level when matching is on
-        auto pw = reference->fftPower (engine.order(), engine.binHz(), engine.bins());
+        const auto& pw = reference->fftPower (engine.order(), engine.binHz(), engine.bins());   // empty while computing
         if (! pw.empty())
         {
-            const float pg = juce::Decibels::decibelsToGain (reference->matchGainDb() * 2.0f, -200.0f);   // power gain
-            if (std::abs (pg - 1.0f) > 1e-4f) for (auto& v : pw) v *= pg;
             engine.curve (pw, edges, s.fftSlope, smooth, refDb);
+            if (const float gDb = reference->matchGainDb(); gDb != 0.0f) for (auto& v : refDb) v += gDb;   // matched loudness
             auto p = curvePath (refDb, false);
             g.setColour (kBgBottom.withAlpha (0.6f)); g.strokePath (p, juce::PathStrokeType (3.5f));
             g.setColour (juce::Colour (0xffff9f43)); g.strokePath (p, juce::PathStrokeType (1.6f));

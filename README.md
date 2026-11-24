@@ -214,6 +214,10 @@ cmake --build build
 JUCE 9.0.6 and the transcription engine (muscriptor.cpp, which fetches ggml) are downloaded automatically. Without
 the Vulkan SDK the engine builds CPU-only. The version is `VERSION` (major.minor) plus the CI build number.
 
+Crash reports (`Source/CrashReport.*`): the app installs an unhandled-exception filter, the plugin a vectored handler limited to fatal exceptions in its own module (removed with its last instance); both write a minidump and a note to Documents\DigiCheck Universal\Crashes. Release builds carry debug info (/Z7, /DEBUG) with the PDBs written to `build/symbols` and kept by CI as the `symbols` artifact (90 days).
+
+CPU support: the key network's convolution is built twice (any x86-64, and AVX2 + FMA) and chosen at start (`KeyNetKernel.inc`); the transcription engine is built with `MUSCRIPTOR_CPU_VARIANTS` (x86-64-v2, v2 + AVX/F16C, v3, chosen at run time). Both used to need AVX(2) unconditionally.
+
 Layout check: `Spectroscope.exe --layout-check folder` shows every page (and two Custom layouts) at 1920x1050, 1300x760 and 1024x640, saves a PNG of each, and writes `layout_report.txt`: controls that overlap (errors, exit code 1), button / box text that doesn't fit and controls outside their parent (warnings), plus `layout.json` with every control's place. CI runs it on each build, flags findings as annotations, keeps the screenshots as the `layout-check` artifact, and `tools/layout_diff.py` lists in the run summary what moved since the previous build.
 
 Self-test: `Spectroscope.exe --test-screenshot out.png` writes a screenshot of every view. With

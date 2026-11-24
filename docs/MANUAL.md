@@ -29,7 +29,9 @@ Tip: press **?** at the bottom right (or F1). While it's on, resting the mouse o
 ## 1. Getting started
 
 ### Install
-Download **SpectroscopeSetup.exe** from the repository's *Latest build* release and run it. It installs for your user only (no admin rights) and can also install the VST3 plugin. **Spectroscope.exe** is the same app as a single portable file.
+Download **SpectroscopeSetup.exe** from the repository's *Latest build* release and run it. Choose **Install for all users** (the default; Windows asks for administrator rights): the VST3 plugin then goes to `C:\Program Files\Common Files\VST3`, the folder every DAW scans. *Install for me only* needs no administrator rights, but the plugin then goes to your own VST3 folder (`%LOCALAPPDATA%\Programs\Common\VST3`), which some DAWs don't scan. **Spectroscope.exe** is the same app as a single portable file.
+
+If you installed an earlier build "for me only", uninstall that one first (Settings → Apps → Spectroscope), so you don't end up with two.
 
 The builds aren't code-signed yet, so Windows may warn once:
 - **SmartScreen:** choose *More info → Run anyway*.
@@ -376,6 +378,7 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
 | Scope themes | `Documents\DigiCheck Universal\Scope Themes` |
 | Copied images | `Documents\DigiCheck Universal\Screenshots` |
 | Loudness reports | `Documents\DigiCheck Universal\Reports` |
+| Crash reports | `Documents\DigiCheck Universal\Crashes` |
 | Transcription models | `%APPDATA%\DigiCheck Universal\Models` |
 | Settings | `%APPDATA%\DigiCheck Universal\Spectroscope.settings` |
 
@@ -393,3 +396,5 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
 - **Text too small:** Options → Text size, or a Monitor module's gear → Text size.
 - **Windows warns about the download:** the builds are unsigned (see [Install](#install)).
 - **Not sure what a control does:** press **?** and hover over it.
+- **The plugin doesn't show up in my DAW:** check that `DigiCheck Universal.vst3` is in `C:\Program Files\Common Files\VST3` (reinstall choosing *Install for all users*), then rescan plugins in the DAW.
+- **It crashed:** a report is saved in `Documents\DigiCheck Universal\Crashes` (a `.txt` and a `.dmp`). Send both and say what you were doing. The plugin only records crashes in its own code; the DAW's own crash reporting still works.

@@ -4,6 +4,7 @@
 #include "AppLookAndFeel.h"
 #include "HdrInfo.h"
 #include "LayoutCheck.h"
+#include "CrashReport.h"
 
 class SpectroscopeApp : public juce::JUCEApplication
 {
@@ -14,6 +15,7 @@ public:
 
     void initialise (const juce::String& commandLine) override
     {
+        crashreport::install ("Spectroscope", ProjectInfo::versionString, false);
         juce::PropertiesFile::Options o;
         o.applicationName = "Spectroscope";
         o.folderName = "DigiCheck Universal";

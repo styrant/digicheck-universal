@@ -73,7 +73,10 @@ jobs:
           if (-not (Test-Path "$llvm\clang-cl.exe")) { $llvm = "C:\Program Files\LLVM\bin" }
           $cc = ("$llvm\clang-cl.exe" -replace '\\', '/')
           & "$llvm\clang-cl.exe" --version
-          # CC / CXX in the environment also reach ggml's nested vulkan-shaders-gen build
+          # CC / CXX in the environment also reach ggml's nested vulkan-shaders-gen build.
+          # MUSCRIPTOR_CPU_VARIANTS: ggml-cpu built for x86-64-v2, v2+AVX/F16C and v3 (AVX2/FMA), picked at run
+          # time (needs llvm-objcopy / nm / objdump / ar, which VS's or the runner's LLVM has); without it the
+          # engine was fixed at AVX + F16C and faulted on CPUs without AVX
           "CC=$cc" | Out-File -Append $env:GITHUB_ENV
           "CXX=$cc" | Out-File -Append $env:GITHUB_ENV
           $env:CC = $cc; $env:CXX = $cc
@@ -81,7 +84,8 @@ jobs:
             "-DCMAKE_C_COMPILER=$cc" "-DCMAKE_CXX_COMPILER=$cc" `
             "-DCMAKE_LINKER=$llvm/lld-link.exe" "-DCMAKE_AR=$llvm/llvm-lib.exe" `
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
-            -DMUSCRIPTOR_VULKAN=ON
+            -DMUSCRIPTOR_VULKAN=ON `
+            -DMUSCRIPTOR_CPU_VARIANTS=ON
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build
@@ -97,6 +101,11 @@ jobs:
         run: build\analyzer_dsp_test.exe
 
       - name: Key finder test (vs PyTorch / librosa)
+        run: build\key_test.exe Resources\keynet.bin tests\data
+
+      - name: Key finder test, the build for CPUs without AVX2
+        env:
+          KEYNET_NO_AVX2: "1"
         run: build\key_test.exe Resources\keynet.bin tests\data
 
       - name: Tonal balance measurement test
@@ -161,6 +170,14 @@ jobs:
           Select-String -Path layout\layout_report.txt -Pattern " overlaps " | ForEach-Object { Write-Host "::error title=Layout overlap::$($_.Line)" }
           Select-String -Path layout\layout_report.txt -Pattern "text needs" | ForEach-Object { Write-Host "::warning title=Text cut off::$($_.Line)" }
           if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: Keep the symbols (PDBs, to read crash reports from this build)
+        uses: actions/upload-artifact@v4
+        with:
+          name: symbols
+          path: build/symbols/*.pdb
+          retention-days: 90
+          if-no-files-found: warn
 
       - name: Keep the layout check (screenshots of every page)
         if: always()
