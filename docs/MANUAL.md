@@ -29,9 +29,11 @@ Tip: press **?** at the bottom right (or F1). While it's on, resting the mouse o
 ## 1. Getting started
 
 ### Install
-Download **SpectroscopeSetup.exe** from the repository's *Latest build* release and run it. Choose **Install for all users** (the default; Windows asks for administrator rights): the VST3 plugin then goes to `C:\Program Files\Common Files\VST3`, the folder every DAW scans. *Install for me only* needs no administrator rights, but the plugin then goes to your own VST3 folder (`%LOCALAPPDATA%\Programs\Common\VST3`), which some DAWs don't scan. **Spectroscope.exe** is the same app as a single portable file.
+Download **SpectroscopeSetup.exe** from the repository's *Latest build* release and run it. Setup first asks who to install for:
+- **Install for all users** (recommended; Windows asks for administrator rights): the VST3 plugin goes to `C:\Program Files\Common Files\VST3`, the folder every DAW scans. It also removes an earlier "for me only" install, so you have one.
+- **Install for me only** (no administrator rights): the plugin goes to your own VST3 folder (`%LOCALAPPDATA%\Programs\Common\VST3`), which some DAWs don't scan. If you tick the VST3 plugin, Setup offers to restart itself for all users.
 
-If you installed an earlier build "for me only", uninstall that one first (Settings → Apps → Spectroscope), so you don't end up with two.
+**Spectroscope.exe** is the same app as a single portable file.
 
 The builds aren't code-signed yet, so Windows may warn once:
 - **SmartScreen:** choose *More info → Run anyway*.
