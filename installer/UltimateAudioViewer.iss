@@ -39,8 +39,8 @@ CloseApplications=yes
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "vst3"; Description: "Install the VST3 plugin (Ultimate Audio Viewer.vst3, for your DAW)"; GroupDescription: "Plugin:"
-Name: "bridge"; Description: "Install UAV Bridge (UAV Bridge.vst3: a tiny plugin that only sends your DAW's audio to the app)"; GroupDescription: "Plugin:"
+Name: "vst3"; Description: "Install the VST3 plugin"; GroupDescription: "Plugin:"
+Name: "bridge"; Description: "Install UAV Bridge"; GroupDescription: "Plugin:"
 
 [InstallDelete]
 ; an earlier copy of the plugin: a whole old bundle, or a single file of the same name (the older one-file
