@@ -1,11 +1,11 @@
-// The DAW bridge: the VST3 sends the audio it sees to the DigiCheck Universal app through shared memory,
+// The DAW bridge: a VST3 (UAV Bridge, or the full UAV plugin) sends the audio it sees to the app through shared memory,
 // so the app can monitor a DAW that uses ASIO (which Windows apps can't otherwise hear), with any
 // interface and no routing: put the plugin on the master track and choose "From DAW" in the app.
 //
-//   shared memory  "DigiCheckUniversal.Bridge.1" (Windows: a named file mapping in the session's Local
+//   shared memory  "UltimateAudioViewer.Bridge.1" (Windows: a named file mapping in the session's Local
 //                  namespace; elsewhere POSIX shm), 16 slots, each a lock-free single-writer ring of
 //                  stereo audio (65536 frames) with the sender's track name, sample rate and a heartbeat
-//   senders        plugin instances (Send to the app, on by default); a slot is claimed on the first
+//   senders        UAV Bridge (bridgeplugin/BridgePlugin.cpp) and UAV plugin instances (Send to the app, on by default); a slot is claimed on the first
 //                  block and freed when the instance goes; a slot whose heartbeat stops for 3 s (a
 //                  crashed DAW) can be claimed again
 //   reader         the app's "From DAW" source (AudioEngine) reads one slot: a chosen track, or

@@ -46,7 +46,7 @@ std::vector<AudioEngine::Source> AudioEngine::scanSources()
 
     // the DAW bridge: automatic (the master, else the newest sender), and each track sending now
     {
-        const juce::String group = "From your DAW (the UAV VST3 on a track; works with ASIO)";
+        const juce::String group = "From your DAW (UAV Bridge or the UAV VST3 on a track; works with ASIO)";
         Source b; b.kind = Source::Bridge; b.group = group; b.label = "From DAW: automatic (the master track)"; b.key = "bridge|";
         out.push_back (b);
         juce::StringArray seen;
@@ -282,5 +282,5 @@ juce::String AudioEngine::bridgeStatus() const
     for (auto& s : bridge::listSenders())
         if (s.slot == slot && s.alive)
             return "From DAW: hearing \"" + s.name + "\" at " + juce::String (s.sampleRate / 1000.0, 1) + " kHz";
-    return "From DAW: waiting for the UAV VST3. Put it on your master track (with Send to the UAV app on)";
+    return "From DAW: waiting for your DAW. Put UAV Bridge (or the UAV VST3) on the master track and press play";
 }

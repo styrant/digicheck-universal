@@ -176,8 +176,8 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     status.setFont (juce::FontOptions (ui::fs (12.5f)));
     for (auto* l : { &lblL, &lblR, &lblFps, &lblText }) l->setFont (juce::FontOptions (ui::fs (15.0f)));
     source.setTooltip ("What to analyse. Windows Audio (shared): your interface's inputs, next to your DAW. ASIO: bit-exact, if your DAW "
-                       "isn't using it. Windows playback (loopback): whatever Windows plays. From DAW: what the UAV VST3 sees in your "
-                       "DAW (put it on the master track), which works even when the DAW uses ASIO. Test signal: no interface needed");
+                       "isn't using it. Windows playback (loopback): whatever Windows plays. From DAW: what UAV Bridge (or the UAV "
+                       "VST3) sees in your DAW (put it on the master track), which works even when the DAW uses ASIO. Test signal: no interface needed");
     for (auto* l : { &lblL, &lblR }) { l->setBorderSize ({}); l->setJustificationType (juce::Justification::centred); }
     startBtn.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff4c8dff));
 
@@ -718,7 +718,8 @@ void MainComponent::setUpPlugin()
     };
     bridgeToggle.setToggleState (settings.bridgeSend, juce::dontSendNotification);
     bridgeToggle.setTooltip ("The UAV app can monitor what this plugin sees, even when your DAW uses ASIO: "
-                             "choose From DAW as its input. Put this plugin on the master track for the whole mix");
+                             "choose From DAW as its input. Put this plugin on the master track for the whole mix. "
+                             "If you only want that, the much lighter UAV Bridge plugin does it on its own");
     bridgeToggle.onClick = [this] { host->setBridgeSend (bridgeToggle.getToggleState()); };
     options.addAndMakeVisible (bridgeToggle);
     bottom.onLinkMenu = [this] (juce::Component& anchor)

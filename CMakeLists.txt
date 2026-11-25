@@ -229,6 +229,45 @@ if(DCU_BUILD_VST3)
 
     dcu_symbols(DigiCheckUniversal DigiCheckUniversal_VST3 DigiCheckUniversal)
 
+    # UAV Bridge: a tiny VST3 that only sends its track to the app's From DAW input (no analysis, no
+    # OpenGL, no data), with codes of its own so it can sit next to the full plugin
+    juce_add_plugin(UAVBridge
+        PRODUCT_NAME "Ultimate Audio Viewer Bridge"    # Ultimate Audio Viewer Bridge.vst3
+        COMPANY_NAME "Ultimate Audio Viewer"
+        BUNDLE_ID "com.digicheckuniversal.bridge"
+        PLUGIN_MANUFACTURER_CODE Dcun
+        PLUGIN_CODE Dcub
+        FORMATS VST3
+        VST3_CATEGORIES Fx Tools
+        IS_SYNTH FALSE
+        NEEDS_MIDI_INPUT FALSE
+        NEEDS_MIDI_OUTPUT FALSE
+        IS_MIDI_EFFECT FALSE
+        EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+        COPY_PLUGIN_AFTER_BUILD FALSE
+        VERSION ${DCU_VERSION})
+    juce_generate_juce_header(UAVBridge)
+    target_sources(UAVBridge PRIVATE Source/bridgeplugin/BridgePlugin.cpp Source/bridge/Bridge.cpp)
+    target_compile_definitions(UAVBridge PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+    target_link_libraries(UAVBridge
+        PRIVATE
+            juce::juce_audio_processors
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_lto_flags
+            juce::juce_recommended_warning_flags)
+    dcu_symbols(UAVBridge UAVBridge_VST3 UAVBridge)
+
+    # loads the Bridge VST3 like a DAW: pass-through bit for bit, and its audio arrives in shared memory
+    juce_add_console_app(bridge_plugin_test PRODUCT_NAME "bridge_plugin_test")
+    target_sources(bridge_plugin_test PRIVATE tests/bridge_plugin_test.cpp Source/bridge/Bridge.cpp)
+    target_compile_definitions(bridge_plugin_test PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_STANDALONE_APPLICATION=1)
+    target_link_libraries(bridge_plugin_test PRIVATE juce::juce_audio_processors juce::juce_recommended_config_flags)
+    juce_generate_juce_header(bridge_plugin_test)
+
     # a minimal host: loads the built VST3 with a sidechain and a play head (tests/plugin_host_test.cpp)
     juce_add_console_app(plugin_host_test PRODUCT_NAME "plugin_host_test")
     target_sources(plugin_host_test PRIVATE tests/plugin_host_test.cpp)
