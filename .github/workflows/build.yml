@@ -206,11 +206,11 @@ jobs:
           Invoke-WebRequest https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
           Expand-Archive pluginval.zip -DestinationPath pluginval -Force
           $pv = Get-ChildItem pluginval -Recurse -Filter pluginval.exe | Select-Object -First 1
-          & $pv.FullName --strictness-level 5 --skip-gui-tests --validate "build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3"
-          $a = $LASTEXITCODE
-          & $pv.FullName --strictness-level 5 --skip-gui-tests --validate "build\UAVBridge_artefacts\Release\VST3\Ultimate Audio Viewer Bridge.vst3"
-          $b = $LASTEXITCODE
-          if ($a -ne 0 -or $b -ne 0) { Write-Host "::warning::pluginval reported problems (UAV $a, Bridge $b)"; exit 1 }
+          # pluginval is a GUI-subsystem exe: PowerShell doesn't set $LASTEXITCODE for it, so wait for its exit code
+          $codes = foreach ($p in "build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3", "build\UAVBridge_artefacts\Release\VST3\Ultimate Audio Viewer Bridge.vst3") {
+            (Start-Process -FilePath $pv.FullName -ArgumentList "--strictness-level", "5", "--skip-gui-tests", "--validate", "`"$p`"" -NoNewWindow -Wait -PassThru).ExitCode
+          }
+          if ($codes[0] -ne 0 -or $codes[1] -ne 0) { Write-Host "::warning::pluginval reported problems (UAV $($codes[0]), Bridge $($codes[1]))"; exit 1 }
 
       - name: Target loader test
         run: build\target_loader_test_artefacts\Release\target_loader_test.exe
