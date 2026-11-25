@@ -6,7 +6,7 @@
 //   header   Channel | Secondary | FFT size | Average | Slope | Smoothing | Hold | Freeze | Snapshot | Colours
 //   Snapshot keeps the current spectrum as a ghost line (before / after); click again to clear it
 //   display  log frequency 20 Hz - 20 kHz, dB scale (wheel scrolls, Ctrl+wheel zooms, double-click resets),
-//            hover readout: frequency, note and cents, level of both curves; click resets the hold
+//            hover readout: frequency, note and cents, level of both curves; click resets the hold, Alt+click pins it
 //
 // The analysis (fft::FftAnalyzer) runs on the message thread from a FifoTap, only while shown.
 #pragma once
@@ -69,6 +69,7 @@ private:
     std::vector<float> refDb;
     std::vector<float> edges, mainDb, holdDb, secDb, snapPower, snapDb;   // snapPower: the Snapshot's spectrum (empty: none)
     int hoverX = -1, hoverY = -1, headerInset = 0;
+    std::optional<std::pair<double, double>> pin;   // Alt+click: the readout stays at this (Hz, dB)
 
     juce::TextButton chanBtn, secBtn, sizeBtn, avgBtn, slopeBtn, smoothBtn, holdBtn { "Hold" }, freezeBtn { "Freeze" }, colourBtn { "Colours" }, snapBtn { "Snapshot" };
 };

@@ -354,7 +354,9 @@ void FftView::paint (juce::Graphics& g)
     else snapDb.clear();
     g.restoreState();
 
-    // hover readout
+    // hover readout; with a pin (Alt+click) it stays at the pinned frequency and level instead
+    const int hoverX = pin.has_value() ? juce::roundToInt (xOfHz (pin->first)) : this->hoverX;
+    const int hoverY = pin.has_value() ? juce::roundToInt (yOfDb (pin->second)) : this->hoverY;
     if (hoverX >= plot.getX() && hoverX < plot.getRight() && ! mainDb.empty())
     {
         const int i = juce::jlimit (0, (int) mainDb.size() - 1, hoverX - plot.getX());
@@ -385,7 +387,7 @@ void FftView::paint (juce::Graphics& g)
         g.setColour (juce::Colour (0xe0101215)); g.fillRoundedRectangle (box.toFloat(), 4);
         g.setColour (kText); g.drawText (t, box.reduced (8, 0), juce::Justification::centredLeft);
     }
-    if (frozen) { g.setColour (kOn); g.setFont (juce::FontOptions (ui::fs (12.0f), juce::Font::bold)); g.drawText ("FROZEN", plot.removeFromTop (20).removeFromRight (80), juce::Justification::centred); }
+    if (frozen) { g.setColour (kOn); g.setFont (juce::FontOptions (ui::fs (12.0f), juce::Font::bold)); g.drawText ("FROZEN", plot.withHeight (20).removeFromRight (80), juce::Justification::centred); }   // a copy: never shrink the plot itself
     // legend
     if (sec)
     {
@@ -400,7 +402,21 @@ void FftView::paint (juce::Graphics& g)
 
 void FftView::mouseMove (const juce::MouseEvent& e) { hoverX = e.x; hoverY = e.y; repaint (plot.expanded (40, 4)); }
 void FftView::mouseExit (const juce::MouseEvent&)    { hoverX = hoverY = -1; repaint(); }
-void FftView::mouseDown (const juce::MouseEvent& e)  { if (plot.contains (e.getPosition()) && ! e.mods.isPopupMenu()) engine.resetHold(); if (e.mods.isPopupMenu()) colourMenu(); }
+void FftView::mouseDown (const juce::MouseEvent& e)
+{
+    // Alt+click: pin the readout here (Alt+click on the pin again removes it)
+    if (e.mods.isAltDown() && ! e.mods.isPopupMenu())
+    {
+        if (pin.has_value() && juce::Point<float> (xOfHz (pin->first), yOfDb (pin->second)).getDistanceFrom (e.position) < 8.0f) pin.reset();
+        else if (plot.contains (e.getPosition()))
+        {
+            const double db = s.fftTop - (e.position.y - plot.getY()) / (double) plot.getHeight() * (s.fftTop - s.fftBottom);
+            pin = std::make_pair (hzAtX (e.position.x), db);
+        }
+        repaint();
+        return;
+    }
+    if (plot.contains (e.getPosition()) && ! e.mods.isPopupMenu()) engine.resetHold(); if (e.mods.isPopupMenu()) colourMenu(); }
 void FftView::mouseDoubleClick (const juce::MouseEvent&) { s.fftTop = 6; s.fftBottom = -90; repaint(); if (changed) changed(); }
 
 void FftView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)

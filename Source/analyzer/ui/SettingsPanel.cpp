@@ -139,7 +139,7 @@ public:
 
         help.setText ("Mouse: wheel = zoom, drag = pan, shift+drag = zoom to selection, "
                       "ctrl/cmd+wheel = ceiling, alt+wheel = range, double-click = reset meters, "
-                      "double-click axis = full range, right-click = settings.\n"
+                      "double-click axis = full range, alt+click = pin the readout (alt+click it again to remove), right-click = settings.\n"
                       "Keys: R reset, F freeze, 0 full range, +/- zoom, I inspector.",
                       juce::dontSendNotification);
         help.setFont (juce::FontOptions (ui::fs (12.0f)));

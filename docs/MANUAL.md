@@ -133,12 +133,12 @@ Two styles, switched with **Bars | FFT** at the top left of the view.
 A smooth spectrum curve with a peak-hold line.
 - **Header:** channel, a **second curve** (Left / Right / Mid / Side, or the sidechain in the plugin) in its own colour and style, FFT size, averaging, slope (4.5 dB/oct makes a balanced mix look flat), smoothing, **Hold**, **Freeze**, **Colours**.
 - **Snapshot:** keeps the current spectrum as a dashed ghost line (drawn with the current slope and smoothing), for before / after comparisons; the hover readout shows the difference. Click **Clear snap** to remove it.
-- **Mouse:** hover for frequency, note and level (with a level line). The wheel scrolls the dB range, Ctrl+wheel zooms it, double-click resets. Click the display to reset the peak hold.
+- **Mouse:** hover for frequency, note and level (with a level line). The wheel scrolls the dB range, Ctrl+wheel zooms it, double-click resets. Click the display to reset the peak hold. **Alt+click** pins the readout to that spot (it keeps showing live levels there); Alt+click the pin again to remove it.
 
 ### Bars (Spectrum Analyzer 2)
 A constant-Q filter bank with peak bars, peak hold and RMS at 3-24 bands per octave.
 - **Bottom bar:** Presets, bands/octave, channel, grid, zoom, Full, Freeze, Settings (or right-click the display).
-- **Mouse:** wheel zooms, drag pans, Shift+drag zooms to a selection.
+- **Mouse:** wheel zooms, drag pans, Shift+drag zooms to a selection. **Alt+click** pins the inspector readout to that spot (live values, and it stays put while you zoom); Alt+click the pin again to remove it.
 - **Keys:** F freeze, R reset meters, 0 full range.
 
 ---

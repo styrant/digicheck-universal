@@ -295,7 +295,15 @@ void AnalyzerView::paint (juce::Graphics& g)
         }
     }
 
-    if (hovering && drag != Drag::Select && processor.inspectorEnabled.load() && plot.contains (mousePos))
+    if (pin.has_value() && processor.inspectorEnabled.load())
+    {
+        // the pinned readout (Alt+click) stays at its frequency and level; the live values keep updating
+        const auto saved = mousePos;
+        mousePos = { freqToX (pin->first, view, plot), levelToY (pin->second, plot) };
+        if (plot.contains (mousePos)) drawInspector (g, plot, view, pk, hd, av);
+        mousePos = saved;
+    }
+    else if (hovering && drag != Drag::Select && processor.inspectorEnabled.load() && plot.contains (mousePos))
         drawInspector (g, plot, view, pk, hd, av);
 
     if (drag == Drag::Select)
@@ -630,6 +638,19 @@ void AnalyzerView::mouseDown (const juce::MouseEvent& e)
     if (e.mods.isPopupMenu())
     {
         if (onSettingsRequested) onSettingsRequested();
+        return;
+    }
+
+    // Alt+click: pin the readout here (Alt+click on the pin again removes it)
+    if (e.mods.isAltDown())
+    {
+        const auto plot = plotArea();
+        const auto view = getViewRange();
+        if (pin.has_value() && juce::Point<float> (freqToX (pin->first, view, plot), levelToY (pin->second, plot)).getDistanceFrom (e.position) < 8.0f)
+            pin.reset();
+        else if (plot.contains (e.position))
+            pin = std::make_pair (xToFreq (e.position.x, view, plot), yToLevel (e.position.y, plot));
+        repaint();
         return;
     }
 
