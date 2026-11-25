@@ -69,6 +69,8 @@ A DAW that uses ASIO talks to your interface directly, past Windows' audio syste
 
 That's all: no routing, no driver or Windows settings, any interface. The app then measures your DAW's master like any other input, and every page works.
 
+**Hear your DAW and everything else together:** tick **Also hear your DAW (UAV Bridge)** in Options, under the Start button. The input you chose keeps playing (Windows playback, your interface's inputs...), and the DAW's master from UAV Bridge is added on top, so you don't have to switch inputs. The status line shows *+ DAW "Master"* while it's heard (or *+ DAW: waiting for UAV Bridge*). It follows the master automatically, works at any sample rate (the DAW's audio is converted to the input's rate), and runs about 40 ms behind the DAW. It isn't used when the input is *From DAW* itself. If the DAW also plays through Windows (not ASIO), you'd hear it twice; use one or the other.
+
 **UAV Bridge** does nothing else: the audio passes through untouched with no latency, and it has no analysis or graphics of its own, so it costs next to nothing (it's a small fraction of the size of the full plugin). Its window shows:
 - whether it's sending, and under which track name (green *Sending as "Master"*)
 - *Ready: waiting for the DAW to process audio* when the DAW isn't playing
@@ -420,6 +422,7 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
 
 - **No picture, or "No input":** open Options, pick a source and channels, and press Start. ASIO may be busy while your DAW uses it; use *Windows Audio (shared)* instead.
 - **I want to see what Spotify / YouTube is playing:** choose *Windows playback (loopback)*.
+- **I want to see my DAW and Spotify / YouTube together:** pick *Windows playback (loopback)*, tick *Also hear your DAW (UAV Bridge)*, and put UAV Bridge on the master track.
 - **I want to see what my DAW plays, and it uses ASIO:** put UAV Bridge on the master track and choose *From DAW* in Options ([how](#monitoring-your-daw-even-with-asio)).
 - **"From DAW: waiting for your DAW":** open the Bridge's window: it should say *Sending as ...*. If it says *Ready: waiting*, press play (and check the plugin isn't bypassed); if it says *Off*, tick *Send to the UAV app* (in the full UAV plugin, that's in its Options). Press Rescan to see the tracks that are sending.
 - **HDR turns off in full screen:** see [HDR monitors](#hdr-monitors-options--hdr-full-screen).

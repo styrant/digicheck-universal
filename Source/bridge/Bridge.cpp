@@ -172,4 +172,32 @@ int chooseSlot (const juce::String& want)
     }
     return best;
 }
+
+void Mixer::process (int slot, double dstRate, const float* inL, const float* inR, float* outL, float* outR, int n, bool reset) noexcept
+{
+    auto* h = shared();
+    if (h == nullptr || slot < 0 || slot >= kSlots || dstRate <= 0) { std::copy (inL, inL + n, outL); std::copy (inR, inR + n, outR); return; }
+    auto& sl = h->slots[slot];
+    const double srcRate = sl.rateMilliHz.load() / 1000.0;
+    const int64_t w = sl.written.load (std::memory_order_acquire);
+    const double target = srcRate * 0.04;
+    if (reset || pos < 0 || pos > (double) w || (double) w - pos > srcRate * 0.25)
+        pos = std::max (0.0, (double) w - target);
+    const double ratio = srcRate / dstRate * (1.0 + std::clamp (((double) w - pos - target) / srcRate * 0.5, -0.002, 0.002));
+    for (int i = 0; i < n; ++i)
+    {
+        const int64_t k = (int64_t) pos;
+        float dl = 0, dr = 0;
+        if (k + 1 < w)
+        {
+            const float f = (float) (pos - (double) k);
+            const int a = (int) (k & (kFrames - 1)), b = (int) ((k + 1) & (kFrames - 1));
+            dl = sl.l[a] + (sl.l[b] - sl.l[a]) * f;
+            dr = sl.r[a] + (sl.r[b] - sl.r[a]) * f;
+            pos += ratio;
+        }
+        outL[i] = inL[i] + dl;
+        outR[i] = inR[i] + dr;
+    }
+}
 }

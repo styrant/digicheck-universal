@@ -246,6 +246,16 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     updateToggle.onClick = [this] { settings.checkUpdates = updateToggle.getToggleState(); saveAll(); if (settings.checkUpdates) checkForUpdates(); };
     updateBtn.setTooltip ("A newer build is available: open the download page");
     updateBtn.onClick = [] { juce::URL ("https://github.com/styrant/digicheck-universal/releases/tag/latest").launchInDefaultBrowser(); };
+    if (device != nullptr)
+    {
+        mixToggle.setToggleState (settings.mixBridge, juce::dontSendNotification);
+        device->setMixBridge (settings.mixBridge);
+        mixToggle.setTooltip ("Adds your DAW's master (UAV Bridge on the master track) to the input above, so you see the DAW "
+                              "and Windows / your interface together, even when the DAW uses ASIO. Nothing else changes; "
+                              "the status line shows + DAW while it's heard. (Not used when the input is From DAW itself.)");
+        mixToggle.onClick = [this] { settings.mixBridge = mixToggle.getToggleState(); device->setMixBridge (settings.mixBridge); saveAll(); };
+        options.addAndMakeVisible (mixToggle);
+    }
     ui::colourSafe = settings.colourSafe;
     safeToggle.setToggleState (settings.colourSafe, juce::dontSendNotification);
     safeToggle.setTooltip ("Meters that use red / green for good and bad switch to sky blue / yellow / vermillion, "
@@ -822,7 +832,8 @@ void MainComponent::updateStatus()
                                 : src.kind == AudioEngine::Source::Test     ? "Test signal"
                                 : src.kind == AudioEngine::Source::Bridge   ? device->bridgeStatus()
                                 : src.typeName;
-        text = kind + "  |  " + juce::String (engine.getSampleRate() / 1000.0, 1) + " kHz  |  "
+        const juce::String mix = device->mixStatus();
+        text = kind + mix + "  |  " + juce::String (engine.getSampleRate() / 1000.0, 1) + " kHz  |  "
              + juce::String (device->getChannelNames().size()) + " ch  |  latency "
              + juce::String (juce::roundToInt (engine.getLatencySeconds() * 1000)) + " ms  |  DSP "
              + juce::String (juce::roundToInt (engine.getLoad() * 100)) + "%";
@@ -1269,7 +1280,7 @@ void MainComponent::setHelpMode (bool on)
 void MainComponent::layoutOptions()
 {
     using ui::px;
-    const int w = juce::jmin (px (470), getWidth() - 16), h = px ((settings.textSize == 3 ? 404 : 372) + (device != nullptr ? 34 : 0) + 38 + 30 + 28 + (host != nullptr ? 24 : 0));
+    const int w = juce::jmin (px (470), getWidth() - 16), h = px ((settings.textSize == 3 ? 404 : 372) + (device != nullptr ? 34 : 0) + 38 + 30 + 28 + (host != nullptr ? 24 : 0) + (device != nullptr ? 28 : 0));
     options.setBounds (8, getHeight() - BottomBar::height() - h - 6, w, h);
     options.headings.clear();
     auto r = options.getLocalBounds().reduced (14, 10);
@@ -1286,6 +1297,7 @@ void MainComponent::layoutOptions()
     rescanBtn.setBounds (row.removeFromLeft (px (80))); row.removeFromLeft (px (6));
     settingsBtn.setBounds (row.removeFromLeft (px (110)));
     r.removeFromTop (px (6));
+    if (device != nullptr) { mixToggle.setBounds (r.removeFromTop (px (24)).withWidth (px (300))); r.removeFromTop (px (4)); }
     status.setBounds (r.removeFromTop (px (40)));
     r.removeFromTop (px (6));
 

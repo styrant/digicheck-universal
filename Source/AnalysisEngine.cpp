@@ -50,9 +50,13 @@ void AnalysisEngine::setConfig (const Reassigner::Config& c)
 void AnalysisEngine::push (const float* const* ch, int nch, int n) noexcept
 {
     if (nch <= 0 || n <= 0) return;
+    pushLR (ch[juce::jlimit (0, nch - 1, chL.load())], ch[juce::jlimit (0, nch - 1, chR.load())], n);
+}
+
+void AnalysisEngine::pushLR (const float* L, const float* R, int n) noexcept
+{
+    if (n <= 0) return;
     if (fifo.getFreeSpace() < n) { dropped += n; return; }        // DSP fell behind: shown as a white gap
-    const float* L = ch[juce::jlimit (0, nch - 1, chL.load())];
-    const float* R = ch[juce::jlimit (0, nch - 1, chR.load())];
     int s1, n1, s2, n2;
     fifo.prepareToWrite (n, s1, n1, s2, n2);
     if (n1 > 0) { ring.copyFrom (0, s1, L, n1); ring.copyFrom (1, s1, R, n1); }

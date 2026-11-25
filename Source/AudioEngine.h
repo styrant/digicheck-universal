@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "AnalysisEngine.h"
 #include "LoopbackCapture.h"
+#include "bridge/Bridge.h"
 #include <thread>
 
 // The standalone app's audio input: any JUCE input device (Windows Audio shared/exclusive, ASIO),
@@ -28,6 +29,9 @@ public:
     const juce::StringArray& getChannelNames() const noexcept { return channelNames; }
     const Source& getCurrentSource() const noexcept { return current; }
     juce::String bridgeStatus() const;               // "From DAW": which track is heard, or what's missing
+    // "Also hear your DAW": UAV Bridge's audio (the master, automatic) is added to whatever input runs
+    void setMixBridge (bool on)                      { mixOn = on; mixReset = true; }
+    juce::String mixStatus() const;                  // "+ DAW ...", or "" when off / not applicable
 
     juce::AudioDeviceManager deviceManager;
 
@@ -46,6 +50,15 @@ private:
     std::atomic<int> bridgeSlot { -1 };              // the slot being read (-1: none sending)
     std::atomic<double> bridgeRateChange { 0 };      // set by the reader when the sender's rate differs
     double bridgeRate = 48000;
+
+    // the DAW mix: read from the chosen sender's ring on the input's own thread, resampled to the input's
+    // rate (linear) and kept ~40 ms behind the writer with a gentle drift correction
+    void pushIn (const float* const* ch, int nch, int n) noexcept;
+    std::atomic<bool> mixOn { false }, mixReset { true }, mixHearing { false };
+    std::atomic<int> mixSlot { -1 };
+    bridge::Mixer mixer;
+    static constexpr int kMixMax = 4096;
+    std::vector<float> mixL = std::vector<float> (kMixMax), mixR = std::vector<float> (kMixMax);
 
     Source current;
     bool running = false;

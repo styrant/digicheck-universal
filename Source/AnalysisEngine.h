@@ -31,6 +31,9 @@ public:
 
     // audio thread: the input channels (the chosen L / R pair is taken from them). Never blocks or allocates.
     void push (const float* const* channels, int numChannels, int numSamples) noexcept;
+    void pushLR (const float* L, const float* R, int numSamples) noexcept;   // already the chosen L / R
+    int channelL() const noexcept { return chL.load(); }
+    int channelR() const noexcept { return chR.load(); }
 
     double getSampleRate() const noexcept         { return sampleRate.load(); }
     float getLoad() const noexcept                { return load.load(); }

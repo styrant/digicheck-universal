@@ -73,4 +73,13 @@ namespace bridge
     bool looksLikeMaster (const juce::String& trackName);
     // the slot to read for `want` ("" = automatic: the master, else the newest), or -1
     int chooseSlot (const juce::String& want);
+
+// Adds a sender's audio to another stream (the app's "Also hear your DAW"): reads on the consumer's own
+// thread (real-time safe), resamples linearly to its rate, and stays ~40 ms behind the writer, nudging the
+// read speed by up to 0.2 % to follow clock drift; resyncs after a stall. Silence while the DAW is late.
+struct Mixer
+{
+    double pos = -1;                                  // read position in the sender's frames (-1: resync)
+    void process (int slot, double dstRate, const float* inL, const float* inR, float* outL, float* outR, int n, bool reset) noexcept;
+};
 }

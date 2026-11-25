@@ -100,7 +100,7 @@ bool AudioEngine::start (const Source& s, juce::String& error)
     else if (s.kind == Source::Loopback)
     {
         std::string err;
-        if (! loopback.start (s.endpointId, [this] (const float* const* ch, int nch, int n) { push (ch, nch, n); }, err))
+        if (! loopback.start (s.endpointId, [this] (const float* const* ch, int nch, int n) { pushIn (ch, nch, n); }, err))
         {
             error = err;
             return false;
@@ -134,6 +134,8 @@ bool AudioEngine::start (const Source& s, juce::String& error)
     if (s.kind == Source::Loopback) prepare (rate);
     current = s;
     running = true;
+    mixReset = true;
+    startTimerHz (4);                                 // the bridge's rate changes, and the DAW mix's sender
     return true;
 }
 
@@ -154,7 +156,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* in, int 
                                                     int numSamples, const juce::AudioIODeviceCallbackContext&)
 {
     for (int i = 0; i < numOut; ++i) if (out[i] != nullptr) juce::FloatVectorOperations::clear (out[i], numSamples);
-    push (in, numIn, numSamples);
+    pushIn (in, numIn, numSamples);
 }
 
 void AudioEngine::startTestThread()
@@ -187,7 +189,7 @@ void AudioEngine::startTestThread()
                 L[(size_t) i] = (float) (s + 0.01 * std::sin (tw * 3000 * t));
                 R[(size_t) i] = (float) s;
             }
-            push (ch, 2, block);
+            pushIn (ch, 2, block);
             next += std::chrono::milliseconds (10);
             std::this_thread::sleep_until (next);
         }
@@ -269,6 +271,10 @@ void AudioEngine::startBridgeThread (const juce::String& track)
 
 void AudioEngine::timerCallback()
 {
+    // the DAW mix follows the master (automatic), like From DAW: automatic
+    const int want = (mixOn.load() && current.kind != Source::Bridge && bridge::shared() != nullptr) ? bridge::chooseSlot ({}) : -1;
+    if (want != mixSlot.load()) { mixSlot = want; mixReset = true; }
+
     if (current.kind != Source::Bridge || bridgeRateChange.load() <= 0) return;
     const auto s = current;
     juce::String err;
@@ -283,4 +289,37 @@ juce::String AudioEngine::bridgeStatus() const
         if (s.slot == slot && s.alive)
             return "From DAW: hearing \"" + s.name + "\" at " + juce::String (s.sampleRate / 1000.0, 1) + " kHz";
     return "From DAW: waiting for your DAW. Put UAV Bridge (or the UAV VST3) on the master track and press play";
+}
+
+//==============================================================================
+void AudioEngine::pushIn (const float* const* ch, int nch, int n) noexcept
+{
+    const int slot = mixSlot.load();
+    auto* h = bridge::shared();
+    if (! mixOn.load() || slot < 0 || h == nullptr || nch <= 0 || n <= 0) { mixHearing = false; push (ch, nch, n); return; }
+
+    auto& sl = h->slots[slot];
+    const double srcRate = sl.rateMilliHz.load() / 1000.0, dstRate = getSampleRate();
+    if (bridge::nowMs() - sl.heartbeatMs.load() > 1500 || srcRate <= 0 || dstRate <= 0) { mixHearing = false; mixer.pos = -1; push (ch, nch, n); return; }
+    mixHearing = true;
+
+    const float* inL = ch[juce::jlimit (0, nch - 1, channelL())];
+    const float* inR = ch[juce::jlimit (0, nch - 1, channelR())];
+    for (int done = 0; done < n; )
+    {
+        const int m = juce::jmin (kMixMax, n - done);
+        mixer.process (slot, dstRate, inL + done, inR + done, mixL.data(), mixR.data(), m, mixReset.exchange (false));
+        pushLR (mixL.data(), mixR.data(), m);
+        done += m;
+    }
+}
+
+juce::String AudioEngine::mixStatus() const
+{
+    if (! running || ! mixOn.load() || current.kind == Source::Bridge) return {};
+    const int slot = mixSlot.load();
+    if (mixHearing.load())
+        for (auto& s : bridge::listSenders())
+            if (s.slot == slot) return " + DAW \"" + s.name + "\"";
+    return " + DAW: waiting for UAV Bridge";
 }
