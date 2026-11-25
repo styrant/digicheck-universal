@@ -1,4 +1,4 @@
-// Ultimate Audio Viewer Bridge: a tiny VST3 that only sends the audio it sees to the UAV app's
+// UAV Bridge: a tiny VST3 that only sends the audio it sees to the UAV app's
 // "From DAW" input (bridge/Bridge.h), so the app can monitor a DAW that uses ASIO. The audio passes
 // through untouched, with no latency. There's no analysis, no OpenGL and no data inside, so it costs next
 // to nothing: put it last on the master track.
@@ -10,7 +10,7 @@
 
 namespace
 {
-    constexpr const char* kName = "Ultimate Audio Viewer Bridge";
+    constexpr const char* kName = "UAV Bridge";
 
     // the installed app, if it's in one of the installer's folders (for the "Open UAV" button)
     juce::File findApp()

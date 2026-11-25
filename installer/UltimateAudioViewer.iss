@@ -16,7 +16,7 @@ AppId={{8F3C2A51-6B0E-4D2B-9C1A-5E7D3F2B9A10}
 AppName=Ultimate Audio Viewer
 AppVersion={#AppVersion}
 AppVerName=Ultimate Audio Viewer {#AppVersion}
-AppPublisher=Ultimate Audio Viewer
+AppPublisher=Styrant Audio
 DefaultDirName={autopf}\Ultimate Audio Viewer
 DefaultGroupName=Ultimate Audio Viewer
 DisableProgramGroupPage=yes
@@ -40,13 +40,15 @@ CloseApplications=yes
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "vst3"; Description: "Install the VST3 plugin (Ultimate Audio Viewer.vst3, for your DAW)"; GroupDescription: "Plugin:"
-Name: "bridge"; Description: "Install UAV Bridge (Ultimate Audio Viewer Bridge.vst3: a tiny plugin that only sends your DAW's audio to the app)"; GroupDescription: "Plugin:"
+Name: "bridge"; Description: "Install UAV Bridge (UAV Bridge.vst3: a tiny plugin that only sends your DAW's audio to the app)"; GroupDescription: "Plugin:"
 
 [InstallDelete]
 ; an earlier copy of the plugin: a whole old bundle, or a single file of the same name (the older one-file
 ; VST3 layout, e.g. copied in by hand), which would otherwise block the bundle folder (error 183)
 Type: filesandordirs; Name: "{autocf}\VST3\Ultimate Audio Viewer.vst3"; Tasks: vst3
-Type: filesandordirs; Name: "{autocf}\VST3\Ultimate Audio Viewer Bridge.vst3"; Tasks: bridge
+Type: filesandordirs; Name: "{autocf}\VST3\UAV Bridge.vst3"; Tasks: bridge
+; UAV Bridge's earlier file name (same plugin ID: two copies would confuse DAWs)
+Type: filesandordirs; Name: "{autocf}\VST3\Ultimate Audio Viewer Bridge.vst3"
 ; the plugin's earlier name: two bundles with the same plugin ID would confuse DAWs
 Type: filesandordirs; Name: "{autocf}\VST3\DigiCheck Universal.vst3"
 ; the app's earlier names and shortcuts
@@ -63,7 +65,7 @@ Source: "..\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 ; the VST3 bundle: Common Files\VST3 for an administrator install, else the per-user VST3 folder
 ; (%LOCALAPPDATA%\Programs\Common\VST3, the VST3 specification's user location)
 Source: "..\build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3\*"; DestDir: "{autocf}\VST3\Ultimate Audio Viewer.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: vst3
-Source: "..\build\UAVBridge_artefacts\Release\VST3\Ultimate Audio Viewer Bridge.vst3\*"; DestDir: "{autocf}\VST3\Ultimate Audio Viewer Bridge.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: bridge
+Source: "..\build\UAVBridge_artefacts\Release\VST3\UAV Bridge.vst3\*"; DestDir: "{autocf}\VST3\UAV Bridge.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: bridge
 
 [Code]
 const

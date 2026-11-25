@@ -4,7 +4,7 @@
 //     audio in shared memory is exactly the block it just processed
 //   - "send" off (saved state) frees the slot; on again sends again; the state round-trips
 //   - its window opens, and unloading the plugin frees the slot
-// usage: bridge_plugin_test "<path to Ultimate Audio Viewer Bridge.vst3>"
+// usage: bridge_plugin_test "<path to UAV Bridge.vst3>"
 #include <JuceHeader.h>
 #include "../Source/bridge/Bridge.h"
 

@@ -63,7 +63,7 @@ endif()
 # target names (Spectroscope, DigiCheckUniversal, TargetBuilder) are the project's internal ones.
 juce_add_gui_app(Spectroscope
     PRODUCT_NAME "Ultimate Audio Viewer"
-    COMPANY_NAME "Ultimate Audio Viewer"
+    COMPANY_NAME "Styrant Audio"
     BUNDLE_ID "com.digicheckuniversal.spectroscope"      # fixed now so it never changes (docs/VST3.md)
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
     ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png")
@@ -184,7 +184,7 @@ dcu_symbols(Spectroscope Spectroscope Spectroscope)
 if(DCU_BUILD_VST3)
     juce_add_plugin(DigiCheckUniversal
         PRODUCT_NAME "Ultimate Audio Viewer"           # the bundle: Ultimate Audio Viewer.vst3
-        COMPANY_NAME "Ultimate Audio Viewer"           # (the plugin and manufacturer codes stay, so projects still find it)
+        COMPANY_NAME "Styrant Audio"           # (the plugin and manufacturer codes stay, so projects still find it)
         BUNDLE_ID "com.digicheckuniversal.plugin"
         PLUGIN_MANUFACTURER_CODE Dcun
         PLUGIN_CODE Dcu1
@@ -232,8 +232,8 @@ if(DCU_BUILD_VST3)
     # UAV Bridge: a tiny VST3 that only sends its track to the app's From DAW input (no analysis, no
     # OpenGL, no data), with codes of its own so it can sit next to the full plugin
     juce_add_plugin(UAVBridge
-        PRODUCT_NAME "Ultimate Audio Viewer Bridge"    # Ultimate Audio Viewer Bridge.vst3
-        COMPANY_NAME "Ultimate Audio Viewer"
+        PRODUCT_NAME "UAV Bridge"                      # UAV Bridge.vst3 (was Ultimate Audio Viewer Bridge.vst3)
+        COMPANY_NAME "Styrant Audio"
         BUNDLE_ID "com.digicheckuniversal.bridge"
         PLUGIN_MANUFACTURER_CODE Dcun
         PLUGIN_CODE Dcub
@@ -310,7 +310,7 @@ target_link_libraries(target_loader_test PRIVATE juce::juce_core PUBLIC juce::ju
 # TargetBuilder: window app (and --cli mode) that makes tonal balance targets from songs
 juce_add_gui_app(TargetBuilder
     PRODUCT_NAME "Ultimate Audio Viewer Target Builder"
-    COMPANY_NAME "Ultimate Audio Viewer"
+    COMPANY_NAME "Styrant Audio"
     BUNDLE_ID "com.digicheckuniversal.targetbuilder"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
     ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png")

@@ -110,6 +110,7 @@ private:
     double effectiveSpeedFor (double refresh) const;
     void updateRefresh (double dt);
     bool needsRepaint = false;
+    bool recolourPending = false;          // the history needs recolouring (Ref / range / colours changed)
 
     // shared with the GL render thread (guarded by glLock)
     juce::CriticalSection glLock;

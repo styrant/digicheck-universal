@@ -228,7 +228,7 @@ void SpectrogramView::settingsChanged (Change c)
     switch (c)
     {
         case Change::Visual:  engine.setFloorDb (s.refLevel - s.range - 20); if (scEngine) scEngine->setFloorDb (s.refLevel - s.range - 20);
-                              buildLut(); repaintAll(); break;
+                              buildLut(); recolourPending = true; break;   // recoloured on the next vblank (see onVBlank)
         case Change::Overlay: updateGlArea(); break;
         case Change::Layout:  rebuild(); break;
         case Change::Dsp:     sendConfig(); break;
@@ -376,6 +376,10 @@ void SpectrogramView::onVBlank (double t)
 {
     const double dt = lastVBlank > 0 ? juce::jlimit (0.0, 0.1, t - lastVBlank) : 1.0 / 60.0;
     lastVBlank = t;
+
+    // A colour / Ref change recolours the whole history. Done here, at most once per frame, so a fast
+    // scroll wheel (many Ref steps per frame) costs one recolour instead of queuing one per step.
+    if (recolourPending) { recolourPending = false; repaintAll(); needsRepaint = true; repaint(); }
 
     // 1. take everything the DSP thread has produced into the jitter buffer
     if (running)

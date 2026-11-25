@@ -22,7 +22,7 @@ Read this first. It covers what the project is, how the user likes to work, how 
 - **Things never to do:**
   - Never put signing credentials in code; they belong only in GitHub secrets.
   - Never bundle the transcription model. It's downloaded inside the app and its license is non-commercial.
-- **Naming:** files, exe, installer and folders use the full name *Ultimate Audio Viewer*; labels inside the UI say **UAV**. Internal names are kept on purpose so existing DAW projects still load:
+- **Naming:** files, exe, installer and folders use the full name *Ultimate Audio Viewer*; labels inside the UI say **UAV**. Exception: the Bridge is **UAV Bridge** everywhere (`UAV Bridge.vst3`). The publisher / company (plugin vendor, exe metadata, installer) is **Styrant Audio**. Internal names are kept on purpose so existing DAW projects still load:
   - CMake targets `Spectroscope` (app), `DigiCheckUniversal` (plugin), `TargetBuilder`, `UAVBridge`
   - plugin codes `Dcun` / `Dcu1` (Bridge `Dcub`), bundle IDs `com.digicheckuniversal.*`
   - the plugin state tag
@@ -41,7 +41,7 @@ cmake --build build --parallel
 - Outputs:
   - `build/Spectroscope_artefacts/Release/Ultimate Audio Viewer.exe`
   - `build/DigiCheckUniversal_artefacts/Release/VST3/Ultimate Audio Viewer.vst3`
-  - `build/UAVBridge_artefacts/Release/VST3/Ultimate Audio Viewer Bridge.vst3`
+  - `build/UAVBridge_artefacts/Release/VST3/UAV Bridge.vst3`
   - `Ultimate Audio Viewer Target Builder.exe`
 - PDBs go to `build/symbols`.
 - Installer: Inno Setup, `installer/UltimateAudioViewer.iss`.
@@ -82,7 +82,7 @@ cmake --build build --parallel
   - The senders are **UAV Bridge** (`Source/bridgeplugin/BridgePlugin.cpp`: pass-through, status window, links only `juce_audio_processors`, about 5.6 MB against 77 MB for the full plugin) and every full UAV instance ("Send to the UAV app", on by default).
   - Ways the app receives:
     1. The input **From DAW** (`AudioEngine` bridge thread).
-    2. **"Also hear your DAW (UAV Bridge)"** (Options checkbox, `settings.mixBridge`). `bridge::Mixer` adds the master to any input on the input's own thread: linear resampling, about 40 ms behind the writer, 0.2 % drift correction. The status line shows "+ DAW ...".
+    2. **"DAW (UAV Bridge)"** (Options checkbox, `settings.mixBridge`). `bridge::Mixer` adds the master to any input on the input's own thread: linear resampling, about 40 ms behind the writer, 0.2 % drift correction. The status line shows "+ DAW ...".
 - **Installer:**
   - Admin is the default; `/ALLUSERS` relaunch offer; removes an install found in another folder.
   - `[InstallDelete]` removes the old DigiCheck exe, shortcuts and vst3 (this fixed error 183).
@@ -100,6 +100,7 @@ cmake --build build --parallel
 - **The keynet weights are already fp16.** The ggml CPU variants gain about 20 % on prefill only, and there's no AVX-512 variant.
 
 ## Recent work, newest first (all pushed; CI green)
+0. **Fixes from the user's testing:** the spectrogram's Ref scroll recolours once per frame (`recolourPending`, was a full-history recolour per wheel step: hangs); the checkbox is now "DAW (UAV Bridge)"; the Bridge is `UAV Bridge.vst3` (the installer removes the old name; same plugin ID); publisher Styrant Audio; self-signing.
 1. **"Also hear your DAW" mix** (`bridge::Mixer`, an Options checkbox, the status line, the manual).
 2. **UI tidy-up** (all 9 approved):
    - short loudness captions (S / I / TP)
@@ -116,12 +117,12 @@ cmake --build build --parallel
 4. **The rename** to Ultimate Audio Viewer (folder and settings migration). Before that: installer fixes, the full plugin's DAW bridge, a code review (crash reports, plugin LTO, KeyNet AVX2, shared reference data, an idle plugin with its editor closed), and a project review (Ref, Link, saved layouts, backup, update check, colour-safe meters and more).
 
 ## Open / next
-- **Code signing:** undecided; the user asked to set it aside. The options were:
+- **Code signing:** CI self-signs everything as **Styrant Audio** (`tools/selfsign.ps1`, a fresh certificate per run, no secrets) whenever the Azure secrets are absent. It shows the publisher in Properties > Digital Signatures only; Windows doesn't trust it. Real signing is still undecided; the options were:
   1. Azure Artifact Signing (about $10 a month; CI is already wired and needs six secrets: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `SIGNING_ENDPOINT`, `SIGNING_ACCOUNT`, `SIGNING_PROFILE`)
   2. a CA certificate (Certum or Sectigo; a token or cloud HSM; sign locally with a script)
   3. SignPath (likely ineligible: proprietary ASIO SDK, a non-commercial model license)
   4. a self-signed certificate for the user's own PCs only
-- **Check on real hardware.** Not yet tried in a real DAW, only in tests:
+- **Checked on real hardware by the user** (Nov 2026):
   - UAV Bridge in the user's DAW
   - the DAW mix with loopback or the Scarlett plus an ASIO DAW (also with different sample rates)
   - the "No input" banner

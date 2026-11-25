@@ -41,6 +41,7 @@ Download **Ultimate-Audio-Viewer-Setup.exe** from the repository's *Latest build
 
 The builds aren't code-signed yet, so Windows may warn once:
 - **SmartScreen:** choose *More info → Run anyway*.
+- **Is it really from Styrant Audio?** Right-click the file → *Properties* → *Digital Signatures*: it is signed by **Styrant Audio**. The signature is self-signed, so Windows still calls the publisher unknown, but it shows the file hasn't been changed since it was built.
 - **Defender "Sabsik" detections** on an unsigned download are machine-learning false positives. If you see one, you can submit the file to Microsoft as a false positive.
 
 ### Choose what to analyse
@@ -64,12 +65,12 @@ Click anywhere else, or press Esc, to close Options. Your source and channels ar
 ### Monitoring your DAW, even with ASIO
 A DAW that uses ASIO talks to your interface directly, past Windows' audio system, so ordinary Windows apps (and *Windows playback (loopback)*) can't hear it. A small plugin in the DAW hands the app what it hears instead:
 
-1. Put **UAV Bridge** (*Ultimate Audio Viewer Bridge* in your DAW's plugin list) on your DAW's **master** track, last in the chain so it sees what you hear. Save it in your default template and it's always there.
+1. Put **UAV Bridge** (listed under *Styrant Audio* in your DAW's plugin list) on your DAW's **master** track, last in the chain so it sees what you hear. Save it in your default template and it's always there.
 2. In the app, choose **From DAW: automatic (the master track)** under *From your DAW* in Options, and press Start.
 
 That's all: no routing, no driver or Windows settings, any interface. The app then measures your DAW's master like any other input, and every page works.
 
-**Hear your DAW and everything else together:** tick **Also hear your DAW (UAV Bridge)** in Options, under the Start button. The input you chose keeps playing (Windows playback, your interface's inputs...), and the DAW's master from UAV Bridge is added on top, so you don't have to switch inputs. The status line shows *+ DAW "Master"* while it's heard (or *+ DAW: waiting for UAV Bridge*). It follows the master automatically, works at any sample rate (the DAW's audio is converted to the input's rate), and runs about 40 ms behind the DAW. It isn't used when the input is *From DAW* itself. If the DAW also plays through Windows (not ASIO), you'd hear it twice; use one or the other.
+**Hear your DAW and everything else together:** tick **DAW (UAV Bridge)** in Options, under the Start button. The input you chose keeps playing (Windows playback, your interface's inputs...), and the DAW's master from UAV Bridge is added on top, so you don't have to switch inputs. The status line shows *+ DAW "Master"* while it's heard (or *+ DAW: waiting for UAV Bridge*). It follows the master automatically, works at any sample rate (the DAW's audio is converted to the input's rate), and runs about 40 ms behind the DAW. It isn't used when the input is *From DAW* itself. If the DAW also plays through Windows (not ASIO), you'd hear it twice; use one or the other.
 
 **UAV Bridge** does nothing else: the audio passes through untouched with no latency, and it has no analysis or graphics of its own, so it costs next to nothing (it's a small fraction of the size of the full plugin). Its window shows:
 - whether it's sending, and under which track name (green *Sending as "Master"*)
@@ -344,7 +345,7 @@ Some graphics drivers switch a full-screen OpenGL window to *exclusive* mode. Wi
 **Ultimate Audio Viewer.vst3** puts the same pages (Custom included) on a track in your DAW.
 - The installer can install it, or unzip *Ultimate-Audio-Viewer-VST3.zip* into `C:\Program Files\Common Files\VST3`.
 - The audio passes through untouched (bit for bit, no latency) unless you use Listen.
-- **UAV Bridge** (*Ultimate Audio Viewer Bridge.vst3*) is a separate, tiny plugin that only sends a track to the app; see [Monitoring your DAW](#monitoring-your-daw-even-with-asio). The installer has its own box for it (ticked by default), or unzip *Ultimate-Audio-Viewer-Bridge-VST3.zip* into the same folder.
+- **UAV Bridge** (*UAV Bridge.vst3*) is a separate, tiny plugin that only sends a track to the app; see [Monitoring your DAW](#monitoring-your-daw-even-with-asio). The installer has its own box for it (ticked by default), or unzip *Ultimate-Audio-Viewer-Bridge-VST3.zip* into the same folder.
 
 What the plugin adds:
 - **Send to the app:** the plugin hands what it sees to the standalone app, whose **From DAW** input then monitors your DAW even when it uses ASIO ([Monitoring your DAW](#monitoring-your-daw-even-with-asio)). On by default; *Send to the UAV app* in the plugin's Options turns it off. If that's all you want from the DAW, the much lighter **UAV Bridge** plugin does it on its own.
@@ -422,7 +423,7 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
 
 - **No picture, or "No input":** open Options, pick a source and channels, and press Start. ASIO may be busy while your DAW uses it; use *Windows Audio (shared)* instead.
 - **I want to see what Spotify / YouTube is playing:** choose *Windows playback (loopback)*.
-- **I want to see my DAW and Spotify / YouTube together:** pick *Windows playback (loopback)*, tick *Also hear your DAW (UAV Bridge)*, and put UAV Bridge on the master track.
+- **I want to see my DAW and Spotify / YouTube together:** pick *Windows playback (loopback)*, tick *DAW (UAV Bridge)*, and put UAV Bridge on the master track.
 - **I want to see what my DAW plays, and it uses ASIO:** put UAV Bridge on the master track and choose *From DAW* in Options ([how](#monitoring-your-daw-even-with-asio)).
 - **"From DAW: waiting for your DAW":** open the Bridge's window: it should say *Sending as ...*. If it says *Ready: waiting*, press play (and check the plugin isn't bypassed); if it says *Off*, tick *Send to the UAV app* (in the full UAV plugin, that's in its Options). Press Rescan to see the tracks that are sending.
 - **HDR turns off in full screen:** see [HDR monitors](#hdr-monitors-options--hdr-full-screen).
@@ -431,7 +432,7 @@ Not in the plugin: choosing the audio input (the track is the input), and full s
   - Check that the status line (Options) says *GPU (OpenGL)*.
   - Busy Custom pages cost more.
 - **Text too small:** Options → Text size, or a Monitor module's gear → Text size.
-- **Windows warns about the download:** the builds are unsigned (see [Install](#install)).
+- **Windows warns about the download:** the builds are self-signed, not signed by a certificate Windows trusts (see [Install](#install)).
 - **Not sure what a control does:** press **?** and hover over it.
-- **The plugin doesn't show up in my DAW:** check that `Ultimate Audio Viewer.vst3` (and `Ultimate Audio Viewer Bridge.vst3`) is in `C:\Program Files\Common Files\VST3` (reinstall choosing *Install for all users*), then rescan plugins in the DAW.
+- **The plugin doesn't show up in my DAW:** check that `Ultimate Audio Viewer.vst3` (and `UAV Bridge.vst3`) is in `C:\Program Files\Common Files\VST3` (reinstall choosing *Install for all users*), then rescan plugins in the DAW.
 - **It crashed:** a report is saved in `Documents\Ultimate Audio Viewer\Crashes` (a `.txt` and a `.dmp`). Send both and say what you were doing. The plugin only records crashes in its own code; the DAW's own crash reporting still works.

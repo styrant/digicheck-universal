@@ -151,9 +151,9 @@ jobs:
       - name: UAV Bridge VST3 in a test host (pass-through, sends to shared memory, on/off, mono)
         shell: pwsh
         run: |
-          build\bridge_plugin_test_artefacts\Release\bridge_plugin_test.exe "build\UAVBridge_artefacts\Release\VST3\Ultimate Audio Viewer Bridge.vst3"
+          build\bridge_plugin_test_artefacts\Release\bridge_plugin_test.exe "build\UAVBridge_artefacts\Release\VST3\UAV Bridge.vst3"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $f = Get-Item "build\UAVBridge_artefacts\Release\VST3\Ultimate Audio Viewer Bridge.vst3\Contents\x86_64-win\Ultimate Audio Viewer Bridge.vst3"
+          $f = Get-Item "build\UAVBridge_artefacts\Release\VST3\UAV Bridge.vst3\Contents\x86_64-win\UAV Bridge.vst3"
           $m = Get-Item "build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3\Contents\x86_64-win\Ultimate Audio Viewer.vst3"
           "UAV Bridge: $([math]::Round($f.Length/1MB,2)) MB (full plugin $([math]::Round($m.Length/1MB,1)) MB)" | Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
 
@@ -207,7 +207,7 @@ jobs:
           Expand-Archive pluginval.zip -DestinationPath pluginval -Force
           $pv = Get-ChildItem pluginval -Recurse -Filter pluginval.exe | Select-Object -First 1
           # pluginval is a GUI-subsystem exe: PowerShell doesn't set $LASTEXITCODE for it, so wait for its exit code
-          $codes = foreach ($p in "build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3", "build\UAVBridge_artefacts\Release\VST3\Ultimate Audio Viewer Bridge.vst3") {
+          $codes = foreach ($p in "build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3", "build\UAVBridge_artefacts\Release\VST3\UAV Bridge.vst3") {
             (Start-Process -FilePath $pv.FullName -ArgumentList "--strictness-level", "5", "--skip-gui-tests", "--validate", "`"$p`"" -NoNewWindow -Wait -PassThru).ExitCode
           }
           if ($codes[0] -ne 0 -or $codes[1] -ne 0) { Write-Host "::warning::pluginval reported problems (UAV $($codes[0]), Bridge $($codes[1]))"; exit 1 }
@@ -284,17 +284,29 @@ jobs:
           endpoint: ${{ secrets.SIGNING_ENDPOINT }}
           signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\build\UAVBridge_artefacts\Release\VST3\Ultimate Audio Viewer Bridge.vst3\Contents\x86_64-win\Ultimate Audio Viewer Bridge.vst3
+          files: ${{ github.workspace }}\build\UAVBridge_artefacts\Release\VST3\UAV Bridge.vst3\Contents\x86_64-win\UAV Bridge.vst3
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
+
+      # Without Azure signing: a self-signed "Styrant Audio" signature (made fresh on this machine each run;
+      # shows the publisher in Properties > Digital Signatures, but Windows doesn't trust it)
+      - name: Self-sign the app, Target Builder and plugins (Styrant Audio)
+        if: env.SIGN != 'true'
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File tools\selfsign.ps1 `
+            "build\Spectroscope_artefacts\Release\Ultimate Audio Viewer.exe" `
+            "build\TargetBuilder_artefacts\Release\Ultimate Audio Viewer Target Builder.exe" `
+            "build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3\Contents\x86_64-win\Ultimate Audio Viewer.vst3" `
+            "build\UAVBridge_artefacts\Release\VST3\UAV Bridge.vst3\Contents\x86_64-win\UAV Bridge.vst3"
 
       - name: Zip the VST3 bundle
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive -Path "build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3" -DestinationPath dist\Ultimate-Audio-Viewer-VST3.zip -Force
-          Compress-Archive -Path "build\UAVBridge_artefacts\Release\VST3\Ultimate Audio Viewer Bridge.vst3" -DestinationPath dist\Ultimate-Audio-Viewer-Bridge-VST3.zip -Force
+          Compress-Archive -Path "build\UAVBridge_artefacts\Release\VST3\UAV Bridge.vst3" -DestinationPath dist\Ultimate-Audio-Viewer-Bridge-VST3.zip -Force
 
       - name: Build installer
         shell: pwsh
@@ -303,6 +315,11 @@ jobs:
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
           & $iscc /Qp "/DAppVersion=$env:APP_VERSION" installer\UltimateAudioViewer.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Self-sign the installer (Styrant Audio)
+        if: env.SIGN != 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File tools\selfsign.ps1 "dist\Ultimate-Audio-Viewer-Setup.exe"
 
       - name: Sign installer
         if: env.SIGN == 'true'
@@ -363,8 +380,8 @@ jobs:
             **Ultimate-Audio-Viewer.exe** is the same app as a single portable file.
             **Ultimate-Audio-Viewer-Target-Builder.exe** makes tonal balance targets: drag songs into its window and save them as a target (also installed by the setup).
             **Ultimate-Audio-Viewer-VST3.zip** is the VST3 plugin (the setup can install it too): unzip "Ultimate Audio Viewer.vst3" into C:\Program Files\Common Files\VST3 (and delete an old "DigiCheck Universal.vst3" there).
-            **Ultimate-Audio-Viewer-Bridge-VST3.zip** is UAV Bridge, a tiny VST3 that only sends your DAW's audio to the app's From DAW input (the setup can install it too): unzip "Ultimate Audio Viewer Bridge.vst3" into the same folder.
-            Signed: ${{ env.SIGN }}
+            **Ultimate-Audio-Viewer-Bridge-VST3.zip** is UAV Bridge, a tiny VST3 that only sends your DAW's audio to the app's From DAW input (the setup can install it too): unzip "UAV Bridge.vst3" into the same folder (and delete an old "Ultimate Audio Viewer Bridge.vst3" there).
+            Signed: ${{ env.SIGN == 'true' && 'yes (Azure Artifact Signing)' || 'self-signed as Styrant Audio (shows the publisher in Properties > Digital Signatures; Windows still says Unknown publisher)' }}
           files: |
             dist/Ultimate-Audio-Viewer-Setup.exe
             dist/Ultimate-Audio-Viewer-VST3.zip

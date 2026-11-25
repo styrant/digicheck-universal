@@ -27,7 +27,7 @@ Set-up in Azure: create an Artifact Signing account (Basic plan), complete ident
 
 ## VST3 plugin
 
-**Ultimate Audio Viewer.vst3** puts the same pages (Custom included) on a track in your DAW. The setup installs it (the "Install the VST3 plugin" box), or unzip **Ultimate-Audio-Viewer-VST3.zip** into `C:\Program Files\Common Files\VST3`. **Ultimate Audio Viewer Bridge.vst3** (UAV Bridge, its own installer box or **Ultimate-Audio-Viewer-Bridge-VST3.zip**) is a tiny plugin that only sends its track to the app's From DAW input. It's an analysis plugin: the audio passes through untouched (bit for bit, no latency) unless you use Listen.
+**Ultimate Audio Viewer.vst3** puts the same pages (Custom included) on a track in your DAW. The setup installs it (the "Install the VST3 plugin" box), or unzip **Ultimate-Audio-Viewer-VST3.zip** into `C:\Program Files\Common Files\VST3`. **UAV Bridge.vst3** (UAV Bridge, its own installer box or **Ultimate-Audio-Viewer-Bridge-VST3.zip**) is a tiny plugin that only sends its track to the app's From DAW input. It's an analysis plugin: the audio passes through untouched (bit for bit, no latency) unless you use Listen.
 
 What the plugin adds:
 - **The project's tempo.** The Tempo window and the Scope's bar lengths follow the DAW's tempo (you can still type another one; it follows again when the project's tempo changes).
