@@ -1150,11 +1150,13 @@ void KeyPage::resized()
     {
         auto p = playerRow;
         playBtn.setBounds (p.removeFromLeft (ui::px (52)).reduced (0, 1)); p.removeFromLeft (ui::px (8));
-        timeArea = p.removeFromLeft (ui::px (110));
-        p.removeFromLeft (ui::px (6));
+        timeArea = p.removeFromLeft (ui::px (100));
+        dividersPlayer.clearQuick(); dividersTop.clearQuick();
+        dividersPlayer.add (p.getX() + ui::px (8)); p.removeFromLeft (ui::px (16));
         listenBox.setBounds (p.removeFromLeft (ui::px (170)).reduced (0, 1)); p.removeFromLeft (ui::px (6));
         synthBox.setBounds (p.removeFromLeft (ui::px (198)).reduced (0, 1)); p.removeFromLeft (ui::px (10));
-        volumeSlider.setBounds (p.removeFromLeft (ui::px (110))); p.removeFromLeft (ui::px (10));
+        volumeSlider.setBounds (p.removeFromLeft (ui::px (110)));
+        dividersPlayer.add (p.getX() + ui::px (10)); p.removeFromLeft (ui::px (20));
         if (output != nullptr)
         {
             const bool room = p.getWidth() > ui::px (300 + 210);
@@ -1171,14 +1173,16 @@ void KeyPage::resized()
     auto h = header;
     recordBtn.setBounds (h.removeFromLeft (ui::px (96)).reduced (0, 2)); h.removeFromLeft (ui::px (6));
     browseBtn.setBounds (h.removeFromLeft (ui::px (90)).reduced (0, 2)); h.removeFromLeft (ui::px (6));
-    clearBtn.setBounds (h.removeFromLeft (ui::px (64)).reduced (0, 2)); h.removeFromLeft (ui::px (12));
+    clearBtn.setBounds (h.removeFromLeft (ui::px (64)).reduced (0, 2));
+    dividersTop.add (h.getX() + ui::px (10)); h.removeFromLeft (ui::px (20));
     transcribeBtn.setBounds (h.removeFromRight (ui::px (104)).reduced (0, 2)); h.removeFromRight (ui::px (6));
     autoToggle.setBounds (h.removeFromRight (ui::px (62))); h.removeFromRight (ui::px (4));
     const bool wide = h.getWidth() > ui::px (230 + 136 + 190 + 150 + 30);
     instrumentsBtn.setBounds (h.removeFromRight (ui::px (136)).reduced (0, 2)); h.removeFromRight (ui::px (6));
     deviceBox.setVisible (wide);
     if (wide) { deviceBox.setBounds (h.removeFromRight (ui::px (190)).reduced (0, 2)); h.removeFromRight (ui::px (6)); }
-    modelBox.setBounds (h.removeFromRight (ui::px (130)).reduced (0, 2)); h.removeFromRight (ui::px (10));
+    modelBox.setBounds (h.removeFromRight (ui::px (130)).reduced (0, 2));
+    dividersTop.add (h.getRight() - ui::px (10)); h.removeFromRight (ui::px (20));
     statusArea = h;                                                // the source name
 
     const int sideW = juce::jlimit (ui::px (280), ui::px (360), r.getWidth() / 4);
@@ -1207,13 +1211,18 @@ void KeyPage::paint (juce::Graphics& g)
         juce::String name, detail;
         if (recorder.isRecording()) { name = "Recording the input"; detail = mmss (recorder.seconds()); }
         else if (st.sourceName.isNotEmpty()) { name = st.sourceName; detail = st.seconds > 0 ? mmss (st.seconds) : juce::String(); }
-        else { name = "No audio yet"; detail = "drop a song anywhere on this page"; }
+        // nothing loaded: the drop area below already says what to do
         g.setColour (kText); g.setFont (juce::FontOptions (ui::fs (14.5f), juce::Font::bold));
         const int nw = juce::jmin (r.getWidth() * 2 / 3, juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), name) + 4);
         g.drawText (name, r.removeFromLeft (nw), juce::Justification::centredLeft, true);
         g.setColour (kMuted); g.setFont (juce::FontOptions (ui::fs (12.5f)));
         g.drawText ("   " + detail, r, juce::Justification::centredLeft, true);
     }
+
+    // thin lines between the control groups: Source | Transcription, Playback | Listen | Sensitivity
+    g.setColour (juce::Colours::white.withAlpha (0.12f));
+    for (int x : dividersTop)    g.fillRect (x, header.getY() + ui::px (6), 1, header.getHeight() - ui::px (12));
+    for (int x : dividersPlayer) g.fillRect (x, playerRow.getY() + ui::px (5), 1, playerRow.getHeight() - ui::px (10));
 
     // player row: position / length, and the sensitivity label
     {

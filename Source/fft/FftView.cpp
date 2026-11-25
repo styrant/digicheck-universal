@@ -187,13 +187,21 @@ void FftView::resized()
     header = r.removeFromTop (ui::px (36)).reduced (ui::px (8), ui::px (5));
     plot = r.reduced (ui::px (8), 0).withTrimmedBottom (ui::px (6)).withTrimmedLeft (ui::px (34)).withTrimmedBottom (ui::px (16));
     auto h = header.withTrimmedLeft (headerInset);
-    auto place = [&] (juce::Button& b, int w) { b.setBounds (h.removeFromLeft (ui::px (w))); h.removeFromLeft (ui::px (4)); };
-    place (chanBtn, 78); place (secBtn, 104); h.removeFromLeft (ui::px (8));
-    place (sizeBtn, 74); place (avgBtn, 112); place (slopeBtn, 96); place (smoothBtn, 120); h.removeFromLeft (ui::px (8));
-    place (holdBtn, 52); place (freezeBtn, 60); place (snapBtn, 80);
     colourBtn.setBounds (header.removeFromRight (ui::px (72)));
-    for (auto* b : std::initializer_list<juce::Component*> { &snapBtn, &smoothBtn, &slopeBtn })   // narrow windows: the least used go first
-        b->setVisible (b->getRight() < colourBtn.getX() - 4);
+    h.setRight (colourBtn.getX() - ui::px (6));
+    // narrow windows: the least used go first (drop order), the rest close up
+    struct Item { juce::Component* c; int w, gap, drop; };
+    Item items[] = { { &chanBtn, 78, 4, 0 }, { &secBtn, 104, 12, 0 }, { &sizeBtn, 74, 4, 5 }, { &avgBtn, 112, 4, 4 }, { &slopeBtn, 96, 4, 3 },
+                     { &smoothBtn, 120, 12, 2 }, { &holdBtn, 52, 4, 0 }, { &freezeBtn, 60, 4, 0 }, { &snapBtn, 80, 0, 1 } };
+    auto total = [&] (int level) { int t = 0; for (auto& i : items) if (i.drop == 0 || i.drop > level) t += ui::px (i.w + i.gap); return t; };
+    int level = 0;
+    while (level < 5 && total (level) > h.getWidth()) ++level;
+    for (auto& i : items)
+    {
+        const bool on = i.drop == 0 || i.drop > level;
+        i.c->setVisible (on);
+        if (on) { i.c->setBounds (h.removeFromLeft (ui::px (i.w))); h.removeFromLeft (ui::px (i.gap)); }
+    }
     computeEdges();
 }
 

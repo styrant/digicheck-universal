@@ -208,7 +208,7 @@ private:
             log ("start " + juce::String (ProjectInfo::versionString));
             layoutcheck::Result res;
             struct Size { int w, h; };
-            const Size sizes[] = { { 1920, 1050 }, { 1300, 760 }, { 1024, 640 } };
+            const Size sizes[] = { { 1920, 1050 }, { 1300, 760 }, { 1024, 640 }, { 900, 520 } };   // 900 x 520: the plugin window's smallest
             const char* pages[] = { "Spectrogram", "Analyzer-Bars", "Balance", "Key", "Scope", "Monitor", "Custom-2x2", "Analyzer-FFT", "Custom-large-left" };
             for (auto sz : sizes)
                 for (int v = 0; v < 9; ++v)

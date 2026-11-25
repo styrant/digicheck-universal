@@ -165,7 +165,7 @@ BottomBar::BottomBar (Settings& st, AnalysisEngine& e, SpectrumAnalyzerProcessor
     anaSettings.onClick = [this] { if (onAnalyzerSettings) onAnalyzerSettings(); };
 
     addAndMakeVisible (lufs);
-    for (auto* b : { &resetBtn, &full, &helpBtn, &hideBarBtn }) b->setLookAndFeel (smallLnf.get());
+    // the corner buttons use the bar's normal size and font, like every other button
     resetBtn.setTooltip ("Restart integrated loudness and true-peak hold");
     full.setTooltip ("Full screen (F11, Esc to leave)");
     resetBtn.onClick = [this] { engine.resetLoudness(); if (onLoudnessReset) onLoudnessReset(); };
@@ -304,7 +304,6 @@ void BottomBar::setUpdateAvailable (const juce::String& v)
     updateBtn.setButtonText (v + " available");
     updateBtn.setTooltip ("A newer build (" + v + ") is on GitHub: open the download page");
     updateBtn.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2f6b3f));
-    updateBtn.setLookAndFeel (smallLnf.get());
     updateBtn.onClick = [] { juce::URL ("https://github.com/styrant/digicheck-universal/releases/tag/latest").launchInDefaultBrowser(); };
     addAndMakeVisible (updateBtn);
     resized();
@@ -358,16 +357,27 @@ void BottomBar::resized()
     const bool controls = ! s.hidePanel;
     auto r = getLocalBounds().withTrimmedTop (1).reduced (8, 6);
 
+    // narrow windows (the plugin's smallest is 900 px): short view names, a short Full button, then no Tempo
+    // button (T still opens it); what the fixed parts need at full size:
+    const int need = 740 + (plugin ? 112 : 96) + 268 + 16;
+    const bool compact = getWidth() < ui::px (need);
+    const bool noTempo = getWidth() < ui::px (need - 138 - (plugin ? 0 : 44) - 40);
+    const char* longNames[]  = { "Spectrogram", "Analyzer", "Balance", "Key", "Scope", "Monitor", "Custom" };
+    const char* shortNames[] = { "Spec", "Ana", "Bal", "Key", "Scope", "Mon", "Custom" };
+    const int longW[] = { 94, 74, 70, 46, 58, 70, 68 }, shortW[] = { 54, 46, 44, 40, 52, 46, 60 };
+    juce::TextButton* tabs[] = { &viewSpec, &viewAna, &viewBal, &viewKey, &viewScope, &viewMon, &viewCustom };
+
     // left: Options, view switch, LUFS / Key / Tempo toggles
     optionsBtn.setBounds (r.removeFromLeft (ui::px (72))); r.removeFromLeft (ui::px (10));
-    viewSpec.setBounds (r.removeFromLeft (ui::px (94))); viewAna.setBounds (r.removeFromLeft (ui::px (74)));
-    viewBal.setBounds (r.removeFromLeft (ui::px (70)));
-    viewKey.setBounds (r.removeFromLeft (ui::px (46)));
-    viewScope.setBounds (r.removeFromLeft (ui::px (58)));
-    viewMon.setBounds (r.removeFromLeft (ui::px (70)));
-    viewCustom.setBounds (r.removeFromLeft (ui::px (68))); r.removeFromLeft (ui::px (10));
+    for (int i = 0; i < 7; ++i)
+    {
+        tabs[i]->setButtonText (compact ? shortNames[i] : longNames[i]);
+        tabs[i]->setBounds (r.removeFromLeft (ui::px (compact ? shortW[i] : longW[i])));
+    }
+    r.removeFromLeft (ui::px (10));
     lufsBtn.setBounds (r.removeFromLeft (ui::px (48))); r.removeFromLeft (ui::px (4));
-    tempoBtn.setBounds (r.removeFromLeft (ui::px (56))); r.removeFromLeft (ui::px (4));
+    tempoBtn.setVisible (! noTempo);
+    if (! noTempo) { tempoBtn.setBounds (r.removeFromLeft (ui::px (56))); r.removeFromLeft (ui::px (4)); }
     refBtn.setBounds (r.removeFromLeft (ui::px (44))); r.removeFromLeft (ui::px (12));
     listenBtn.setVisible (plugin);
     linkBtn.setVisible (plugin);
@@ -382,39 +392,38 @@ void BottomBar::resized()
     }
 
     // right corner: small Full screen / Auto-hide / Reset, then the loudness boxes
-    auto small = [&] (juce::TextButton& b, int w) { b.setBounds (r.removeFromRight (w).withSizeKeepingCentre (w, ui::px (20))); r.removeFromRight (ui::px (4)); };
+    auto small = [&] (juce::TextButton& b, int w) { b.setBounds (r.removeFromRight (w)); r.removeFromRight (ui::px (4)); };
     const bool isFull = full.getButtonText().startsWith ("Exit");
-    if (! plugin) small (full, ui::px (isFull ? 92 : 70));
-    small (helpBtn, ui::px (24));
+    if (compact && ! plugin) full.setButtonText (isFull ? "Exit" : "Full");
+    else if (! plugin)       full.setButtonText (isFull ? "Exit full screen" : "Full screen");
+    if (! plugin) small (full, ui::px (compact ? 48 : (isFull ? 124 : 92)));
+    small (helpBtn, ui::px (30));
     hideBarBtn.setVisible (! plugin && isFull);
-    if (! plugin && isFull) small (hideBarBtn, ui::px (64));
-    if (updateBtn.isVisible()) small (updateBtn, ui::px (96));
+    if (! plugin && isFull) small (hideBarBtn, ui::px (78));
+    if (updateBtn.isVisible()) small (updateBtn, ui::px (124));
     resetBtn.setVisible (s.showLufs);
     lufs.setVisible (s.showLufs);
     if (s.showLufs)
     {
-        small (resetBtn, ui::px (44));
+        small (resetBtn, ui::px (54));
         r.removeFromRight (ui::px (4));
         // leave the middle controls their minimum width; the loudness boxes shrink first
         // the analyzer's combo boxes get room only if the loudness boxes can stay comfortably wide
-        const int compact = (cust ? ui::px (160) : 0) + (spec ? ui::px (66 + 6 + 34 + 8 + 88 + 4 + 62)
-                          : bal ? ui::px (110 + 4 + 96 + 6 + 96 + 6 + 52 + 44 + 6 + 48)
+        const int compactW = (cust ? ui::px (160) : 0) + (spec ? ui::px (66 + 6 + 34 + 8 + 88 + 4 + 62)
+                            : bal ? ui::px (150 + 4 + 96 + 6 + 96 + 6 + 52 + 44 + 6 + 48)
                           : (view == Key || view == Scope || view == Monitor || view < 0) ? 0
-                          : s.anaStyle == 1 ? 0
-                                : ui::px (66 + 6 + 28 + 2 + 28 + 4 + 46 + 4 + 62 + 4 + 72));
-        const int withCombos = compact + ui::px (64 + 4 + 122 + 4 + 84 + 10);
+                          : 0);            // the analyzer's controls are in its own header
         auto lufsFor = [&] (int group) { return juce::jmin (ui::px (450), juce::jmin (r.getWidth() / 2, r.getWidth() - group - ui::px (16))); };
-        const int minGroup = (view == Analyzer && s.anaStyle == 0 && lufsFor (withCombos) >= ui::px (330)) ? withCombos : compact;
-        const int lufsW = juce::jmax (ui::px (view == Analyzer && s.anaStyle == 0 ? 200 : 160), lufsFor (minGroup));
-        lufs.setBounds (r.removeFromRight (lufsW).expanded (0, 2));
+        // the Custom page's Layout button always keeps room (at least its icon form)
+        const int lufsW = juce::jmin (juce::jmax (ui::px (compact ? 120 : 160), lufsFor (compactW)), r.getWidth() - (cust ? ui::px (50) : 0));
+        lufs.setVisible (lufsW >= ui::px (90));
+        if (lufs.isVisible()) lufs.setBounds (r.removeFromRight (lufsW).expanded (0, 2));
         r.removeFromRight (ui::px (12));
     }
 
     // centre: controls for the current view (dropping the least important ones if space is short)
     for (auto* c : std::initializer_list<juce::Component*> { &specPresets, &pause, &ref, &refDown, &refUp, &specScale, &specChannel, &specSettings })
         c->setVisible (spec && controls);
-    for (auto* c : std::initializer_list<juce::Component*> { &anaPresets, &bpoBox, &chanBox, &gridBox, &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings })
-        c->setVisible (view == Analyzer && controls && s.anaStyle == 0);
     for (auto* c : std::initializer_list<juce::Component*> { &balTarget, &balWindow, &balSmooth, &balCurve, &balDiff, &balReset })
         c->setVisible (bal && controls);
     customBtn.setVisible (cust);
@@ -422,9 +431,12 @@ void BottomBar::resized()
     {
         // Custom: the Layout button, then the controls of the pane last clicked
         // a short "Layout" button when the pane's controls need the room
-        const bool shortBtn = view >= 0 && view != Key && view != Scope && view != Monitor && r.getWidth() < ui::px (150 + 10 + 300);
+        const bool shortBtn = r.getWidth() < ui::px (158) || (view >= 0 && view != Key && view != Scope && view != Monitor && r.getWidth() < ui::px (158 + 10 + 300));
         customBtn.setButtonText (shortBtn ? "Layout" + juce::String::fromUTF8 (" \xe2\x96\xbe") : customLongText);
-        customBtn.setBounds (r.removeFromLeft (juce::jmin (r.getWidth(), ui::px (shortBtn ? 80 : 150)))); r.removeFromLeft (juce::jmin (r.getWidth(), ui::px (8)));
+        // very narrow: an icon-only Layout button (its tooltip says what it is)
+        const bool iconBtn = r.getWidth() < ui::px (80);
+        if (iconBtn) customBtn.setButtonText (juce::String::fromUTF8 ("\xe2\x96\xa6 \xe2\x96\xbe"));
+        customBtn.setBounds (r.removeFromLeft (juce::jmin (r.getWidth(), ui::px (iconBtn ? 42 : shortBtn ? 80 : 158)))); r.removeFromLeft (juce::jmin (r.getWidth(), ui::px (8)));
     }
     if (! controls) return;
 
@@ -432,7 +444,7 @@ void BottomBar::resized()
     {
         // Curve|Diff and Reset always; then the window and smoothing boxes if they fit beside a target box of at
         // least 110 px (the smoothing box goes first when space is short); the target box takes what's left (to 220 px)
-        const int base = ui::px (4 + 52 + 44 + 6 + 48), box = ui::px (96 + 6), minT = ui::px (110);
+        const int base = ui::px (4 + 52 + 44 + 6 + 48), box = ui::px (96 + 6), minT = ui::px (150);   // the target name stays readable; Window / Smoothing go first
         if (r.getWidth() < base + ui::px (60))
         {
             // too narrow for the group: Curve | Diff alone if they fit, else nothing (the window is tiny)
@@ -449,6 +461,7 @@ void BottomBar::resized()
         const int w = juce::jmin (r.getWidth(), tw + rest);
         auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
         balTarget.setBounds (g.removeFromLeft (tw)); g.removeFromLeft (ui::px (4));
+        balTarget.setTooltip ("Target: " + balTarget.getText() + " (files in the targets folder)");
         balWindow.setVisible (roomForWindow);
         balSmooth.setVisible (roomForSmooth);
         if (roomForWindow) { balWindow.setBounds (g.removeFromLeft (ui::px (96))); g.removeFromLeft (ui::px (6)); }
@@ -464,6 +477,11 @@ void BottomBar::resized()
         // Order: Presets | Pause | Scale | Channel | Ref - + | Settings. When space is short, Settings goes first,
         // then the Ref -/+ buttons (the mouse wheel and Up/Down still change it), then the Ref readout.
         const int avail = r.getWidth();
+        if (avail < ui::px (66 + 6 + 34))                  // no room even for Presets and Pause: the keys still work (P, Space)
+        {
+            for (auto* c : std::initializer_list<juce::Component*> { &specPresets, &pause, &ref, &refDown, &refUp, &specScale, &specChannel, &specSettings }) c->setVisible (false);
+            return;
+        }
         // very narrow: the channel box goes, then the scale box (both are in Settings too)
         const bool roomChan = avail >= ui::px (66 + 6 + 34 + 8 + 88 + 4 + 62), roomScale = avail >= ui::px (66 + 6 + 34 + 8 + 88);
         specChannel.setVisible (roomChan); specScale.setVisible (roomScale);
@@ -488,9 +506,17 @@ void BottomBar::resized()
         return;
     }
 
-    if (view != Analyzer) return;                     // the Key, Scope and Monitor views have no controls here (they're on their pages)
-    if (s.anaStyle == 1) return;                       // the FFT style keeps its controls in its own header
+}
 
+void BottomBar::attachAnalyzerHeader (juce::Component& strip, std::function<void (juce::Rectangle<int>)>& layout)
+{
+    for (auto* c : std::initializer_list<juce::Component*> { &anaPresets, &bpoBox, &chanBox, &gridBox, &zoomOut, &zoomIn, &fullRange, &freeze, &anaSettings })
+        strip.addAndMakeVisible (c);              // (re-parented: removed from the bar)
+    layout = [this, &strip] (juce::Rectangle<int> r) { layoutAnalyzer (r, strip.getWidth()); };
+}
+
+void BottomBar::layoutAnalyzer (juce::Rectangle<int> r, int)
+{
     // what fits, in order; when space is short the least important go first: the three combo boxes, Full,
     // the zoom buttons, Presets, Settings (Freeze stays)
     struct Item { juce::Component* c; int w, gap, drop; };
@@ -500,7 +526,7 @@ void BottomBar::resized()
     for (int level = 1; level <= 5 && total() > r.getWidth(); ++level)
         for (auto& i : items) if (i.drop == level) i.drop = 0;
     const int w = juce::jmin (r.getWidth(), total());
-    auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), getWidth() / 2 - w / 2), r.getY(), w, r.getHeight());
+    auto g = juce::Rectangle<int> (juce::jlimit (r.getX(), juce::jmax (r.getX(), r.getRight() - w), r.getX()), r.getY(), w, r.getHeight());
     for (auto& i : items)
     {
         i.c->setVisible (i.drop > 0);
@@ -562,7 +588,11 @@ void BottomBar::LufsReadout::paint (juce::Graphics& g)
 
         auto r = box.toNearestInt().reduced (9, 2);
         g.setColour (kLabel.withAlpha (0.75f)); g.setFont (juce::FontOptions (ui::fs (10.0f), juce::Font::bold));
-        g.drawText (items[i].caption, r.removeFromTop (juce::roundToInt (ui::fs (11.0f))), juce::Justification::centredLeft);
+        // full caption when it fits, else the short one (S / I / TP)
+        const juce::Font capFont (juce::FontOptions (ui::fs (10.0f), juce::Font::bold));
+        const char* shortCap[] = { "S", "I", "TP" };
+        const bool fullCap = juce::GlyphArrangement::getStringWidth (capFont, items[i].caption) <= (float) r.getWidth();
+        g.drawText (fullCap ? items[i].caption : shortCap[i], r.removeFromTop (juce::roundToInt (ui::fs (11.0f))), juce::Justification::centredLeft);
         // the number always fits: drop the unit, then shrink the number, when a box gets narrow
         const float valueSize = ui::fs (21.0f);
         const int unitW = juce::roundToInt (ui::fs (34.0f));

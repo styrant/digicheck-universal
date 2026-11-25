@@ -454,7 +454,7 @@ void BalanceView::paintCurveLive (juce::Graphics& g)
     else
     {
         g.setColour (kMuted); g.setFont (juce::FontOptions (ui::fs (15.0f)));
-        g.drawFittedText (running ? "Waiting for audio..." : "No input. Open Options (bottom left), choose an input and press Start.",
+        g.drawFittedText (running ? "Waiting for audio..." : "",           // no input: the app's banner says so
                           plot.withTrimmedBottom (plot.getHeight() / 3).reduced (ui::px (10), 0), juce::Justification::centred, 3);
     }
 

@@ -110,4 +110,5 @@ private:
     std::unique_ptr<DragMidi> dragMidi;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Rectangle<int> header, playerRow, timeArea, sensLabel, footer, statusArea;
+    juce::Array<int> dividersTop, dividersPlayer;        // x of the thin lines between control groups
 };

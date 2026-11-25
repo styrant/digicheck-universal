@@ -170,7 +170,24 @@ private:
     // Ctrl+C: the page (Custom: Ctrl+Shift+C the focused pane) as an image on the clipboard and in the Screenshots folder
     void copyViewImage (bool paneOnly);
     void showToast (const juce::String& text);
+    void updateNoInput();
     juce::Label toast;
+    // shown over every page (but Key, which has its own) while no input runs in the app
+    struct NoInputBanner : public juce::Component
+    {
+        juce::TextButton open { "Open Options" };
+        NoInputBanner() { addAndMakeVisible (open); open.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff4c8dff)); setInterceptsMouseClicks (false, true); }
+        void paint (juce::Graphics& g) override
+        {
+            g.setColour (juce::Colour (0xe0181a1e)); g.fillRoundedRectangle (getLocalBounds().toFloat(), 8.0f);
+            g.setColour (juce::Colour (0xff3a3d44)); g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), 8.0f, 1.0f);
+            g.setColour (juce::Colours::white); g.setFont (juce::FontOptions (ui::fs (15.0f), juce::Font::bold));
+            g.drawText ("No input", getLocalBounds().removeFromTop (getHeight() / 3).translated (0, ui::px (6)), juce::Justification::centred);
+            g.setColour (juce::Colour (0xffb8bec9)); g.setFont (juce::FontOptions (ui::fs (13.0f)));
+            g.drawText ("Choose an input in Options and press Start.", getLocalBounds().withTrimmedTop (getHeight() / 3).removeFromTop (getHeight() / 3), juce::Justification::centred);
+        }
+        void resized() override { open.setBounds (getLocalBounds().removeFromBottom (getHeight() / 3).withSizeKeepingCentre (ui::px (130), ui::px (28)).translated (0, -ui::px (6))); }
+    } noInput;
     double toastUntil = 0;
     std::unique_ptr<juce::XmlElement> loadLayouts() const;
     void refreshSavedLayouts();

@@ -121,7 +121,7 @@ struct ScopePage::FreqKnob : public juce::Component, public juce::SettableToolti
         const double hz = page.s.scopeBPHz;
         g.setColour (page.s.scopeBP ? t.textBtnOn : t.textBtnOff);
         g.setFont (juce::FontOptions (ui::fs (13.5f)));
-        g.drawText (hz >= 1000 ? juce::String (hz / 1000, 2) + "k" : juce::String (hz, hz < 100 ? 1 : 0), getLocalBounds(), juce::Justification::centred);
+        g.drawText (hz >= 1000 ? juce::String (hz / 1000, 2) + " kHz" : juce::String (hz, hz < 100 ? 1 : 0) + " Hz", getLocalBounds(), juce::Justification::centred);
     }
     void mouseDown (const juce::MouseEvent&) override { startHz = page.s.scopeBPHz; }
     void mouseDrag (const juce::MouseEvent& e) override
@@ -530,7 +530,7 @@ struct ScopePage::Display : public juce::Component
         }
 
         // ---- nothing to show yet
-        if (! page.engine.hasSignal() && ! page.engine.isHolding())
+        if (! page.engine.hasSignal() && ! page.engine.isHolding() && page.inputRunning)   // no input: the app's banner says so
         {
             g.setColour (t.text); g.setFont (juce::FontOptions (ui::fs (15.0f)));
             g.drawText (page.inputRunning ? (page.engine.isFrozen() ? "Frozen" : "Waiting for audio...")
@@ -1047,8 +1047,7 @@ void ScopePage::resized()
     };
 
     auto h = header;
-    titleArea = h.removeFromLeft (ui::px (h.getWidth() < ui::px (560) ? 70 : 96));
-    h.removeFromLeft (ui::px (10));
+    titleArea = {};                                   // no page title: the bottom bar already says Scope
     menuBtn.setBounds (h.removeFromRight (ui::px (70)).reduced (0, 3)); h.removeFromRight (ui::px (8));
     place (h, { { &syncBtn, 58, 0 }, { &freeBtn, 58, 12 }, { &freezeBtn, 64, 0 }, { &scrollBtn, 58, 16 }, { &spectralBtn, 74, 0 }, { &aaBtn, 40, 0 } });
     infoArea = h.getWidth() >= ui::px (120) ? h : juce::Rectangle<int>();
@@ -1070,23 +1069,20 @@ void ScopePage::resized()
         holdBtn.setBounds (f.removeFromRight (ui::px (64)).reduced (0, 3)); f.removeFromRight (ui::px (8));
     }
     place (f, { { &divBtns[0], 38, 0 }, { &divBtns[1], 38, 0 }, { &divBtns[2], 38, 0 }, { &divBtns[3], 38, 0 }, { &divBtns[4], 38, 0 }, { &divBtns[5], 38, 4 },
-                { &tripletBtn, 30, 8 }, { &bpmLabel, 80, 14 } });
-    const bool roomGain = f.getWidth() >= ui::px (130 + 64);
+                { &tripletBtn, 30, 16 }, { &bpmLabel, 80, 18 } });
+    const bool roomGain = f.getWidth() >= ui::px (130 + 92);
     gain.setVisible (roomGain);
     gainText = {};
-    if (roomGain) { gain.setBounds (f.removeFromLeft (ui::px (130))); gainText = f.removeFromLeft (ui::px (64)); f.removeFromLeft (ui::px (10)); }
-    place (f, { { &bpBtn, 46, 4 }, { bpFreq.get(), 58, host ? 4 : 14 }, { host != nullptr ? &listenBtn : nullptr, 60, 10 }, { &sideBtn, 86, 0 } });
+    if (roomGain) { gain.setBounds (f.removeFromLeft (ui::px (130))); gainText = f.removeFromLeft (ui::px (92)); f.removeFromLeft (ui::px (18)); }
+    place (f, { { &bpBtn, 46, 4 }, { bpFreq.get(), 72, host ? 4 : 18 }, { host != nullptr ? &listenBtn : nullptr, 60, 18 }, { &sideBtn, 86, 0 } });
     if (host == nullptr) listenBtn.setVisible (false);
 }
 
 void ScopePage::paint (juce::Graphics& g)
 {
     g.fillAll (theme.bg);
-    g.setColour (theme.accent);
-    g.setFont (juce::FontOptions (ui::fs (22.0f), juce::Font::bold));
-    g.drawText ("Scope", titleArea, juce::Justification::centredLeft);
     g.setColour (theme.text); g.setFont (juce::FontOptions (ui::fs (13.0f)));
-    g.drawText ((s.scopeGainDb >= 0 ? "+" : "") + juce::String (s.scopeGainDb, 1) + "dB", gainText, juce::Justification::centred);
+    g.drawText ("Gain " + juce::String (s.scopeGainDb >= 0 ? "+" : "") + juce::String (s.scopeGainDb, 1) + " dB", gainText, juce::Justification::centred);
     // the window's length, for reference
     auto info = infoArea;
     if (! info.isEmpty()) g.drawText (juce::String (engine.windowSeconds(), engine.windowSeconds() < 10 ? 2 : 1) + " s  " + juce::String (juce::roundToInt (engine.sampleRate() / 100) / 10.0, 1) + " kHz",

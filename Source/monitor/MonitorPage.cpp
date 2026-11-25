@@ -204,7 +204,7 @@ struct MonitorPage::Module : public juce::Component, public juce::TooltipClient
         auto r = getLocalBounds().toFloat().reduced (0.5f);
         g.setColour (kPanel); g.fillRoundedRectangle (r, 6.0f);
         g.setColour (page.dragTarget == id ? kOn : kPanelLine); g.drawRoundedRectangle (r, 6.0f, page.dragTarget == id ? 2.0f : 1.0f);
-        text (g, kModuleNames[id], header.toFloat(), ui::fs (14.5f), kHeaderText);
+        text (g, kModuleNames[id], header.toFloat(), ui::fs (13.0f), kHeaderText);
         if (const auto* ref = page.shownReference(); ref != nullptr && id == Loudness)
         {
             // the reference track's loudness, in its colour, at the right of the header
@@ -260,12 +260,12 @@ struct MonitorPage::Module : public juce::Component, public juce::TooltipClient
     void resized() override
     {
         auto r = getLocalBounds();
-        header = r.removeFromTop (juce::roundToInt (ui::px (28) * juce::jmax (1.0f, textScale() * 0.9f)));
-        auto h = header.reduced (6, 3);
+        header = r.removeFromTop (juce::roundToInt (ui::px (22) * juce::jmax (1.0f, textScale() * 0.9f)));   // a slim title row
+        auto h = header.reduced (5, 2);
         gearR = h.removeFromLeft (h.getHeight());
         closeR = h.removeFromRight (h.getHeight());
         maxR = h.removeFromRight (h.getHeight());
-        body = r.reduced (ui::px (10), ui::px (8));
+        body = r.reduced (ui::px (10), ui::px (5));
         layoutBody();
     }
 
@@ -364,6 +364,7 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
     {
         const auto& L = m().loudness();
         const float w = row.getWidth() / 3;
+        f = juce::jmin (f, w * 0.55f / (6.4f * gTextMul));   // narrow panes: smaller text, never overlapping the next pair
         auto pair = [&] (juce::Rectangle<float> b, const juce::String& name, const juce::String& v, const juce::String& unit, juce::Colour c)
         {
             auto half = b.removeFromLeft (b.getWidth() * 0.45f);
@@ -405,16 +406,20 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
         auto r = body.toFloat();
         const float H = r.getHeight();
         const float big = juce::jlimit (18.0f, 72.0f, H * 0.46f), mid = big * 0.7f, label = juce::jlimit (10.5f, 14.0f, H * 0.13f);
-        auto top = r.removeFromTop (H * 0.70f);
+        // short modules (a small Custom pane): the numbers get the whole height, no LRA / peak / target row
+        const bool footer = H >= label * 1.5f * gTextMul + 22.0f * 1.15f * gTextMul + 18.0f * gTextMul;
+        auto top = footer ? r.removeFromTop (H * 0.70f) : r;
         const float w3 = top.getWidth() / 3;
         auto block = [&] (juce::Rectangle<float> b, const juce::String& title, double v, float size, const juce::String& unit, juce::Colour c)
         {
             text (g, title, b.removeFromTop (label * 1.5f * gTextMul), label, kDim);
+            size = juce::jmin (size, b.getHeight() / (1.15f * gTextMul), b.getWidth() / (3.4f * gTextMul));   // short or narrow panes
             auto vr = b.withSizeKeepingCentre (b.getWidth(), size * 1.15f);
             const auto s = plain (v, 1);
             g.setFont (juce::FontOptions (juce::jmin (size * gTextMul, juce::jmax (size, vr.getHeight())))); const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), s);
             text (g, s, vr, size, c);
-            text (g, unit, { vr.getCentreX() + tw * 0.5f + 3, vr.getBottom() - label * 2.2f, 80, label * 1.4f }, label * 0.9f, kFaint, juce::Justification::left);
+            if (vr.getCentreX() + tw * 0.5f + 3 + label * 2.6f <= b.getRight())          // the unit only where it fits
+                text (g, unit, { vr.getCentreX() + tw * 0.5f + 3, vr.getBottom() - juce::jmin (label * 2.2f, size * 0.9f), 80, label * 1.4f }, label * 0.9f, kFaint, juce::Justification::left);
         };
         block (top.removeFromLeft (w3), "Short Term", L.getShortTerm(), mid, "LUFS", levelColour (L.getShortTerm()));
         auto right = top.removeFromRight (w3);
@@ -422,7 +427,8 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
         const double mom = st().monitorMomMax ? L.getMomentaryMax() : L.getMomentary();
         block (right, st().monitorMomMax ? "Momentary Max" : "Momentary", mom, mid, "LUFS", levelColour (mom));
         momLabel = right.removeFromTop (label * 1.5f * gTextMul).toNearestInt();
-        paintFooter (g, r.reduced (0, 2), juce::jlimit (12.0f, 18.0f, H * 0.17f));
+        if (footer) paintFooter (g, r.reduced (0, 2), juce::jlimit (12.0f, 18.0f, H * 0.17f));
+        else targetsBtnR = targetR = {};
     }
 
     // peak lines on the bars: each holds its highest value for 1.5 s, then falls at 6 LU/s
@@ -1495,7 +1501,6 @@ void MonitorPage::paintOverChildren (juce::Graphics& g)
 void MonitorPage::paint (juce::Graphics& g)
 {
     g.fillAll (kBg);
-    text (g, "Monitor", titleArea.toFloat(), ui::fs (20), kHeaderText, juce::Justification::centredLeft, true);
     // a file's results, or the measurement in progress: a line under the toolbar
     if (fileModel != nullptr || measuring != nullptr)
     {
@@ -1518,7 +1523,7 @@ void MonitorPage::resized()
     auto r = getLocalBounds();
     toolbar = r.removeFromTop (ui::px (44)).reduced (ui::px (10), ui::px (8));
     auto tb = toolbar;
-    titleArea = tb.removeFromLeft (ui::px (getWidth() < ui::px (640) ? 84 : 110));
+    titleArea = {};                                   // no page title: the bottom bar already says Monitor
     resetBtn.setBounds (tb.removeFromRight (ui::px (64)));
     tb.removeFromRight (ui::px (6));
     pauseBtn.setBounds (tb.removeFromRight (ui::px (64)));

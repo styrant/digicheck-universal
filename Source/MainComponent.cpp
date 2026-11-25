@@ -337,6 +337,9 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     bottom.onToggleTempo     = [this] { toggleTempoWindow(); };
     bottom.onToggleFullscreen = [this] { toggleFullscreen(); };
     bottom.onToggleOptions   = [this] { toggleOptions(); };
+    addChildComponent (noInput);
+    noInput.open.onClick = [this] { setOptionsVisible (true); };
+    bottom.attachAnalyzerHeader (analyzerPanel.getBarsHeader(), analyzerPanel.getBarsHeader().layout);
     bottom.onSpectrogramSettings = [this] { openSettings(); };
     bottom.onToggleLufs      = [this] { settings.showLufs = ! settings.showLufs; onChange (Change::Bar); };
     bottom.onZoomIn          = [this] { analyzerPanel.getView().zoomBy (0.6); };
@@ -744,6 +747,14 @@ void MainComponent::updateListen()
     bottom.setListenState (host->isolation().active(), ListenPanel::summary (host->isolation()));
 }
 
+// the "No input" banner: in the app, while no input runs, on every page but Key (which says it itself)
+void MainComponent::updateNoInput()
+{
+    const bool show = host == nullptr && ! inputRunning() && settings.viewMode != BottomBar::Key && ! options.isVisible();
+    if (show != noInput.isVisible()) noInput.setVisible (show);
+    if (show) noInput.toFront (false);
+}
+
 void MainComponent::timerCallback()
 {
     if (host != nullptr)
@@ -763,6 +774,7 @@ void MainComponent::timerCallback()
     balanceView.setInputRunning (inputRunning());
     keyPage.setInputRunning (inputRunning());
     scopePage.setInputRunning (inputRunning());
+    updateNoInput();
     monitorPage.pump();                          // keeps measuring when display frames stall (minimised)
     if (toast.isVisible() && juce::Time::getMillisecondCounterHiRes() * 0.001 > toastUntil) toast.setVisible (false);
     // the reference plays at the mix's integrated loudness (since Reset)
@@ -878,6 +890,8 @@ void MainComponent::resized()
     }
     else
         for (int id = 0; id < 6; ++id) viewComponent (id)->setBounds (r);   // no top toolbar: the analysis uses the full height
+    noInput.setBounds (juce::Rectangle<int> (ui::px (340), ui::px (116)).withCentre ({ r.getCentreX(), r.getY() + r.getHeight() * 2 / 5 }));
+    updateNoInput();
     layoutOptions();
 }
 

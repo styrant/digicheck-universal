@@ -18,6 +18,7 @@ public:
     {
         addChildComponent (fftView);
         addAndMakeVisible (view);
+        addChildComponent (barsHeader);
         for (auto* b : { &barsBtn, &fftBtn })
         {
             b->setClickingTogglesState (false);
@@ -64,6 +65,18 @@ public:
     }
 
     AnalyzerView& getView() noexcept { return view; }
+    // the Bars style's header strip: the bottom bar's analyzer controls live here (BottomBar::attachAnalyzerHeader)
+    struct Strip : public juce::Component
+    {
+        std::function<void (juce::Rectangle<int>)> layout;
+        void paint (juce::Graphics& g) override
+        {
+            g.fillAll (juce::Colour (0xff15171b));
+            g.setColour (juce::Colour (0xff2a2d33)); g.fillRect (0, getHeight() - 1, getWidth(), 1);
+        }
+        void resized() override { if (layout) layout (getLocalBounds().withTrimmedLeft (ui::px (46 * 2 + 20)).reduced (0, ui::px (5))); }
+    };
+    Strip& getBarsHeader() noexcept { return barsHeader; }
     void refreshSettings() { if (settings.isVisible()) settings.refresh(); view.repaint(); }
     std::function<void()> onStateChanged;      // freeze / zoom changed
     std::function<void (int)> onStyleChanged;  // Bars / FFT switched here
@@ -71,12 +84,14 @@ public:
     void resized() override
     {
         auto r = getLocalBounds();
-        view.setBounds (r);
         fftView.setBounds (r);
+        // Bars: a header strip like the FFT style's (the style switch, then the Bars controls)
+        barsHeader.setVisible (! isFft());
+        if (! isFft()) barsHeader.setBounds (r.removeFromTop (ui::px (36)));
+        view.setBounds (r);
         // the style switch: in the FFT header's first slot, or over the bars' top-left corner
         const int bw = ui::px (46), bh = ui::px (26);
-        auto sw = isFft() ? juce::Rectangle<int> (ui::px (8), ui::px (5), bw * 2, bh)
-                          : juce::Rectangle<int> (ui::px (44), ui::px (24), bw * 2, ui::px (22));
+        auto sw = juce::Rectangle<int> (ui::px (8), ui::px (5), bw * 2, bh);
         barsBtn.setBounds (sw.removeFromLeft (bw)); fftBtn.setBounds (sw);
         barsBtn.toFront (false); fftBtn.toFront (false);
         if (settings.isVisible())
@@ -88,6 +103,7 @@ private:
     AnalyzerView view;
     SettingsPanel settings;
     FftView fftView;
+    Strip barsHeader;
     juce::TextButton barsBtn { "Bars" }, fftBtn { "FFT" };
     Settings& s;
     bool active = false;

@@ -68,6 +68,9 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    // moves the Bars analyzer's controls into its header strip (AnalyzerPanel::Strip), laid out there
+    void layoutAnalyzer (juce::Rectangle<int> area, int stripWidth);
+    void attachAnalyzerHeader (juce::Component& strip, std::function<void (juce::Rectangle<int>)>& layout);
 
 private:
     void timerCallback() override;
