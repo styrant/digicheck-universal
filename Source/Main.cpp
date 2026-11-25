@@ -63,22 +63,6 @@ public:
     void systemRequestedQuit() override { quit(); }
 
 private:
-    // Borderless window used for full screen. It is made 1 px taller than the monitor on purpose:
-    // graphics drivers (NVIDIA in particular) treat an OpenGL window that exactly covers a monitor as
-    // exclusive full screen and take it over, which switches an HDR display back to SDR. A borderless
-    // window that is slightly larger stays an ordinary desktop window, so HDR and the video signal are
-    // left alone, and it looks exactly the same.
-    struct FullscreenHost : public juce::Component
-    {
-        FullscreenHost() { setOpaque (true); }
-        void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (0xff0b0c0e)); }
-        void resized() override
-        {
-            if (auto* c = getChildComponent (0)) c->setBounds (0, 0, getWidth(), getHeight() - extra);
-        }
-        int extra = 0;                 // the 1 px hidden below the monitor (exact mode)
-    };
-
     struct MainWindow : public juce::DocumentWindow
     {
         explicit MainWindow (juce::PropertiesFile& p)
@@ -106,45 +90,62 @@ private:
             clearContentComponent();
         }
 
+        // Full screen: this window itself goes borderless and covers the monitor (a separate full-screen
+        // window lost the mouse and keyboard on some setups, e.g. a second monitor). HDR monitors: a GPU
+        // (OpenGL) window covering the whole monitor can be switched by the driver to exclusive /
+        // independent-flip presentation, and Windows then drops the monitor out of HDR.
+        //  0 (default): 1 px short of the monitor's height, so it never covers it: HDR stays on
+        //  1: on a monitor with HDR on, CPU rendering while full screen (GPU again on leaving)
+        //  2: exact full screen, 1 px taller than the monitor (the extra row hidden below it)
         void setAppFullscreen (bool full)
         {
-            if (full == (host != nullptr)) return;
+            if (full == isAppFullscreen) return;
             content->suspendGpu();
             if (full)
             {
                 const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds());
                 if (display == nullptr) { content->resumeGpu(); return; }
                 const auto area = display->logicalBounds.getSmallestIntegerContainer();
-                clearContentComponent();                                   // content is not owned: just detached
-                host = std::make_unique<FullscreenHost>();
-                host->setName (getName());
-                host->addAndMakeVisible (content.get());
-                // HDR monitors: a GPU (OpenGL) window covering the whole monitor can be switched by the driver to
-                // exclusive / independent-flip presentation, and Windows then drops the monitor out of HDR.
-                //  0 (default): 1 px short of the monitor's height, so it never covers it: HDR stays on
-                //  1: on a monitor with HDR on, CPU rendering while full screen (GPU again on leaving)
-                //  2: exact full screen, 1 px taller than the monitor (some drivers still promote it)
                 const int mode = content->getSettings().hdrFullscreen;
                 const bool hdrOn = hdr::isOnAt (juce::Desktop::getInstance().getDisplays().logicalToPhysical (area.getCentre()));
                 if (mode == 1 && hdrOn) content->setCpuOverride (true);
-                host->extra = mode == 2 ? 1 : 0;
-                host->setBounds (mode == 0 ? area.withHeight (area.getHeight() - 1) : area.withHeight (area.getHeight() + host->extra));
-                host->addToDesktop (juce::ComponentPeer::windowAppearsOnTaskbar);
-                host->setVisible (true);
-                host->toFront (true);
-                setVisible (false);
+                savedState = getWindowStateAsString();
+                isAppFullscreen = true;
+                extraRow = mode == 2 ? 1 : 0;
+                setUsingNativeTitleBar (false);          // a borderless (popup) window, same content
+                setTitleBarHeight (0);
+                setResizable (false, false);
+                setBounds (mode == 0 ? area.withHeight (area.getHeight() - 1) : area.withHeight (area.getHeight() + extraRow));
             }
             else
             {
-                host->removeChildComponent (content.get());
-                setContentNonOwned (content.get(), false);
-                setVisible (true);
-                toFront (true);
-                host.reset();
+                isAppFullscreen = false;
+                extraRow = 0;
+                setTitleBarHeight (26);
+                setUsingNativeTitleBar (true);
+                setResizable (true, true);
+                if (! restoreWindowStateFromString (savedState)) centreWithSize (1300, 760);
                 content->setCpuOverride (false);
             }
+            setVisible (true);
+            toFront (true);
             content->setFullscreenState (full);
             content->resumeGpu();
+            // once the window is up and active, give the content the keyboard
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<juce::Component> (content.get())]
+            {
+                if (safe != nullptr) safe->grabKeyboardFocus();
+            });
+        }
+
+        // no frame or title bar while full screen; the optional hidden row sits below the content
+        juce::BorderSize<int> getBorderThickness() const override
+        {
+            return isAppFullscreen ? juce::BorderSize<int>() : DocumentWindow::getBorderThickness();
+        }
+        juce::BorderSize<int> getContentComponentBorder() const override
+        {
+            return isAppFullscreen ? juce::BorderSize<int> (0, 0, extraRow, 0) : DocumentWindow::getContentComponentBorder();
         }
 
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
@@ -152,7 +153,9 @@ private:
         std::unique_ptr<Core> core;
         std::unique_ptr<AudioEngine> device;
         std::unique_ptr<MainComponent> content;
-        std::unique_ptr<FullscreenHost> host;
+        bool isAppFullscreen = false;
+        int extraRow = 0;                         // full screen mode 2: the 1 px row hidden below the monitor
+        juce::String savedState;                  // the window's place before full screen
     };
 
     // SPECTROSCOPE_TEST_BENCH=1: after the self-test's views have data, time 30 repaints of each view

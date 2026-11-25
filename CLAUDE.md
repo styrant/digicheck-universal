@@ -97,6 +97,7 @@ cmake --build build --parallel
 - **CI runner:** it has no GPU. Set `SPECTROSCOPE_NO_GPU=1` for anything that opens the app's window.
 - **Settings in tests:** `blockSavingForTest()` keeps test runs from overwriting the user's settings.
 - **Snapshots:** snapshotting a hosted VST3 editor gives a blank image (native child window). Render the editor directly instead.
+- **Full screen** is the main window made borderless in place (`setAppFullscreen` in `Main.cpp`). The earlier separate full-screen window lost mouse and keyboard on the user's second monitor.
 - **The keynet weights are already fp16.** The ggml CPU variants gain about 20 % on prefill only, and there's no AVX-512 variant.
 
 ## Recent work, newest first (all pushed; CI green)
