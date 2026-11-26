@@ -104,6 +104,10 @@ private:
     int tick = 0;
     std::unique_ptr<juce::DocumentWindow> tempoWindow;
     std::atomic<int> glFrames { 0 };
+    // GPU frame pacing (see onFrame): when the last frame was requested, how long its painting took
+    // (component painting holds the message lock), when it finished, and whether one is still pending
+    std::atomic<double> glTriggerMs { 0 }, glBusyMs { 0 }, glDoneMs { 0 };
+    std::atomic<bool> glInFlight { false };
     double glFpsTime = 0;
 
     void saveAll();

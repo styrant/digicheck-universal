@@ -433,9 +433,19 @@ void MainComponent::openGLContextClosing()    { view.glRelease(); }
 void MainComponent::renderOpenGL()
 {
     using namespace juce::gl;
+    // JUCE has just painted the components (under the message lock): how long that took, smoothed
+    // (rises at once, falls slowly) so onFrame can leave the message thread room between frames
+    const double start = juce::Time::getMillisecondCounterHiRes();
+    if (glInFlight.exchange (false))
+    {
+        const double busy = juce::jlimit (0.0, 100.0, start - glTriggerMs.load());
+        const double old = glBusyMs.load();
+        glBusyMs.store (busy > old ? busy : old * 0.9 + busy * 0.1);
+    }
     juce::OpenGLHelpers::clear (juce::Colour (0xff0b0c0e));
     view.glRender (ownerW.load(), ownerH.load());
     glFrames.fetch_add (1);
+    glDoneMs.store (juce::Time::getMillisecondCounterHiRes());
 }
 
 // One display frame (monitor vblank, thinned out to the frame-rate cap). Everything that animates
@@ -443,12 +453,23 @@ void MainComponent::renderOpenGL()
 void MainComponent::onFrame (double t)
 {
     if (! frameclock::clock().due (t)) return;
+    // GPU renderer: every component is painted on the GL thread while it holds the message lock, so
+    // the controls can't react meanwhile. When painting is slow (busy views, a fast monitor), don't
+    // start frames back to back: skip a frame while one is still pending, and wait at least as long
+    // as the last one took to paint (at most about half the time painting). Animations use the real
+    // elapsed time, so they keep their speed; only the frame rate drops.
+    const double nowMs = juce::Time::getMillisecondCounterHiRes();
+    if (glContext.isAttached())
+    {
+        if (glInFlight.load() && nowMs - glTriggerMs.load() < 250.0) return;   // (250 ms: a frame that never came)
+        if (nowMs - glDoneMs.load() < glBusyMs.load()) return;
+    }
     bottom.onFrame();
     balanceView.onFrame (t);
     scopePage.onFrame (t);
     monitorPage.onFrame (t);
     analyzerPanel.onFrame (t);
-    if (glContext.isAttached()) glContext.triggerRepaint();
+    if (glContext.isAttached()) { glTriggerMs.store (nowMs); glInFlight.store (true); glContext.triggerRepaint(); }
 }
 
 void MainComponent::OutsideClick::mouseDown (const juce::MouseEvent& e)
