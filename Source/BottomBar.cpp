@@ -312,7 +312,7 @@ void BottomBar::setUpdateAvailable (const juce::String& v)
 void BottomBar::setHelp (bool on)     { helpBtn.setToggleState (on, juce::dontSendNotification); }
 
 void BottomBar::setPaused (bool p)     { pause.setButtonText (p ? ">" : "||"); }
-void BottomBar::setFullscreen (bool f) { full.setButtonText (f ? "Exit full screen" : "Full screen"); }
+void BottomBar::setFullscreen (bool f) { full.setButtonText (f ? "Exit full screen" : "Full screen"); resized(); }   // the corner changes width
 void BottomBar::setTempoOpen (bool o)  { tempoBtn.setToggleState (o, juce::dontSendNotification); }
 void BottomBar::setOptionsOpen (bool o) { optionsBtn.setToggleState (o, juce::dontSendNotification); }
 void BottomBar::setAnalyzerState (bool frozen, bool zoomed)
@@ -359,7 +359,9 @@ void BottomBar::resized()
 
     // narrow windows (the plugin's smallest is 900 px): short view names, a short Full button, then no Tempo
     // button (T still opens it); what the fixed parts need at full size:
-    const int need = 740 + (plugin ? 112 : 96) + 268 + 16;
+    // (full screen: "Exit full screen" is wider and the Hide bar button joins the corner)
+    const bool fullNow = ! plugin && full.getButtonText().startsWith ("Exit");
+    const int need = 740 + (plugin ? 112 : 96) + 268 + 16 + (fullNow ? 32 + 82 : 0);
     const bool compact = getWidth() < ui::px (need);
     const bool noTempo = getWidth() < ui::px (need - 138 - (plugin ? 0 : 44) - 40);
     const char* longNames[]  = { "Spectrogram", "Analyzer", "Balance", "Key", "Scope", "Monitor", "Custom" };
@@ -400,6 +402,8 @@ void BottomBar::resized()
     small (helpBtn, ui::px (30));
     hideBarBtn.setVisible (! plugin && isFull);
     if (! plugin && isFull) small (hideBarBtn, ui::px (78));
+    // the corner buttons stay on top and clickable even if a crowded page's controls run into them
+    for (auto* b : { &full, &helpBtn, &hideBarBtn }) b->toFront (false);
     if (updateBtn.isVisible()) small (updateBtn, ui::px (124));
     resetBtn.setVisible (s.showLufs);
     lufs.setVisible (s.showLufs);
