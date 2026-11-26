@@ -19,6 +19,7 @@ Read this first. It covers what the project is, how the user likes to work, how 
   Claude-Session: https://claude.ai/code/session_01SfLb2kwvzXQvXFtMgtQmM7
   ```
   (or this session's own attribution lines, if Claude Code supplies them).
+- **Change log:** every commit adds an entry at the top of `CHANGELOG.txt`: the version it will build (1.3 + the next CI run number: `gh run list --limit 1` + 1), the time in US Central (CST, 12-hour), and one or two plain lines on the feature or fix.
 - **Things never to do:**
   - Never put signing credentials in code; they belong only in GitHub secrets.
   - Never bundle the transcription model. It's downloaded inside the app and its license is non-commercial.
