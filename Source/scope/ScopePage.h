@@ -65,6 +65,8 @@ private:
     ScopeTap& tap;
     Settings& s;
     std::function<void()> changed;
+    void cyclePalette (int dir);                 // the next / previous spectral palette (C key, wheel over Spectral)
+    std::function<void (const juce::String&)> onToast;
     scope::ScopeModel engine;
     ScopeTheme theme;
     bool active = false, inputRunning = false;
@@ -81,7 +83,7 @@ private:
     std::unique_ptr<FreqKnob> bpFreq;
 
     juce::TextButton syncBtn { "Sync" }, freeBtn { "Free" }, freezeBtn { "Freeze" }, scrollBtn { "Scroll" },
-                     spectralBtn { "Spectral" }, aaBtn { "AA" }, menuBtn { "Menu" };
+                     aaBtn { "AA" }, menuBtn { "Menu" };
     std::array<juce::TextButton, 6> divBtns;
     struct HostLink* host = nullptr;
     juce::TextButton listenBtn { "Listen" };
@@ -93,8 +95,13 @@ private:
         void mouseDown (const juce::MouseEvent& e) override { if (e.mods.isPopupMenu()) { if (onRightClick) onRightClick(); return; } juce::TextButton::mouseDown (e); }
         void mouseUp (const juce::MouseEvent& e) override   { if (! e.mods.isPopupMenu()) juce::TextButton::mouseUp (e); }
         void mouseDrag (const juce::MouseEvent& e) override { if (! e.mods.isPopupMenu()) juce::TextButton::mouseDrag (e); }
+        std::function<void (int)> onWheel;      // +1 / -1 per wheel step
+        void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
+            if (onWheel && std::abs (w.deltaY) > 1.0e-6f) onWheel (w.deltaY > 0 ? -1 : 1); else juce::TextButton::mouseWheelMove (e, w);
+        }
     };
-    MenuButton bpBtn { "BP" };
+    MenuButton bpBtn { "BP" }, spectralBtn { "Spectral" };
     juce::TextButton tripletBtn { "T" }, sideBtn { "Side2SC" }, holdBtn { "Hold" }, resetBtn { "Reset" }, recBtn { "Rec" };
     juce::Label bpmLabel;
     juce::Slider gain { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };

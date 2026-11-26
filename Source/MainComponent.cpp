@@ -367,6 +367,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     bottom.onAnalyzerPresets    = [this] (juce::Component& a) { showAnalyzerPresets (a); };
     analyzerPanel.onStateChanged = [this] { bottom.setAnalyzerState (analyzerPanel.getView().isFrozen(), analyzerPanel.getView().isZoomed()); };
     analyzerPanel.onStateChanged();
+    scopePage.onToast = [this] (const juce::String& t) { showToast (t); };
     setView (settings.viewMode);
 
     // GPU rendering: one OpenGL context for the whole window. The spectrogram draws its texture in
@@ -1381,6 +1382,8 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
         else if (! bal) view.togglePause();
         return true;
     }
+    if (kv == BottomBar::Scope && (k.getTextCharacter() == 'c' || k.getTextCharacter() == 'C') && ! k.getModifiers().isCommandDown())
+    { scopePage.cyclePalette (k.getModifiers().isShiftDown() ? -1 : 1); return true; }        // C / Shift+C: next / previous palette
     if (k.getTextCharacter() == 'v' || k.getTextCharacter() == 'V') { setView ((settings.viewMode + 1) % BottomBar::NumViews); return true; }
     if (k.getTextCharacter() >= '1' && k.getTextCharacter() <= '7') { setView ((int) (k.getTextCharacter() - '1')); return true; }
     if (k == juce::KeyPress (juce::KeyPress::F11Key, juce::ModifierKeys::shiftModifier, 0))

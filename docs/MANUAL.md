@@ -213,6 +213,7 @@ A tempo-synced oscilloscope: the window is a musical length, so drums and bass l
 - **Spectral** colours the wave by frequency: red/orange lows, yellow/green mids, purple highs. **AA** smooths the outline.
 - **Gain** (−24 to +24 dB; Ctrl+wheel) magnifies quiet parts. Anything past 0 dBFS turns the clipping colour.
 - **BP** and its knob show only one band (for example 60 Hz for the kick). Right-click **BP** to switch to a low-pass (**LP**: everything below the knob) or high-pass (**HP**: everything above it).
+- **Spectral palettes:** right-click **Spectral** for the list, scroll the mouse wheel over it, or press **C** (Shift+C goes back) to step through them; the name shows briefly.
 - **Side2SC** overlays the Side signal (or, in the plugin, the sidechain). **Hold** keeps a ghost copy for comparison.
 - **Mouse:**
   - The wheel zooms, Shift+wheel scrolls, Alt+wheel changes the length.

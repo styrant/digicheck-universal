@@ -620,17 +620,31 @@ ScopePage::ScopePage (ScopeTap& t, Settings& st, std::function<void()> ch) : tap
     syncBtn.setEnabled (false);
     syncBtn.setTooltip ("Sync follows the DAW's transport: in the VST3 version");
     freeBtn.setTooltip ("Free: runs whenever audio comes in");
-    for (auto* b : { &freezeBtn, &scrollBtn, &spectralBtn, &aaBtn }) style (*b, "text");
+    for (auto* b : { &freezeBtn, &scrollBtn, static_cast<juce::TextButton*> (&spectralBtn), &aaBtn }) style (*b, "text");
     style (menuBtn, "box");
     freezeBtn.setTooltip ("Freeze: hold the picture still (Space)");
     scrollBtn.setTooltip ("Scroll: the newest audio enters at the right and moves left. Off: the trace sweeps left to right and, after silence, starts again at the left");
-    spectralBtn.setTooltip ("Colour the waveform by frequency: sub, low, mid, high, air");
+    spectralBtn.setTooltip ("Colour the waveform by frequency: sub, low, mid, high, air. Right-click: palettes; mouse wheel or C: next palette");
     aaBtn.setTooltip ("Anti-aliasing: smoother edges");
     freezeBtn.onClick = [this] { toggleFreeze(); };
     scrollBtn.onClick = [this] { s.scopeMode = s.scopeMode == scope::Scroll ? scope::Free : scope::Scroll; s.scopeSync = false; engine.setMode (effectiveMode()); updateButtons(); if (changed) changed(); };
     syncBtn.onClick = [this] { s.scopeSync = true; engine.setMode (effectiveMode()); updateButtons(); if (changed) changed(); };
     freeBtn.onClick = [this] { s.scopeSync = false; engine.setMode (effectiveMode()); updateButtons(); if (changed) changed(); };
     spectralBtn.onClick = [this] { s.scopeSpectral = ! s.scopeSpectral; updateButtons(); if (changed) changed(); };
+    spectralBtn.onWheel = [this] (int d) { cyclePalette (d); };
+    spectralBtn.onRightClick = [this]
+    {
+        juce::PopupMenu m;
+        const auto pal = ScopeTheme::paletteNames();
+        for (int i = 0; i < pal.size(); ++i)
+            m.addItem (pal[i], true, s.scopePalette == i, [this, i]
+            {
+                s.scopePalette = i; if (i > 0) s.scopeSpectral = true;
+                loadTheme(); updateButtons(); display->repaint(); repaint();
+                if (changed) changed();
+            });
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&spectralBtn));
+    };
     aaBtn.onClick = [this] { s.scopeAA = ! s.scopeAA; updateButtons(); if (changed) changed(); };
     menuBtn.onClick = [this] { showMenu(); };
 
@@ -724,7 +738,7 @@ ScopePage::ScopePage (ScopeTap& t, Settings& st, std::function<void()> ch) : tap
 
 ScopePage::~ScopePage()
 {
-    for (auto* b : { &syncBtn, &freeBtn, &freezeBtn, &scrollBtn, &spectralBtn, &aaBtn, &menuBtn, &tripletBtn, static_cast<juce::TextButton*> (&bpBtn), &sideBtn, &holdBtn, &resetBtn, &recBtn, &listenBtn })
+    for (auto* b : { &syncBtn, &freeBtn, &freezeBtn, &scrollBtn, static_cast<juce::TextButton*> (&spectralBtn), &aaBtn, &menuBtn, &tripletBtn, static_cast<juce::TextButton*> (&bpBtn), &sideBtn, &holdBtn, &resetBtn, &recBtn, &listenBtn })
         b->setLookAndFeel (nullptr);
     for (auto& b : divBtns) b.setLookAndFeel (nullptr);
     gain.setLookAndFeel (nullptr);
@@ -915,6 +929,17 @@ void ScopePage::updateButtons()
     gain.setValue (s.scopeGainDb, juce::dontSendNotification);
     bpFreq->repaint(); waveIcon->repaint();
     repaint();
+}
+
+void ScopePage::cyclePalette (int dir)
+{
+    const auto pal = ScopeTheme::paletteNames();
+    if (pal.isEmpty()) return;
+    s.scopePalette = (s.scopePalette + dir + pal.size()) % pal.size();
+    s.scopeSpectral = true;
+    loadTheme(); updateButtons(); display->repaint(); repaint();
+    if (changed) changed();
+    if (onToast) onToast ("Palette: " + pal[s.scopePalette]);
 }
 
 void ScopePage::loadTheme()
