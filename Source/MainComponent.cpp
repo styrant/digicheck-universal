@@ -274,6 +274,11 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     for (auto* c : std::initializer_list<juce::Component*> { &copyImgBtn, &backupBtn, &restoreBtn, &defaultsBtn, &updateToggle, &safeToggle })
         options.addAndMakeVisible (c);
     options.addChildComponent (updateBtn);
+    versionLabel.setText ("UAV " + juce::String (ProjectInfo::versionString), juce::dontSendNotification);
+    versionLabel.setJustificationType (juce::Justification::centredRight);
+    versionLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.45f));
+    versionLabel.setTooltip ("The version you're running");
+    options.addAndMakeVisible (versionLabel);
     if (settings.checkUpdates)
         juce::Timer::callAfterDelay (4000, [safe = juce::Component::SafePointer<MainComponent> (this)] { if (safe) safe->checkForUpdates(); });
     hdrBox.addItemList ({ "Keep HDR (1 px gap at the bottom)", "Keep HDR (CPU rendering while full screen)", "Exact full screen (may turn HDR off)" }, 1);
@@ -1357,6 +1362,8 @@ void MainComponent::layoutOptions()
     backupBtn.setBounds (row.removeFromLeft (px (100))); row.removeFromLeft (px (6));
     restoreBtn.setBounds (row.removeFromLeft (px (90))); row.removeFromLeft (px (6));
     defaultsBtn.setBounds (row.removeFromLeft (px (140)));
+    versionLabel.setFont (juce::FontOptions (ui::fs (12.0f)));
+    versionLabel.setBounds (row.withTrimmedLeft (px (6)));          // the rest of the row, right-aligned
 }
 
 bool MainComponent::keyPressed (const juce::KeyPress& k)

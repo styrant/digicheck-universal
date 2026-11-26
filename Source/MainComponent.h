@@ -200,6 +200,7 @@ private:
     void deleteLayout (const juce::String& name);
     juce::TextButton startBtn { "Start" }, settingsBtn { "View settings" }, rescanBtn { "Rescan" }, manualBtn { "User manual" }, copyImgBtn { "Copy view as image" },
                      backupBtn { "Back up..." }, restoreBtn { "Restore..." }, defaultsBtn { "Reset to defaults" }, updateBtn;
+    juce::Label versionLabel;                // "UAV 1.3.n" at the end of the Options panel
     juce::ToggleButton updateToggle { "Check for updates" }, safeToggle { "Colour-blind-friendly meters" }, mixToggle { "DAW (UAV Bridge)" },
                        bridgeToggle { "Send to the UAV app (its From DAW input)" };
     void backupSettings();

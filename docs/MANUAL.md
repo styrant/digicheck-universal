@@ -334,6 +334,7 @@ Some graphics drivers switch a full-screen OpenGL window to *exclusive* mode. Wi
 - **Colour-blind-friendly meters:** where colour means good / warning / bad (loudness and level meters, phase, the dynamics zones, the Balance markers, the LUFS boxes), red and green change to sky blue, yellow and vermillion, which stay distinct with red-green colour blindness. In Balance, "in range" turns white.
 
 ### Updates and settings (Options)
+- **Version:** the version you're running is shown at the bottom right of Options (e.g. *UAV 1.3.142*).
 - **Check for updates** (on by default): at start-up the app asks GitHub whether there's a newer *Latest build*; if so, a small green "1.3.x available" button appears at the bottom right (and in Options). Nothing else is sent.
 - **Back up...** saves everything to one `.uavbackup` file: all settings, presets, Custom layouts, Scope themes and Balance targets. **Restore...** loads one (restart the app, or reopen the project in a DAW, to use it).
 - **Reset to defaults** puts every setting back to its default; presets, layouts, themes and targets are kept, and so is the audio input. Restart to use it.
