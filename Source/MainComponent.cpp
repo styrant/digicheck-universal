@@ -424,9 +424,10 @@ void MainComponent::applyRenderer()
         view.setGpuMode (true);
         glContext.attachTo (*this);
     }
-    else if (! wantGpu && glContext.isAttached())
+    else if (! wantGpu && (glContext.isAttached() || view.isGpuMode()))
     {
-        glContext.detach();
+        // (also when the context is already detached: full screen suspends it before switching to CPU)
+        if (glContext.isAttached()) glContext.detach();
         view.setGpuMode (false);
         repaint();
     }

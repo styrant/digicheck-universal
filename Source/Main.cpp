@@ -116,11 +116,15 @@ private:
                 setTitleBarHeight (0);
                 setResizable (false, false);
                 setBounds (mode == 0 ? area.withHeight (area.getHeight() - 1) : area.withHeight (area.getHeight() + extraRow));
+                // a window that doesn't exactly cover the monitor isn't treated as full screen by Windows, so the
+                // taskbar would stay on top of it: keep this one above the taskbar while full screen
+                setAlwaysOnTop (true);
             }
             else
             {
                 isAppFullscreen = false;
                 extraRow = 0;
+                setAlwaysOnTop (false);
                 setTitleBarHeight (26);
                 setUsingNativeTitleBar (true);
                 setResizable (true, true);
