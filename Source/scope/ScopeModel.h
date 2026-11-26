@@ -119,7 +119,7 @@ namespace scope
         void arm();
         void disarm();
         Rec recState() const                { return rec; }
-        double recProgress() const          { return rec == Rec::Recording ? (double) takeL.size() / (double) live.n : rec == Rec::Done ? 1.0 : 0.0; }
+        double recProgress() const          { return rec == Rec::Recording ? (double) takeL.size() / (double) windowSamples() : rec == Rec::Done ? 1.0 : 0.0; }
 
         struct Take { std::vector<float> l, r; double sampleRate = 0; };
         // the recording (or, without one, the window's audio, oldest first), processed:
@@ -137,6 +137,10 @@ namespace scope
 
         double sr = 48000, window = 2.0, bpHz = 100.0;
         int bpType = 0;
+        std::size_t windowSamples() const { return (std::size_t) std::llround (window * sr); }
+        // Scroll draws a little behind the newest sample (smooth scrolling), so it keeps that much more
+        // history; otherwise the left edge would already be overwritten (blank at short divisions)
+        std::size_t ringSize() const { return windowSamples() + (mode == Scroll ? (std::size_t) std::llround (0.25 * sr) : 0); }
         int source = Mid, mode = Free;
         bool frozen = false, holding = false, overlaySc = false;
         Rings live, held;

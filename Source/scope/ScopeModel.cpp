@@ -51,7 +51,7 @@ namespace scope
         seconds = std::clamp (seconds, 0.01, 120.0);
         if (rate == sr && seconds == window && live.n > 0) return;
         sr = rate; window = seconds;
-        live.resize ((std::size_t) std::llround (window * sr));
+        live.resize (ringSize());
         held = Rings {};
         holding = false;
         // band split: sub | low | mid | high | air
@@ -68,7 +68,9 @@ namespace scope
     void ScopeModel::setMode (int m)
     {
         if (m == mode) return;
+        const bool resize = (m == Scroll) != (mode == Scroll);
         mode = m;
+        if (resize) live.resize (ringSize());
         live.clear();
         live.sparse = mode == Sync;
     }
@@ -120,7 +122,7 @@ namespace scope
             if (rec == Rec::Recording)
             {
                 takeL.push_back (l); takeR.push_back (r);
-                if (takeL.size() >= live.n) rec = Rec::Done;
+                if (takeL.size() >= windowSamples()) rec = Rec::Done;
             }
 
             if (frozen) continue;
