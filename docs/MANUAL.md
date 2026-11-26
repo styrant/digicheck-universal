@@ -277,7 +277,7 @@ Put several views on one page: for example the spectrogram large on the left, wi
    - a 2 × 2 grid
 3. In the same menu, choose what each **Pane** shows: Spectrogram, Analyzer, Balance, Key, Scope, Monitor, or Empty. A view can be in only one pane; picking one that's already in another pane swaps the two.
 4. **Resize** the panes by dragging the gaps between them. *Equal sizes* (in the menu) puts them back.
-   - **Quicker:** move the mouse over a pane and a small header with its view's name appears at the top. Click it to change the view, empty the pane or swap it with another. Right-clicking an empty pane, or the gap next to a pane, opens the same menu. (Right-click inside a view still opens that view's own menu.)
+   - **Quicker:** move the mouse to the top edge of a pane and a small header with its view's name appears there (it stays out of the way of the view's own controls). Click it to change the view, empty the pane or swap it with another. Right-clicking an empty pane, or the gap next to a pane, opens the same menu. (Right-click inside a view still opens that view's own menu.)
 5. **Click a pane** to work with it: it gets a blue outline, and the bottom bar shows its controls next to Layout (the Balance target and smoothing, the Spectrogram's presets and scale, the Analyzer's controls). Keys like Space, P and S act on that pane too.
 6. **Saved layouts:** *Layout ▾ → Save layout as...* stores the whole arrangement (layout, panes, sizes and the Monitor's modules) under a name, for example "Mixing" or "Mastering". Switch with *Saved layouts*, or press **Ctrl+1** to **Ctrl+9** for the first nine; *Update* and *Delete* act on the layout you loaded. Saved layouts are shared by the app and all plugin instances.
 
