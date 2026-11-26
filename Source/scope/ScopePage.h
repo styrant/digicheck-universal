@@ -28,6 +28,8 @@ class ScopePage : public juce::Component
 {
 public:
     ScopePage (ScopeTap&, Settings&, std::function<void()> settingsChanged);
+    void cyclePalette (int dir);                 // the next / previous spectral palette (C key, wheel over Spectral)
+    std::function<void (const juce::String&)> onToast;
     ~ScopePage() override;
 
     void setActive (bool shown);
@@ -65,8 +67,6 @@ private:
     ScopeTap& tap;
     Settings& s;
     std::function<void()> changed;
-    void cyclePalette (int dir);                 // the next / previous spectral palette (C key, wheel over Spectral)
-    std::function<void (const juce::String&)> onToast;
     scope::ScopeModel engine;
     ScopeTheme theme;
     bool active = false, inputRunning = false;
