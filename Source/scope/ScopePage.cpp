@@ -129,7 +129,7 @@ struct ScopePage::FreqKnob : public juce::Component, public juce::SettableToolti
         const double d = (e.getDistanceFromDragStartX() - e.getDistanceFromDragStartY()) / 150.0;
         page.s.scopeBPHz = juce::jlimit (20.0, 20000.0, startHz * std::pow (2.0, d * 3));
         page.engine.setBandpass (page.s.scopeBPHz);
-        if (page.host != nullptr && page.host->isolation().bandpass.load()) page.host->setScopeListen (true, page.s.scopeBPHz);
+        if (page.host != nullptr && page.host->isolation().bandpass.load()) page.host->setScopeListen (true, page.s.scopeBPHz, page.s.scopeBPType);
         repaint();
     }
     void mouseUp (const juce::MouseEvent&) override { if (page.changed) page.changed(); }
@@ -668,9 +668,24 @@ ScopePage::ScopePage (ScopeTap& t, Settings& st, std::function<void()> ch) : tap
     gain.onDragEnd = [this] { if (changed) changed(); };
     addAndMakeVisible (gain);
 
-    for (auto* b : { &bpBtn, &sideBtn, &holdBtn, &resetBtn, &recBtn }) style (*b, "box");
+    for (auto* b : { static_cast<juce::TextButton*> (&bpBtn), &sideBtn, &holdBtn, &resetBtn, &recBtn }) style (*b, "box");
     recBtn.getProperties().set ("rec", true);
-    bpBtn.setTooltip ("Band-pass the display around the frequency on the right (drag it). Only the picture changes");
+    bpBtn.setTooltip ("Filter the display at the frequency on the right (drag it): band-pass, or right-click for low-pass / high-pass. Only the picture changes");
+    bpBtn.onRightClick = [this]
+    {
+        juce::PopupMenu m;
+        const char* names[] = { "Band-pass (BP)", "Low-pass (LP)", "High-pass (HP)" };
+        for (int i = 0; i < 3; ++i)
+            m.addItem (names[i], true, s.scopeBPType == i, [this, i]
+            {
+                s.scopeBPType = i;
+                engine.setFilterType (i);
+                if (host != nullptr && host->isolation().bandpass.load()) host->setScopeListen (true, s.scopeBPHz, i);
+                updateButtons(); bpFreq->repaint(); display->repaint();
+                if (changed) changed();
+            });
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&bpBtn));
+    };
     sideBtn.setTooltip ("Side2SC: the side signal (L - R) over the waveform. Loud: wide or out of phase; barely there: close to mono");
     holdBtn.setTooltip ("Hold: keep the current picture behind the live one, to compare before / after");
     resetBtn.setTooltip ("Clear the live waveform (not the Hold picture)");
@@ -695,12 +710,13 @@ ScopePage::ScopePage (ScopeTap& t, Settings& st, std::function<void()> ch) : tap
         if (host == nullptr) return;
         const bool on = ! host->isolation().bandpass.load();
         if (on && ! s.scopeBP) s.scopeBP = true;
-        host->setScopeListen (on, s.scopeBPHz);
+        host->setScopeListen (on, s.scopeBPHz, s.scopeBPType);
         updateButtons();
     };
     addChildComponent (listenBtn);
     engine.setSource (s.scopeSource);
     engine.setMode (effectiveMode());
+    engine.setFilterType (s.scopeBPType);
     engine.setBandpass (s.scopeBPHz);
     configure();
     updateButtons();
@@ -708,7 +724,7 @@ ScopePage::ScopePage (ScopeTap& t, Settings& st, std::function<void()> ch) : tap
 
 ScopePage::~ScopePage()
 {
-    for (auto* b : { &syncBtn, &freeBtn, &freezeBtn, &scrollBtn, &spectralBtn, &aaBtn, &menuBtn, &tripletBtn, &bpBtn, &sideBtn, &holdBtn, &resetBtn, &recBtn, &listenBtn })
+    for (auto* b : { &syncBtn, &freeBtn, &freezeBtn, &scrollBtn, &spectralBtn, &aaBtn, &menuBtn, &tripletBtn, static_cast<juce::TextButton*> (&bpBtn), &sideBtn, &holdBtn, &resetBtn, &recBtn, &listenBtn })
         b->setLookAndFeel (nullptr);
     for (auto& b : divBtns) b.setLookAndFeel (nullptr);
     gain.setLookAndFeel (nullptr);
@@ -884,6 +900,7 @@ void ScopePage::updateButtons()
     for (int i = 0; i < 6; ++i) divBtns[(size_t) i].setToggleState (i == s.scopeDivision, juce::dontSendNotification);
     tripletBtn.setToggleState (s.scopeTriplet, juce::dontSendNotification);
     bpBtn.setToggleState (s.scopeBP, juce::dontSendNotification);
+    bpBtn.setButtonText (s.scopeBPType == 1 ? "LP" : s.scopeBPType == 2 ? "HP" : "BP");
     sideBtn.setToggleState (s.scopeSide, juce::dontSendNotification);
     holdBtn.setToggleState (engine.isHolding(), juce::dontSendNotification);
     const auto r = engine.recState();

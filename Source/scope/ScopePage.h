@@ -85,7 +85,17 @@ private:
     std::array<juce::TextButton, 6> divBtns;
     struct HostLink* host = nullptr;
     juce::TextButton listenBtn { "Listen" };
-    juce::TextButton tripletBtn { "T" }, bpBtn { "BP" }, sideBtn { "Side2SC" }, holdBtn { "Hold" }, resetBtn { "Reset" }, recBtn { "Rec" };
+    // a button whose right-click opens a menu instead of clicking it
+    struct MenuButton : juce::TextButton
+    {
+        using juce::TextButton::TextButton;
+        std::function<void()> onRightClick;
+        void mouseDown (const juce::MouseEvent& e) override { if (e.mods.isPopupMenu()) { if (onRightClick) onRightClick(); return; } juce::TextButton::mouseDown (e); }
+        void mouseUp (const juce::MouseEvent& e) override   { if (! e.mods.isPopupMenu()) juce::TextButton::mouseUp (e); }
+        void mouseDrag (const juce::MouseEvent& e) override { if (! e.mods.isPopupMenu()) juce::TextButton::mouseDrag (e); }
+    };
+    MenuButton bpBtn { "BP" };
+    juce::TextButton tripletBtn { "T" }, sideBtn { "Side2SC" }, holdBtn { "Hold" }, resetBtn { "Reset" }, recBtn { "Rec" };
     juce::Label bpmLabel;
     juce::Slider gain { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };
     juce::Rectangle<int> infoArea, header, footer, gainText, titleArea;

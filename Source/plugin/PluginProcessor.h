@@ -51,7 +51,7 @@ public:
     bool sidechainConnected() const override         { return scLive.load(); }
     AnalysisEngine* sidechainEngine() override       { return &scEngine; }
     void setScopeSyncBars (double bars) override     { syncBars = bars; }
-    void setScopeListen (bool on, double hz) override { iso.bandpass = on; iso.bandpassHz = (float) hz; }
+    void setScopeListen (bool on, double hz, int type) override { iso.bandpassType = type; iso.bandpass = on; iso.bandpassHz = (float) hz; }
     BandIsolatorParams& isolation() override         { return iso; }
     juce::String describe() const override;
     juce::StringArray otherInstances() const override;

@@ -84,7 +84,8 @@ namespace scope
         int  getMode() const                { return mode; }
         void setFrozen (bool f)             { frozen = f; }
         bool isFrozen() const               { return frozen; }
-        void setBandpass (double hz);       // the display band-pass's centre (always computed; shown when BP is on)
+        void setBandpass (double hz);
+        void setFilterType (int t);          // 0 band-pass, 1 low-pass, 2 high-pass (at the same frequency)       // the display band-pass's centre (always computed; shown when BP is on)
         double bandpassHz() const           { return bpHz; }
 
         void push (const float* left, const float* right, int n);
@@ -135,6 +136,7 @@ namespace scope
         void write (float l, float r, float overlay);
 
         double sr = 48000, window = 2.0, bpHz = 100.0;
+        int bpType = 0;
         int source = Mid, mode = Free;
         bool frozen = false, holding = false, overlaySc = false;
         Rings live, held;

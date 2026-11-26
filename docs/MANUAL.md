@@ -212,7 +212,7 @@ A tempo-synced oscilloscope: the window is a musical length, so drums and bass l
   - **Freeze** (Space) stops it.
 - **Spectral** colours the wave by frequency: red/orange lows, yellow/green mids, purple highs. **AA** smooths the outline.
 - **Gain** (−24 to +24 dB; Ctrl+wheel) magnifies quiet parts. Anything past 0 dBFS turns the clipping colour.
-- **BP** and its knob show only one band (for example 60 Hz for the kick).
+- **BP** and its knob show only one band (for example 60 Hz for the kick). Right-click **BP** to switch to a low-pass (**LP**: everything below the knob) or high-pass (**HP**: everything above it).
 - **Side2SC** overlays the Side signal (or, in the plugin, the sidechain). **Hold** keeps a ghost copy for comparison.
 - **Mouse:**
   - The wheel zooms, Shift+wheel scrolls, Alt+wheel changes the length.
@@ -359,7 +359,7 @@ What the plugin adds:
 - **Listen** (bottom bar): hear only some bands (Sub, Low, Low-mid, High-mid, High, with movable crossovers), and/or only Mid, Side, Left or Right.
   - Click a band to toggle it; double-click to solo it.
   - The button turns orange while you're listening to part of the signal. **Off** restores everything.
-  - On the Scope, **Listen** next to the BP knob plays the band-pass you're looking at.
+  - On the Scope, **Listen** next to the BP knob plays the filter you're looking at (BP, LP or HP).
 - **Monitor:** keeps measuring while the plugin window is closed. Optionally, it resets when playback starts (Loudness gear).
 - Settings are saved with the project; presets are shared by all instances.
 

@@ -54,7 +54,8 @@ void BandIsolator::design()
             set (lo, butter (sr, designed[(size_t) apSplit[i]], false)); set (hi, butter (sr, designed[(size_t) apSplit[i]], true));
             c.ap[(size_t) i].lp.set (lo); c.ap[(size_t) i].hp.set (hi);
         }
-        Biquad b; set (b, bandpass (sr, designedBp, 1.4));
+        Biquad b; set (b, designedBpType == 1 ? butter (sr, designedBp, false) : designedBpType == 2 ? butter (sr, designedBp, true)
+                                                                              : bandpass (sr, designedBp, 1.4));
         c.bp1.set (b); c.bp2.set (b);
     }
 }
@@ -79,7 +80,8 @@ void BandIsolator::process (float* L, float* R, int n, const BandIsolatorParams&
     for (int k = 0; k < 4; ++k) want[(size_t) k] = p.splits[(size_t) k].load();
     for (int k = 1; k < 4; ++k) want[(size_t) k] = std::max (want[(size_t) k], want[(size_t) k - 1] * 1.26f);
     const float bpHz = p.bandpassHz.load();
-    if (want != designed || bpHz != designedBp) { designed = want; designedBp = bpHz; design(); }
+    const int bpType = p.bandpassType.load();
+    if (want != designed || bpHz != designedBp || bpType != designedBpType) { designed = want; designedBp = bpHz; designedBpType = bpType; design(); }
 
     const bool on = p.active();
     // fully bypassed and settled: untouched (the filters only restart from silence when switched on,

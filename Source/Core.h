@@ -86,7 +86,7 @@ struct HostLink
     virtual bool sidechainConnected() const = 0;            // the sidechain bus is enabled and carries audio
     virtual AnalysisEngine* sidechainEngine() = 0;          // the sidechain's spectrogram analysis
     virtual void setScopeSyncBars (double barsPerWindow) = 0; // the Scope's window in Sync (time signature from the host)
-    virtual void setScopeListen (bool on, double hz) = 0;  // hear the Scope's band-pass
+    virtual void setScopeListen (bool on, double hz, int type = 0) = 0;  // hear the Scope's filter (0 BP, 1 LP, 2 HP)
     virtual BandIsolatorParams& isolation() = 0;            // band listening (Listen panel)
     virtual juce::String describe() const = 0;              // for the Options panel: host, rate, buses
     // other DigiCheck instances in the DAW (instance linking): their track names; link one by name ("" none)

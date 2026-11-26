@@ -76,8 +76,17 @@ namespace scope
     void ScopeModel::setBandpass (double hz)
     {
         bpHz = std::clamp (hz, 20.0, 20000.0);
-        // two cascaded band-passes (Q 1.4): a clear view of one region without ringing for long
-        bp1.bandpass (bpHz, sr, 1.4); bp2.bandpass (bpHz, sr, 1.4);
+        // two cascaded band-passes (Q 1.4): a clear view of one region without ringing for long;
+        // low- / high-pass: two cascaded Butterworth sections (24 dB/oct)
+        if (bpType == 1)      { bp1.lowpass (bpHz, sr);  bp2.lowpass (bpHz, sr); }
+        else if (bpType == 2) { bp1.highpass (bpHz, sr); bp2.highpass (bpHz, sr); }
+        else                  { bp1.bandpass (bpHz, sr, 1.4); bp2.bandpass (bpHz, sr, 1.4); }
+    }
+
+    void ScopeModel::setFilterType (int t)
+    {
+        bpType = std::clamp (t, 0, 2);
+        setBandpass (bpHz);
     }
 
     void ScopeModel::reset()

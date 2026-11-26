@@ -22,6 +22,7 @@ struct BandIsolatorParams
     std::array<std::atomic<float>, kBands - 1> splits { 60.0f, 250.0f, 2000.0f, 6000.0f };
     std::atomic<bool> bandpass { false };          // the Scope's BP instead of the bands
     std::atomic<float> bandpassHz { 100.0f };
+    std::atomic<int> bandpassType { 0 };           // 0 band-pass, 1 low-pass, 2 high-pass
     bool active() const noexcept { return mask.load() != 31 || mode.load() != Stereo || bandpass.load(); }
 };
 
@@ -54,6 +55,7 @@ private:
     std::array<Channel, 2> ch;
     std::array<float, 4> designed { 0, 0, 0, 0 };
     float designedBp = 0;
+    int designedBpType = 0;
     std::array<double, 5> gain { 1, 1, 1, 1, 1 };
     double wet = 0, bpMix = 0, step = 0.002;
     std::array<double, 5> modeGain { 1, 0, 0, 0, 0 };   // crossfade between channel modes

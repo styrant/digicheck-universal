@@ -71,6 +71,7 @@ struct Settings
     double scopeGainDb   = 0.0;   // display gain
     bool   scopeSpectral = true, scopeAA = true, scopeGuides = true;
     bool   scopeBP       = false; double scopeBPHz = 100.0;
+    int    scopeBPType   = 0;     // the BP button's filter: 0 band-pass, 1 low-pass, 2 high-pass
     bool   scopeSide     = false; // Side2SC overlay
     int    scopeSource   = 2;     // 0 left, 1 right, 2 mid, 3 peak
     juce::String scopeTheme = "Dark";
@@ -214,6 +215,7 @@ struct Settings
         scopeGuides   = p.getBoolValue ("scopeGuides", scopeGuides);
         scopeBP       = p.getBoolValue ("scopeBP", scopeBP);
         scopeBPHz     = juce::jlimit (20.0, 20000.0, p.getDoubleValue ("scopeBPHz", scopeBPHz));
+        scopeBPType   = juce::jlimit (0, 2, p.getIntValue ("scopeBPType", scopeBPType));
         scopeSide     = p.getBoolValue ("scopeSide", scopeSide);
         scopeSource   = juce::jlimit (0, 3, p.getIntValue ("scopeSource", scopeSource));
         scopeTheme    = p.getValue ("scopeTheme", scopeTheme);
@@ -340,7 +342,7 @@ struct Settings
         p.setValue ("keySensitivity", keySensitivity); p.setValue ("keyOutput", keyOutput);
         p.setValue ("scopeMode", scopeMode); p.setValue ("scopeDivision", scopeDivision); p.setValue ("scopeTriplet", scopeTriplet);
         p.setValue ("scopeGainDb", scopeGainDb); p.setValue ("scopeSpectral", scopeSpectral); p.setValue ("scopeAA", scopeAA);
-        p.setValue ("scopeGuides", scopeGuides); p.setValue ("scopeBP", scopeBP); p.setValue ("scopeBPHz", scopeBPHz);
+        p.setValue ("scopeGuides", scopeGuides); p.setValue ("scopeBP", scopeBP); p.setValue ("scopeBPHz", scopeBPHz); p.setValue ("scopeBPType", scopeBPType);
         p.setValue ("scopeSide", scopeSide); p.setValue ("scopeSource", scopeSource); p.setValue ("scopeTheme", scopeTheme);
         p.setValue ("scopePalette", scopePalette); p.setValue ("scopeColours", scopeColours);
         p.setValue ("scopeRecNormalize", scopeRecNormalize); p.setValue ("scopeRecTrim", scopeRecTrim); p.setValue ("scopeRecSnap", scopeRecSnap);
