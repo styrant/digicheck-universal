@@ -165,6 +165,10 @@ private:
     std::vector<juce::Rectangle<int>> customPanes (juce::Rectangle<int> area) const;
     struct Divider { juce::Rectangle<int> r; bool vertical; int which; juce::Rectangle<int> span; };   // which: 0 splitA, 1 splitB
     std::vector<Divider> dividers;
+    // Custom page: a small header (the pane's view, a menu) shown at the top of the pane under the mouse
+    std::array<juce::TextButton, 4> paneHeaders;
+    void updatePaneHeaders();
+    void showPaneMenu (int pane, juce::Component* target);
     int dragDivider = -1;
     juce::Rectangle<int> contentArea;
     void notePaneClick (juce::Component&);

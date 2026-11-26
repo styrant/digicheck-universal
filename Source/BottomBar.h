@@ -23,6 +23,8 @@ public:
     static juce::StringArray viewNames() { return { "Spectrogram", "Analyzer", "Balance", "Key", "Scope", "Monitor" }; }
     static int panesIn (int layout)      { static const int n[6] = { 2, 2, 3, 3, 3, 4 }; return n[juce::jlimit (0, 5, layout)]; }
     static std::array<int, 4> customSlots (const Settings&);   // the view in each pane (-1 empty)
+    void setPaneView (int pane, int view);   // Custom page: what a pane shows (-1 empty; swaps if shown elsewhere)
+    juce::PopupMenu paneMenu (int pane);     // that pane's menu: view, Empty, Swap with
     static int height() { return ui::px (42); }
 
     BottomBar (Settings&, AnalysisEngine&, SpectrumAnalyzerProcessor&);

@@ -368,6 +368,15 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     analyzerPanel.onStateChanged = [this] { bottom.setAnalyzerState (analyzerPanel.getView().isFrozen(), analyzerPanel.getView().isZoomed()); };
     analyzerPanel.onStateChanged();
     scopePage.onToast = [this] (const juce::String& t) { showToast (t); };
+    for (int i = 0; i < 4; ++i)
+    {
+        auto& b = paneHeaders[(size_t) i];
+        b.setTooltip ("This pane: choose its view, empty it or swap it with another pane");
+        b.setColour (juce::TextButton::buttonColourId, juce::Colour (0xe01b1d22));
+        b.setAlpha (0.92f);
+        b.onClick = [this, i] { showPaneMenu (i, &paneHeaders[(size_t) i]); };
+        addChildComponent (b);
+    }
     setView (settings.viewMode);
 
     // GPU rendering: one OpenGL context for the whole window. The spectrogram draws its texture in
@@ -830,6 +839,7 @@ void MainComponent::timerCallback()
         if (want) { barLeaveTime = now; if (! barPeek) { barPeek = true; resized(); } }
         else if (barPeek && now - barLeaveTime > 0.7) { barPeek = false; resized(); grabKeyboardFocus(); }
     }
+    updatePaneHeaders();
     if (++tick % 10 == 0) updateStatus();
 }
 
@@ -989,6 +999,13 @@ void MainComponent::mouseMove (const juce::MouseEvent& e)
 
 void MainComponent::mouseDown (const juce::MouseEvent& e)
 {
+    // Custom page: right-click an empty pane or the gap next to a pane for that pane's menu
+    if (e.mods.isPopupMenu() && settings.viewMode == BottomBar::Custom)
+    {
+        const auto panes = customPanes (contentArea);
+        for (size_t i = 0; i < panes.size(); ++i)
+            if (panes[i].expanded (6).contains (e.getPosition())) { showPaneMenu ((int) i, nullptr); return; }
+    }
     dragDivider = -1;
     for (size_t i = 0; i < dividers.size(); ++i) if (dividers[i].r.expanded (2).contains (e.getPosition())) dragDivider = (int) i;
 }
@@ -1209,6 +1226,42 @@ void MainComponent::referenceChanged()
     saveAll();
 }
 
+// Custom page: the header of the pane under the mouse (its view's name, a menu); hidden elsewhere
+void MainComponent::updatePaneHeaders()
+{
+    const bool custom = settings.viewMode == BottomBar::Custom && ! options.isVisible();
+    const auto panes = custom ? customPanes (contentArea) : std::vector<juce::Rectangle<int>> {};
+    const auto slots = BottomBar::customSlots (settings);
+    const auto names = BottomBar::viewNames();
+    const auto p = getMouseXYRelative();
+    for (int i = 0; i < 4; ++i)
+    {
+        auto& b = paneHeaders[(size_t) i];
+        const bool menuOpen = b.isVisible() && b.getToggleState();      // its menu is open (cleared when it closes)
+        const bool show = custom && i < (int) panes.size() && (menuOpen || (panes[(size_t) i].contains (p) && isMouseOver (true)));
+        if (show)
+        {
+            const auto v = slots[(size_t) i];
+            const auto text = (v >= 0 ? names[v] : juce::String ("Empty")) + juce::String::fromUTF8 (" \xe2\x96\xbe");
+            if (b.getButtonText() != text) b.setButtonText (text);
+            const int w = ui::px (118), h = ui::px (20);
+            b.setBounds (juce::Rectangle<int> (w, h).withCentre ({ panes[(size_t) i].getCentreX(), panes[(size_t) i].getY() + h / 2 + ui::px (2) }));
+            b.toFront (false);
+        }
+        if (b.isVisible() != show) b.setVisible (show);
+    }
+}
+
+void MainComponent::showPaneMenu (int pane, juce::Component* target)
+{
+    auto m = bottom.paneMenu (pane);
+    for (auto& b : paneHeaders) b.setToggleState (false, juce::dontSendNotification);
+    if (target != nullptr) static_cast<juce::Button*> (target)->setToggleState (true, juce::dontSendNotification);
+    auto o = juce::PopupMenu::Options();
+    o = target != nullptr ? o.withTargetComponent (target) : o.withMousePosition();
+    m.showMenuAsync (o, [this] (int) { for (auto& b : paneHeaders) b.setToggleState (false, juce::dontSendNotification); });
+}
+
 // Custom page: a click in a pane makes it the focused pane (the bottom bar shows its controls)
 void MainComponent::notePaneClick (juce::Component& c)
 {
@@ -1380,6 +1433,14 @@ bool MainComponent::keyPressed (const juce::KeyPress& k)
         else if (kv == BottomBar::Scope) scopePage.toggleFreeze();
         else if (ana) { if (analyzerPanel.isFft()) analyzerPanel.getFftView().toggleFreeze(); else analyzerPanel.getView().toggleFreeze(); }
         else if (! bal) view.togglePause();
+        return true;
+    }
+    // Ctrl+1..9: load saved Custom layout 1..9
+    if (k.getModifiers().isCommandDown() && k.getKeyCode() >= '1' && k.getKeyCode() <= '9')
+    {
+        const int n = k.getKeyCode() - '1';
+        if (n < bottom.savedLayouts.size()) { loadLayout (bottom.savedLayouts[n]); showToast ("Layout: " + bottom.savedLayouts[n]); }
+        else showToast ("No saved layout " + juce::String (n + 1) + " (Custom > Layout > Save layout as...)");
         return true;
     }
     if (kv == BottomBar::Scope && (k.getTextCharacter() == 'c' || k.getTextCharacter() == 'C') && ! k.getModifiers().isCommandDown())

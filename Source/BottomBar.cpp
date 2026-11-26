@@ -221,6 +221,40 @@ void BottomBar::setBalanceTargets (const juce::StringArray& names, int selected)
     balTarget.setSelectedId (balSelected, juce::dontSendNotification);
 }
 
+// Custom page: what pane i shows (a view already in another pane swaps with it; -1 empties it)
+void BottomBar::setPaneView (int i, int v)
+{
+    auto sl = customSlots (s);
+    for (int j = 0; j < 4; ++j) if (j != i && sl[(size_t) j] == v && v >= 0) sl[(size_t) j] = sl[(size_t) i];   // swap
+    sl[(size_t) i] = v;
+    juce::StringArray a; for (int x : sl) a.add (juce::String (x));
+    s.customSlots = a.joinIntoString (",");
+    refresh();
+    if (onCustomChanged) onCustomChanged();
+}
+
+// the menu for one pane (the bar's Layout menu, and the pane's own header / right-click)
+juce::PopupMenu BottomBar::paneMenu (int i)
+{
+    juce::PopupMenu sub;
+    const auto slots = customSlots (s);
+    const auto names = viewNames();
+    for (int v = 0; v < names.size(); ++v) sub.addItem (names[v], true, slots[(size_t) i] == v, [this, i, v] { setPaneView (i, v); });
+    sub.addSeparator();
+    sub.addItem ("Empty", true, slots[(size_t) i] < 0, [this, i] { setPaneView (i, -1); });
+    const int n = panesIn (s.customLayout);
+    if (n > 1)
+    {
+        juce::PopupMenu swap;
+        for (int j = 0; j < n; ++j)
+            if (j != i)
+                swap.addItem ("Pane " + juce::String (j + 1) + ": " + (slots[(size_t) j] >= 0 ? names[slots[(size_t) j]] : juce::String ("empty")),
+                              [this, i, j] { const auto sl = customSlots (s); setPaneView (i, sl[(size_t) j]); if (sl[(size_t) j] < 0) setPaneView (j, sl[(size_t) i]); });
+        sub.addSubMenu ("Swap with", swap);
+    }
+    return sub;
+}
+
 void BottomBar::showCustomMenu()
 {
     static const char* layouts[6] = { "Two side by side", "Two stacked", "Large left, two right", "Large top, two below", "Three columns", "Grid 2 x 2" };
@@ -242,20 +276,7 @@ void BottomBar::showCustomMenu()
                                        { "top left", "top right", "bottom left", "bottom right" } };
     for (int i = 0; i < panesIn (s.customLayout); ++i)
     {
-        juce::PopupMenu sub;
-        auto pick = [this, i] (int v)
-        {
-            auto sl = customSlots (s);
-            for (int j = 0; j < 4; ++j) if (j != i && sl[(size_t) j] == v && v >= 0) sl[(size_t) j] = sl[(size_t) i];   // swap
-            sl[(size_t) i] = v;
-            juce::StringArray a; for (int x : sl) a.add (juce::String (x));
-            s.customSlots = a.joinIntoString (",");
-            refresh();
-            if (onCustomChanged) onCustomChanged();
-        };
-        for (int v = 0; v < names.size(); ++v) sub.addItem (names[v], true, slots[(size_t) i] == v, [pick, v] { pick (v); });
-        sub.addSeparator();
-        sub.addItem ("Empty", true, slots[(size_t) i] < 0, [pick] { pick (-1); });
+        auto sub = paneMenu (i);
         const auto cur = slots[(size_t) i] >= 0 ? names[slots[(size_t) i]] : juce::String ("empty");
         menu.addSubMenu ("Pane " + juce::String (i + 1) + " (" + where[juce::jlimit (0, 5, s.customLayout)][i] + "):  " + cur, sub);
     }
