@@ -3,10 +3,13 @@ ULTIMATE AUDIO VIEWER (UAV): CHANGE LOG
 Newest first. One entry per commit. The version is 1.3 plus the CI build number (shown in
 Options in the app). Times are US Central (CST, UTC-6).
 
+1.3.72  |  Thu Nov 26, 2026  4:29 PM CST
+  - Fix the build of the Scope Scroll fix (1.3.70); that fix ships in this version
+
 1.3.71  |  Thu Nov 26, 2026  4:25 PM CST
   - Added this change log (CHANGELOG.txt), one entry per commit
 
-1.3.70  |  Thu Nov 26, 2026  4:24 PM CST
+1.3.70  |  Thu Nov 26, 2026  4:24 PM CST  (build failed: never released; its changes are in the next release)
   - Scope Scroll: keep 0.25 s more history than the window, so the left edge isn't blank at
     short divisions
 

@@ -21,6 +21,7 @@
 // The window time t (0 .. window seconds, left to right) maps to a ring position; Free: t x rate;
 // Scroll: the newest sample at the right edge.
 #pragma once
+#include <cmath>
 #include <array>
 #include <cstddef>
 #include <cstdint>
