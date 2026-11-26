@@ -89,6 +89,7 @@ struct Settings
     double fftTop        = 6, fftBottom = -90;
     juce::String fftColour = "#5aa9ff", fftSecColour = "#ff8a3d";
     int    fftSecStyle   = 0;     // 0 line, 1 filled, 2 dashed
+    int    fftMarkerWidth = 1;    // the hover / pinned marker's lines, 1-4 px
 
     // VST3 version
     juce::String listenSplits = "60,250,2000,6000";   // band listening crossover points (Hz)
@@ -244,6 +245,7 @@ struct Settings
         fftColour     = p.getValue ("fftColour", fftColour);
         fftSecColour  = p.getValue ("fftSecColour", fftSecColour);
         fftSecStyle   = juce::jlimit (0, 2, p.getIntValue ("fftSecStyle", fftSecStyle));
+        fftMarkerWidth = juce::jlimit (1, 4, p.getIntValue ("fftMarkerWidth", fftMarkerWidth));
         monitorText   = p.getValue ("monitorText", monitorText);
         monitorTargetLufs = juce::jlimit (-40.0, -5.0, p.getDoubleValue ("monitorTargetLufs", monitorTargetLufs));
         monitorTolerance  = juce::jlimit (0.0, 5.0, p.getDoubleValue ("monitorTolerance", monitorTolerance));
@@ -349,7 +351,7 @@ struct Settings
         p.setValue ("anaStyle", anaStyle); p.setValue ("fftOrder", fftOrder); p.setValue ("fftChannel", fftChannel);
         p.setValue ("fftSecondary", fftSecondary); p.setValue ("fftSlope", fftSlope); p.setValue ("fftAvgMs", fftAvgMs);
         p.setValue ("fftSmooth", fftSmooth); p.setValue ("fftHold", fftHold); p.setValue ("fftTop", fftTop); p.setValue ("fftBottom", fftBottom);
-        p.setValue ("fftColour", fftColour); p.setValue ("fftSecColour", fftSecColour); p.setValue ("fftSecStyle", fftSecStyle);
+        p.setValue ("fftColour", fftColour); p.setValue ("fftSecColour", fftSecColour); p.setValue ("fftSecStyle", fftSecStyle); p.setValue ("fftMarkerWidth", fftMarkerWidth);
         p.setValue ("monitorText", monitorText);
         p.setValue ("monitorTargetLufs", monitorTargetLufs); p.setValue ("monitorTolerance", monitorTolerance); p.setValue ("monitorPeakTarget", monitorPeakTarget);
         p.setValue ("monitorLraLo", monitorLraLo); p.setValue ("monitorLraHi", monitorLraHi); p.setValue ("monitorGate", monitorGate);

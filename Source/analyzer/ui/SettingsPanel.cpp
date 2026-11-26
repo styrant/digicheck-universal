@@ -110,6 +110,10 @@ public:
         inspector.onClick = [this] { processor.inspectorEnabled.store (inspector.getToggleState()); };
         addRow (nullptr, &inspector);
 
+        for (int i = 1; i <= 4; ++i) markerBox.addItem (juce::String (i) + " px", i);
+        markerBox.onChange = [this] { processor.markerWidth.store (juce::jlimit (1, 4, markerBox.getSelectedId())); };
+        addRow (makeLabel ("Marker line"), &markerBox);
+
         fullRange.onClick = [this] { if (owner.onResetZoom) owner.onResetZoom(); };
         addRow (nullptr, &fullRange);
 
@@ -139,7 +143,7 @@ public:
 
         help.setText ("Mouse: wheel = zoom, drag = pan, shift+drag = zoom to selection, "
                       "ctrl/cmd+wheel = ceiling, alt+wheel = range, double-click = reset meters, "
-                      "double-click axis = full range, alt+click = pin the readout (alt+click it again to remove), right-click = settings.\n"
+                      "double-click axis = full range, alt+click = pin the readout, alt+right-click = remove it, right-click = settings.\n"
                       "Keys: R reset, F freeze, 0 full range, +/- zoom, I inspector.",
                       juce::dontSendNotification);
         help.setFont (juce::FontOptions (ui::fs (12.0f)));
@@ -153,6 +157,7 @@ public:
     void refresh()
     {
         inspector.setToggleState (processor.inspectorEnabled.load(), juce::dontSendNotification);
+        markerBox.setSelectedId (processor.markerWidth.load(), juce::dontSendNotification);
         const auto name = processor.getColourSchemeName();
         int id = 0;
         for (int i = 0; i < schemes.getNumItems(); ++i)
@@ -263,6 +268,7 @@ private:
     juce::OwnedArray<APVTS::ButtonAttachment> buttonAttachments;
 
     juce::ToggleButton inspector;
+    juce::ComboBox markerBox;
     juce::TextButton fullRange { "Show full frequency range" };
     juce::ComboBox schemes;
     juce::Label help;

@@ -287,6 +287,7 @@ juce::ValueTree SpectrumAnalyzerProcessor::createStateTree()
     v.setProperty ("low",       viewLowHz.load(), nullptr);
     v.setProperty ("high",      viewHighHz.load(), nullptr);
     v.setProperty ("inspector", inspectorEnabled.load(), nullptr);
+    v.setProperty ("markerWidth", markerWidth.load(), nullptr);
     v.setProperty ("width",     editorWidth.load(), nullptr);
     v.setProperty ("height",    editorHeight.load(), nullptr);
     root.appendChild (v, nullptr);
@@ -325,6 +326,7 @@ bool SpectrumAnalyzerProcessor::restoreFromTree (const juce::ValueTree& root)
         viewLowHz.store  ((double) v.getProperty ("low", 0.0));
         viewHighHz.store ((double) v.getProperty ("high", 0.0));
         inspectorEnabled.store ((bool) v.getProperty ("inspector", true));
+        markerWidth.store (juce::jlimit (1, 4, (int) v.getProperty ("markerWidth", 1)));
         const int w = v.getProperty ("width", 0), h = v.getProperty ("height", 0);
         if (w > 0 && h > 0)
         {

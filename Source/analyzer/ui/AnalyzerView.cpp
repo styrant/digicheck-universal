@@ -549,8 +549,9 @@ void AnalyzerView::drawInspector (juce::Graphics& g, juce::Rectangle<float> plot
 
     // crosshair
     g.setColour (label.withMultipliedAlpha (0.35f));
-    g.drawVerticalLine ((int) mousePos.x, plot.getY(), plot.getBottom());
-    g.drawHorizontalLine ((int) mousePos.y, plot.getX(), plot.getRight());
+    const float mw = (float) juce::jlimit (1, 4, processor.markerWidth.load());   // Settings > Marker line
+    g.fillRect (juce::Rectangle<float> (std::floor (mousePos.x) - std::floor ((mw - 1) * 0.5f), plot.getY(), mw, plot.getHeight()));
+    g.fillRect (juce::Rectangle<float> (plot.getX(), std::floor (mousePos.y) - std::floor ((mw - 1) * 0.5f), plot.getWidth(), mw));
 
     // Spectroscope: just the frequency, level and note under the mouse
     juce::ignoreUnused (pk, hd, av);
@@ -635,13 +636,16 @@ void AnalyzerView::mouseDown (const juce::MouseEvent& e)
     grabKeyboardFocus();
     mousePos = e.position;
 
+    // Alt+right-click: remove the pinned readout
+    if (e.mods.isPopupMenu() && e.mods.isAltDown()) { pin.reset(); repaint(); return; }
+
     if (e.mods.isPopupMenu())
     {
         if (onSettingsRequested) onSettingsRequested();
         return;
     }
 
-    // Alt+click: pin the readout here (Alt+click on the pin again removes it)
+    // Alt+click: pin the readout here (Alt+click on the pin again, or Alt+right-click, removes it)
     if (e.mods.isAltDown())
     {
         const auto plot = plotArea();

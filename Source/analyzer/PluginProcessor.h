@@ -74,6 +74,7 @@ public:
     // View state (not host parameters; saved with the plugin state)
     std::atomic<double> viewLowHz { 0.0 }, viewHighHz { 0.0 };   // 0 = full range
     std::atomic<bool>   inspectorEnabled { true };
+    std::atomic<int>    markerWidth { 1 };          // the inspector / pinned marker's crosshair, 1-4 px
     std::atomic<int>    editorWidth { 0 }, editorHeight { 0 };
 
     // Presets

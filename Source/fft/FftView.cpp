@@ -167,7 +167,8 @@ void FftView::menuFor (juce::TextButton& b, int which)
 
 void FftView::colourMenu()
 {
-    juce::PopupMenu m, mainC, secC, style;
+    juce::PopupMenu m, mainC, secC, style, marker;
+    for (int i = 1; i <= 4; ++i) marker.addItem (juce::String (i) + " px", true, s.fftMarkerWidth == i, [this, i] { s.fftMarkerWidth = i; repaint(); if (changed) changed(); });
     for (auto& p : kColours) mainC.addItem (p.name, true, s.fftColour.equalsIgnoreCase (p.hex), [this, p] { s.fftColour = p.hex; repaint(); if (changed) changed(); });
     mainC.addItem ("Custom...", [this] { juce::CallOutBox::launchAsynchronously (std::make_unique<LiveColourPicker> (hex (s.fftColour), [this] (juce::Colour c)
                                           { s.fftColour = toHex (c); repaint(); if (changed) changed(); }), colourBtn.getScreenBounds(), nullptr); });
@@ -178,6 +179,7 @@ void FftView::colourMenu()
     m.addSubMenu ("Main curve", mainC);
     m.addSubMenu ("Second curve / sidechain", secC);
     m.addSubMenu ("Second curve style", style);
+    m.addSubMenu ("Marker line", marker);
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&colourBtn));
 }
 
@@ -361,14 +363,15 @@ void FftView::paint (juce::Graphics& g)
     {
         const int i = juce::jlimit (0, (int) mainDb.size() - 1, hoverX - plot.getX());
         const double hz = hzAtX ((float) hoverX + 0.5f);
+        const int mw = juce::jlimit (1, 4, s.fftMarkerWidth);          // Colours > Marker line
         g.setColour (juce::Colours::white.withAlpha (0.25f));
-        g.drawVerticalLine (hoverX, (float) plot.getY(), (float) plot.getBottom());
+        g.fillRect (hoverX - (mw - 1) / 2, plot.getY(), mw, plot.getHeight());
         // the horizontal line: the level at the cursor height
         if (hoverY >= plot.getY() && hoverY <= plot.getBottom())
         {
             const double db = s.fftTop - (hoverY - plot.getY()) / (double) plot.getHeight() * (s.fftTop - s.fftBottom);
             g.setColour (juce::Colours::white.withAlpha (0.45f));
-            for (float x = (float) plot.getX(); x < plot.getRight(); x += 6) g.drawLine (x, (float) hoverY, juce::jmin ((float) plot.getRight(), x + 3), (float) hoverY, 1.0f);
+            for (float x = (float) plot.getX(); x < plot.getRight(); x += 6) g.drawLine (x, (float) hoverY, juce::jmin ((float) plot.getRight(), x + 3), (float) hoverY, (float) mw);
             g.setFont (juce::FontOptions (ui::fs (12.0f)));
             const auto t = juce::String (db, 1) + " dB";
             const int w = ui::px (64);
@@ -404,8 +407,10 @@ void FftView::mouseMove (const juce::MouseEvent& e) { hoverX = e.x; hoverY = e.y
 void FftView::mouseExit (const juce::MouseEvent&)    { hoverX = hoverY = -1; repaint(); }
 void FftView::mouseDown (const juce::MouseEvent& e)
 {
-    // Alt+click: pin the readout here (Alt+click on the pin again removes it)
-    if (e.mods.isAltDown() && ! e.mods.isPopupMenu())
+    // Alt+right-click: remove the pinned readout
+    if (e.mods.isAltDown() && e.mods.isPopupMenu()) { pin.reset(); repaint(); return; }
+    // Alt+click: pin the readout here (Alt+click on the pin again also removes it)
+    if (e.mods.isAltDown())
     {
         if (pin.has_value() && juce::Point<float> (xOfHz (pin->first), yOfDb (pin->second)).getDistanceFrom (e.position) < 8.0f) pin.reset();
         else if (plot.contains (e.getPosition()))
