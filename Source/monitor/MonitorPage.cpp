@@ -447,7 +447,7 @@ struct MonitorPage::LoudnessModule : public MonitorPage::Module
     // hover: a horizontal line across the bars with its value
     int hoverY = -1;
     juce::Rectangle<float> barsArea;
-    void mouseMove (const juce::MouseEvent& e) override { hoverY = barsArea.contains (e.position) ? e.y : -1; repaint(); }
+    void mouseMove (const juce::MouseEvent& e) override { hoverY = barsArea.contains (e.position) ? e.y : -1; }   // drawn on the next frame (MonitorPage::onFrame repaints every module)
     void mouseExit (const juce::MouseEvent&) override   { hoverY = -1; repaint(); }
 
     void paintBars (juce::Graphics& g)
@@ -724,7 +724,7 @@ struct MonitorPage::LevelsModule : public MonitorPage::Module
     std::array<juce::Rectangle<int>, 4> numbersR;
     juce::Rectangle<float> metersR;
     int hoverY = -1;
-    void mouseMove (const juce::MouseEvent& e) override { hoverY = metersR.contains (e.position) ? e.y : -1; repaint(); }
+    void mouseMove (const juce::MouseEvent& e) override { hoverY = metersR.contains (e.position) ? e.y : -1; }   // drawn on the next frame
     void mouseExit (const juce::MouseEvent&) override   { hoverY = -1; repaint(); }
 
     double lo() { return st().monitorRange == 1 ? -40.0 : (st().monitorRange == 2 ? -90.0 : -60.0); }
@@ -1353,7 +1353,7 @@ struct MonitorPage::HistoryModule : public MonitorPage::Module
             }
         }
     }
-    void mouseMove (const juce::MouseEvent& e) override { hoverX = e.x; hoverY = e.y; repaint(); }
+    void mouseMove (const juce::MouseEvent& e) override { hoverX = e.x; hoverY = e.y; }   // drawn on the next frame
     void mouseExit (const juce::MouseEvent&) override   { hoverX = hoverY = -1; repaint(); }
 
     void addMenuItems (juce::PopupMenu& menu) override

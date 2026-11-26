@@ -321,9 +321,10 @@ struct ScopePage::Display : public juce::Component
         if (haveSel && (std::abs ((float) e.x - xOf (std::min (selA, selB))) < 6 || std::abs ((float) e.x - xOf (std::max (selA, selB))) < 6))
             setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
         else setMouseCursor (juce::MouseCursor::NormalCursor);
-        repaint();
+        // no repaint here: the page redraws the display every frame (ScopePage::onFrame), and a repaint
+        // per mouse event (hundreds a second) would add whole extra GPU frames outside the frame pacing
     }
-    void mouseExit (const juce::MouseEvent&) override { if (! pinned) rulerY = -1; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { if (! pinned) rulerY = -1; }
 
     //-------------------------------------------------------------------------- drawing
     // one column of the envelope: [top, bot] in image pixels, in the clipping colour beyond the 0 dBFS

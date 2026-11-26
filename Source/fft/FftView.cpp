@@ -403,7 +403,7 @@ void FftView::paint (juce::Graphics& g)
     }
 }
 
-void FftView::mouseMove (const juce::MouseEvent& e) { hoverX = e.x; hoverY = e.y; repaint (plot.expanded (40, 4)); }
+void FftView::mouseMove (const juce::MouseEvent& e) { hoverX = e.x; hoverY = e.y; if (frozen || ! active) repaint (plot.expanded (40, 4)); }   // live: onFrame redraws it
 void FftView::mouseExit (const juce::MouseEvent&)    { hoverX = hoverY = -1; repaint(); }
 void FftView::mouseDown (const juce::MouseEvent& e)
 {
