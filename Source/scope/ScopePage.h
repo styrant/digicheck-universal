@@ -67,6 +67,7 @@ private:
     ScopeTap& tap;
     Settings& s;
     std::function<void()> changed;
+    bool lastFrozen = false;
     scope::ScopeModel engine;
     ScopeTheme theme;
     bool active = false, inputRunning = false;

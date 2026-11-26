@@ -142,6 +142,14 @@ private:
             });
         }
 
+        // above the taskbar only while UAV is the active window: switching to another app (or a file dialog)
+        // lets other windows come in front
+        void activeWindowStatusChanged() override
+        {
+            DocumentWindow::activeWindowStatusChanged();
+            if (isAppFullscreen && isAlwaysOnTop() != isActiveWindow()) setAlwaysOnTop (isActiveWindow());
+        }
+
         // no frame or title bar while full screen; the optional hidden row sits below the content
         juce::BorderSize<int> getBorderThickness() const override
         {

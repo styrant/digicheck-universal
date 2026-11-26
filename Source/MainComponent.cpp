@@ -396,7 +396,7 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     rescan();
     if (settings.source.isNotEmpty())
         for (auto& s : sources)
-            if (s.key == settings.source) { juce::MessageManager::callAsync ([this] { startSelected(); }); break; }
+            if (s.key == settings.source) { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this)] { if (safe != nullptr) safe->startSelected(); }); break; }
 }
 
 MainComponent::~MainComponent()
@@ -887,7 +887,7 @@ void MainComponent::paint (juce::Graphics& g)
         if (view.isVisible()) g.excludeClipRegion (view.getBounds());
         g.fillAll (juce::Colour (0xff0b0c0e));
         const auto slots = BottomBar::customSlots (settings);
-        const auto panes = customPanes (contentArea);
+        const auto& panes = paneRects;
         for (size_t i = 0; i < panes.size(); ++i)
             if (slots[i] < 0)
             {
@@ -927,9 +927,11 @@ void MainComponent::resized()
     if (hideBar && barPeek) bottom.toFront (false);
     contentArea = r;
     dividers.clear();
+    paneRects.clear();
     if (settings.viewMode == BottomBar::Custom)
     {
-        const auto panes = customPanes (r);
+        const auto panes = customPanes (r);      // (also fills dividers)
+        paneRects = panes;
         const auto slots = BottomBar::customSlots (settings);
         for (int id = 0; id < 6; ++id)
         {
@@ -1002,7 +1004,7 @@ void MainComponent::mouseDown (const juce::MouseEvent& e)
     // Custom page: right-click an empty pane or the gap next to a pane for that pane's menu
     if (e.mods.isPopupMenu() && settings.viewMode == BottomBar::Custom)
     {
-        const auto panes = customPanes (contentArea);
+        const auto& panes = paneRects;
         for (size_t i = 0; i < panes.size(); ++i)
             if (panes[i].expanded (6).contains (e.getPosition())) { showPaneMenu ((int) i, nullptr); return; }
     }
@@ -1230,7 +1232,8 @@ void MainComponent::referenceChanged()
 void MainComponent::updatePaneHeaders()
 {
     const bool custom = settings.viewMode == BottomBar::Custom && ! options.isVisible();
-    const auto panes = custom ? customPanes (contentArea) : std::vector<juce::Rectangle<int>> {};
+    static const std::vector<juce::Rectangle<int>> none;
+    const auto& panes = custom ? paneRects : none;
     const auto slots = BottomBar::customSlots (settings);
     const auto names = BottomBar::viewNames();
     const auto p = getMouseXYRelative();
@@ -1238,7 +1241,10 @@ void MainComponent::updatePaneHeaders()
     {
         auto& b = paneHeaders[(size_t) i];
         const bool menuOpen = b.isVisible() && b.getToggleState();      // its menu is open (cleared when it closes)
-        const bool show = custom && i < (int) panes.size() && (menuOpen || (panes[(size_t) i].contains (p) && isMouseOver (true)));
+        // only from the pane's top edge (above the view's own controls), then while the mouse is on the header
+        const auto strip = i < (int) panes.size() ? panes[(size_t) i].withHeight (ui::px (7)).withTrimmedTop (-ui::px (6)) : juce::Rectangle<int>();
+        const bool onHeader = b.isVisible() && b.getBounds().expanded (ui::px (4)).contains (p);
+        const bool show = custom && i < (int) panes.size() && (menuOpen || ((strip.contains (p) || onHeader) && isMouseOver (true)));
         if (show)
         {
             const auto v = slots[(size_t) i];

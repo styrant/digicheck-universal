@@ -83,6 +83,7 @@ private:
     double lastTimestamp = 0.0;
     juce::Point<float> mousePos;
     bool hovering = false;
+    bool lastFrozenDrawn = false;
     std::optional<std::pair<double, double>> pin;   // Alt+click: the readout stays at this (Hz, dB)
 
     enum class Drag { None, Pan, Select };

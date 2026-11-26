@@ -1470,7 +1470,13 @@ void MonitorPage::onFrame (double t)
     }
     if (! active || ! isShowing()) return;
     for (auto& m : modules)
-        if (m->isVisible()) { if (! held && ! paused && fileModel == nullptr) m->advance (dt); m->repaint(); }
+        if (m->isVisible())
+        {
+            // held / paused: nothing moves, so redraw only for the mouse (hover readouts) or a file being measured
+            const bool live = ! held && ! paused && fileModel == nullptr;
+            if (live) m->advance (dt);
+            if (live || fileModel != nullptr || m->isMouseOver (true)) m->repaint();
+        }
 }
 
 void MonitorPage::resetMeasurements()

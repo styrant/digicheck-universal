@@ -124,7 +124,9 @@ void AnalyzerView::advance (double ts)
     const double dtMs = lastTimestamp > 0.0 ? (ts - lastTimestamp) * 1000.0 : 0.0;
     lastTimestamp = ts;
     model->tick (dtMs, P::meterOptions (state));
-    repaint();
+    // frozen: redraw only for the mouse (inspector) or on (un)freezing; zoom and settings repaint themselves
+    if (! frozen || frozen != lastFrozenDrawn || isMouseOver (true)) repaint();
+    lastFrozenDrawn = frozen;
 }
 
 void AnalyzerView::resized() {}
@@ -629,6 +631,7 @@ void AnalyzerView::mouseMove (const juce::MouseEvent& e)
 void AnalyzerView::mouseExit (const juce::MouseEvent&)
 {
     hovering = false;
+    repaint();          // once: frozen, the inspector would otherwise stay
 }
 
 void AnalyzerView::mouseDown (const juce::MouseEvent& e)

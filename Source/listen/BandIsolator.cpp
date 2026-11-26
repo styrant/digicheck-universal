@@ -80,8 +80,11 @@ void BandIsolator::process (float* L, float* R, int n, const BandIsolatorParams&
     for (int k = 0; k < 4; ++k) want[(size_t) k] = p.splits[(size_t) k].load();
     for (int k = 1; k < 4; ++k) want[(size_t) k] = std::max (want[(size_t) k], want[(size_t) k - 1] * 1.26f);
     const float bpHz = p.bandpassHz.load();
+    if (want != designed || bpHz != designedBp) { designed = want; designedBp = bpHz; design(); }
+    // a new filter type (BP / LP / HP): straight away while it isn't heard, else fade it out, switch, fade back in
     const int bpType = p.bandpassType.load();
-    if (want != designed || bpHz != designedBp || bpType != designedBpType) { designed = want; designedBp = bpHz; designedBpType = bpType; design(); }
+    if (bpType != designedBpType && bpMix <= 0) { designedBpType = bpType; design(); }
+    bool retype = bpType != designedBpType;
 
     const bool on = p.active();
     // fully bypassed and settled: untouched (the filters only restart from silence when switched on,
@@ -99,7 +102,8 @@ void BandIsolator::process (float* L, float* R, int n, const BandIsolatorParams&
     for (int i = 0; i < n; ++i)
     {
         wet = std::clamp (wet + (on ? step : -step), 0.0, 1.0);
-        bpMix = std::clamp (bpMix + (bp ? step : -step), 0.0, 1.0);
+        bpMix = std::clamp (bpMix + (bp && ! retype ? step : -step), 0.0, 1.0);
+        if (retype && bpMix <= 0) { designedBpType = bpType; design(); retype = false; }
         for (int k = 0; k < 5; ++k) gain[(size_t) k] += std::clamp (target[(size_t) k] - gain[(size_t) k], -step, step);
         for (int m = 0; m < 5; ++m) modeGain[(size_t) m] += std::clamp ((m == mode ? 1.0 : 0.0) - modeGain[(size_t) m], -step, step);
 

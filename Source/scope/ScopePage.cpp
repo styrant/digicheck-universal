@@ -324,7 +324,7 @@ struct ScopePage::Display : public juce::Component
         // no repaint here: the page redraws the display every frame (ScopePage::onFrame), and a repaint
         // per mouse event (hundreds a second) would add whole extra GPU frames outside the frame pacing
     }
-    void mouseExit (const juce::MouseEvent&) override { if (! pinned) rulerY = -1; }
+    void mouseExit (const juce::MouseEvent&) override { if (! pinned) rulerY = -1; repaint(); }   // once (frozen: clears the ruler)
 
     //-------------------------------------------------------------------------- drawing
     // one column of the envelope: [top, bot] in image pixels, in the clipping colour beyond the 0 dBFS
@@ -899,7 +899,10 @@ void ScopePage::onFrame (double t)
         if (paceLog) std::fprintf (stderr, "SCOPEPACE %.5f %.1f %.1f\n", t, scrollNow, target - scrollNow);
     }
     if (engine.recState() != before || engine.recState() == scope::ScopeModel::Rec::Recording) updateButtons();
-    display->repaint();
+    // frozen: the picture only changes with the mouse (ruler, zoom: those repaint themselves too) or on (un)freezing
+    const bool frozenNow = engine.isFrozen();
+    if (! frozenNow || frozenNow != lastFrozen || display->isMouseOver (true)) display->repaint();
+    lastFrozen = frozenNow;
 }
 
 void ScopePage::updateButtons()
