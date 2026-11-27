@@ -3,10 +3,14 @@ ULTIMATE AUDIO VIEWER (UAV): CHANGE LOG
 Newest first. One entry per commit. The version is 1.3 plus the CI build number (shown in
 Options in the app). Times are US Central (CST, UTC-6).
 
+1.3.73  |  Fri Nov 27, 2026  8:30 AM CST
+  - Spectrogram: Alt+click pins the frequency cursor line (stays after letting go); Alt+right-click
+    or Esc removes it
+
 1.3.72  |  Thu Nov 26, 2026  4:29 PM CST
   - Fix the build of the Scope Scroll fix (1.3.70); that fix ships in this version
 
-1.3.71  |  Thu Nov 26, 2026  4:25 PM CST
+1.3.71  |  Thu Nov 26, 2026  4:25 PM CST  (build failed: never released; its changes are in the next release)
   - Added this change log (CHANGELOG.txt), one entry per commit
 
 1.3.70  |  Thu Nov 26, 2026  4:24 PM CST  (build failed: never released; its changes are in the next release)

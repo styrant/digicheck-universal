@@ -118,7 +118,7 @@ A reassigned spectrogram, like RME DigiCheck NG's Spectroscope: time runs left t
 - **Frequency scale:** *Log* (every octave the same height, the default), *Linear* (harmonics evenly spaced), *Ext Log* (log, compressed smoothly down to 1 Hz to show rumble and sub-bass), *Mel*, *Bark*, *ERB* (scales of hearing).
 - **Channel:** Left, Right, *Mid* (what both sides share) or *Side* (the stereo difference).
 - **Ref level:** the level shown as full brightness. Use the mouse wheel or Up/Down over the display.
-- **Cursor:** click or drag on the display for a frequency cursor (it snaps to notes if *Show Note Cursor* is on in Settings). Double-click or Esc removes it.
+- **Cursor:** click or drag on the display for a frequency cursor (it snaps to notes if *Show Note Cursor* is on in Settings). Double-click or Esc removes it. **Alt+click** pins the cursor so it stays after you let go; **Alt+right-click** (or Alt+click on it, or Esc) removes the pin.
 - **Settings** has the FFT size, frequency range (including 5 Hz-20 kHz and other low ranges), colours, scroll speed, grid and more.
 
 Tip: a larger FFT (16384) resolves very low notes. A single cycle at 5 Hz lasts 200 ms.

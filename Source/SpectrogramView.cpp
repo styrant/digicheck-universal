@@ -105,6 +105,7 @@ void SpectrogramView::togglePause()
 void SpectrogramView::clearCursor()
 {
     cursorF.reset();
+    cursorPinned = false; pinnedHz.reset();          // (Esc also removes a pinned cursor)
     repaint();
 }
 
@@ -588,13 +589,29 @@ void SpectrogramView::setCursorFromY (float y)
 
 void SpectrogramView::mouseDown (const juce::MouseEvent& e)
 {
-    if (e.mods.isLeftButtonDown() && plot.contains (e.getPosition())) setCursorFromY ((float) e.y);
+    // Alt+right-click: remove the pinned cursor; Alt+click: pin it here (Alt+click on it again also removes it)
+    if (e.mods.isAltDown() && e.mods.isPopupMenu()) { cursorPinned = false; clearCursor(); return; }
+    if (e.mods.isAltDown() && e.mods.isLeftButtonDown() && plot.contains (e.getPosition()))
+    {
+        if (cursorPinned && cursorF.has_value() && std::abs (freqToY (*cursorF) - (float) e.y) < 6.0f) { cursorPinned = false; clearCursor(); return; }
+        setCursorFromY ((float) e.y);
+        cursorPinned = cursorF.has_value();
+        return;
+    }
+    if (e.mods.isLeftButtonDown() && plot.contains (e.getPosition())) { pinnedHz = cursorPinned ? cursorF : std::nullopt; setCursorFromY ((float) e.y); }
 }
 void SpectrogramView::mouseDrag (const juce::MouseEvent& e)
 {
-    if (e.mods.isLeftButtonDown() && plot.contains (e.getMouseDownPosition())) setCursorFromY ((float) e.y);
+    if (e.mods.isLeftButtonDown() && ! e.mods.isAltDown() && plot.contains (e.getMouseDownPosition())) setCursorFromY ((float) e.y);
 }
-void SpectrogramView::mouseUp (const juce::MouseEvent&)            { clearCursor(); }     // cursor shows only while held
+void SpectrogramView::mouseUp (const juce::MouseEvent& e)
+{
+    // the cursor shows only while held, unless pinned (Alt+click): then a plain click-and-hold looks
+    // somewhere else for a moment and the pin comes back
+    if (e.mods.isAltDown()) return;
+    if (cursorPinned && pinnedHz.has_value()) { cursorF = pinnedHz; repaint (plot.expanded (2)); }
+    else { cursorPinned = false; clearCursor(); }
+}
 void SpectrogramView::mouseDoubleClick (const juce::MouseEvent&)   {}
 void SpectrogramView::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
 {

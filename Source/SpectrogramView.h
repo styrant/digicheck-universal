@@ -96,7 +96,8 @@ private:
     int W = 1, H = 1, writeCol = 0, tick = 0;
     std::array<juce::PixelARGB, 512> lut;
     bool paused = false, running = false, gpu = false;
-    std::optional<double> cursorF;
+    std::optional<double> cursorF, pinnedHz;
+    bool cursorPinned = false;            // Alt+click: the cursor stays after the mouse is released
 
     // jitter buffer between the DSP thread and the display
     std::vector<float> pend;
