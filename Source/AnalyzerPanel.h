@@ -55,7 +55,7 @@ public:
     void setStyle (int style) { s.anaStyle = style; setActive (active); resized(); fftView.setHeaderInset (ui::px (46 * 2 + 12)); }
     bool isFft() const        { return s.anaStyle == 1; }
     FftView& getFftView()     { return fftView; }
-    void onFrame (double t)   { fftView.onFrame (t); }
+    void onFrame (double t)   { fftView.onFrame (t); view.pacedRepaint = true; view.noteRef = s.noteRef; view.flushRepaint(); }
 
     void toggleSettings()
     {

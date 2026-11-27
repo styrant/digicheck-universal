@@ -1,4 +1,5 @@
 #include "BalanceView.h"
+#include "../TextFormat.h"
 #include "../UiScale.h"
 #include <cstdio>
 #include <utility>
@@ -463,7 +464,7 @@ void BalanceView::paintCurveLive (juce::Graphics& g)
         const double f = hzAt (hover.x);
         const int k = binAt (f);
         g.setColour (kMuted.withAlpha (0.6f)); g.drawVerticalLine ((int) hover.x, (float) plot.getY(), (float) plot.getBottom());
-        juce::String txt = (f >= 1000 ? juce::String (f / 1000, 2) + " kHz" : juce::String (juce::roundToInt (f)) + " Hz");
+        juce::String txt = textfmt::hz (f);
         if (shownValid && t != nullptr)
         {
             const double v = shownCurve[(size_t) k];

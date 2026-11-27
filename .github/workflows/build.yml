@@ -229,7 +229,7 @@ jobs:
           if ($a.region_0_bounds[1] -le $b.region_0_bounds[1]) { Write-Error "bass-heavy genre should have more low end"; exit 1 }
           Write-Host "GenreA low band $($a.region_0_bounds), GenreB $($b.region_0_bounds)"
 
-      - name: Sign the app
+      - name: Sign the app, Target Builder and plugins
         if: env.SIGN == 'true'
         uses: azure/artifact-signing-action@v2
         with:
@@ -239,52 +239,11 @@ jobs:
           endpoint: ${{ secrets.SIGNING_ENDPOINT }}
           signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\build\Spectroscope_artefacts\Release\Ultimate Audio Viewer.exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-
-      - name: Sign the Target Builder
-        if: env.SIGN == 'true'
-        uses: azure/artifact-signing-action@v2
-        with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          endpoint: ${{ secrets.SIGNING_ENDPOINT }}
-          signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\build\TargetBuilder_artefacts\Release\Ultimate Audio Viewer Target Builder.exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-
-      - name: Sign the VST3
-        if: env.SIGN == 'true'
-        uses: azure/artifact-signing-action@v2
-        with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          endpoint: ${{ secrets.SIGNING_ENDPOINT }}
-          signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3\Contents\x86_64-win\Ultimate Audio Viewer.vst3
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-
-      - name: Sign the UAV Bridge VST3
-        if: env.SIGN == 'true'
-        uses: azure/artifact-signing-action@v2
-        with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          endpoint: ${{ secrets.SIGNING_ENDPOINT }}
-          signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\build\UAVBridge_artefacts\Release\VST3\UAV Bridge.vst3\Contents\x86_64-win\UAV Bridge.vst3
+          files: |
+            ${{ github.workspace }}\build\Spectroscope_artefacts\Release\Ultimate Audio Viewer.exe
+            ${{ github.workspace }}\build\TargetBuilder_artefacts\Release\Ultimate Audio Viewer Target Builder.exe
+            ${{ github.workspace }}\build\DigiCheckUniversal_artefacts\Release\VST3\Ultimate Audio Viewer.vst3\Contents\x86_64-win\Ultimate Audio Viewer.vst3
+            ${{ github.workspace }}\build\UAVBridge_artefacts\Release\VST3\UAV Bridge.vst3\Contents\x86_64-win\UAV Bridge.vst3
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256

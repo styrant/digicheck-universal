@@ -1,4 +1,5 @@
 #include "ScopePage.h"
+#include "../TextFormat.h"
 #include "../AppInfo.h"
 #include "../UiScale.h"
 #include "../FrameClock.h"
@@ -121,7 +122,7 @@ struct ScopePage::FreqKnob : public juce::Component, public juce::SettableToolti
         const double hz = page.s.scopeBPHz;
         g.setColour (page.s.scopeBP ? t.textBtnOn : t.textBtnOff);
         g.setFont (juce::FontOptions (ui::fs (13.5f)));
-        g.drawText (hz >= 1000 ? juce::String (hz / 1000, 2) + " kHz" : juce::String (hz, hz < 100 ? 1 : 0) + " Hz", getLocalBounds(), juce::Justification::centred);
+        g.drawText (textfmt::hz (hz), getLocalBounds(), juce::Justification::centred);
     }
     void mouseDown (const juce::MouseEvent&) override { startHz = page.s.scopeBPHz; }
     void mouseDrag (const juce::MouseEvent& e) override

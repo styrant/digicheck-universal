@@ -1,4 +1,5 @@
 #include "FftView.h"
+#include "../TextFormat.h"
 #include "../UiScale.h"
 #include "../ColourPicker.h"
 
@@ -27,15 +28,6 @@ namespace
     }
     juce::String toHex (juce::Colour c) { return "#" + c.toDisplayString (false); }
 
-    juce::String noteName (double hz, int ref)
-    {
-        if (hz <= 0 || ref <= 0) return {};
-        static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-        const double midi = 69 + 12 * std::log2 (hz / ref);
-        const int n = (int) std::lround (midi);
-        const int cents = (int) std::lround ((midi - n) * 100);
-        return juce::String (names[((n % 12) + 12) % 12]) + juce::String (n / 12 - 1) + (cents >= 0 ? " +" : " ") + juce::String (cents) + "c";
-    }
 }
 
 FftView::FftView (FifoTap& in, Settings& st, std::function<void()> ch) : input (in), s (st), changed (std::move (ch))
@@ -379,7 +371,7 @@ void FftView::paint (juce::Graphics& g)
             g.setColour (juce::Colour (0xe0101215)); g.fillRoundedRectangle (box.toFloat(), 4);
             g.setColour (kText); g.drawText (t, box, juce::Justification::centred);
         }
-        juce::String t = (hz >= 1000 ? juce::String (hz / 1000, 2) + " kHz" : juce::String (hz, hz < 100 ? 1 : 0) + " Hz") + "   " + noteName (hz, s.noteRef)
+        juce::String t = textfmt::hz (hz) + "   " + textfmt::note (hz, s.noteRef)
                          + "   " + juce::String (mainDb[(size_t) i], 1) + " dB";
         if (sec && i < (int) secDb.size()) t << "   " << juce::String (secDb[(size_t) i], 1) << " dB";
         if (i < (int) refDb.size()) t << "   ref " << juce::String (refDb[(size_t) i], 1);

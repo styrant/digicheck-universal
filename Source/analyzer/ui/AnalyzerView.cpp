@@ -1,4 +1,5 @@
 #include "AnalyzerView.h"
+#include "../../TextFormat.h"
 #include "../../FrameClock.h"
 #include "../../UiScale.h"
 
@@ -10,7 +11,6 @@ namespace
 
     const juce::String& dashChar()     { static const juce::String s = juce::String::fromUTF8 ("\xe2\x80\x93"); return s; }
     const juce::String& infinityChar() { static const juce::String s = juce::String::fromUTF8 ("\xe2\x88\x9e"); return s; }
-    const juce::String& centChar()     { static const juce::String s = juce::String::fromUTF8 ("\xc2\xa2"); return s; }
 
     juce::String trimNumber (double v, int decimals)
     {
@@ -29,19 +29,9 @@ namespace
         return trimNumber (f, f >= 100.0 ? 0 : 1);
     }
 
-    juce::String freqText (double f)
+    int nearestMidiNote (double f)
     {
-        if (f >= 1000.0)
-            return juce::String (f / 1000.0, f >= 10000.0 ? 2 : 3) + " kHz";
-        return juce::String (f, f >= 100.0 ? 1 : 2) + " Hz";
-    }
-
-    int nearestMidiNote (double f, double* cents = nullptr)
-    {
-        const double midi = 69.0 + 12.0 * std::log2 (f / 440.0);
-        const int n = (int) std::lround (midi);
-        if (cents != nullptr) *cents = (midi - n) * 100.0;
-        return n;
+        return (int) std::lround (69.0 + 12.0 * std::log2 (f / 440.0));
     }
 
     juce::String noteName (int midi)
@@ -51,14 +41,13 @@ namespace
         return juce::String (names[((midi % 12) + 12) % 12]) + juce::String (oct);
     }
 
-    juce::String noteText (double f)
+    juce::String freqText (double f)
     {
-        if (f < 8.0) return {};
-        double cents = 0.0;
-        const int n = nearestMidiNote (f, &cents);
-        const int c = (int) std::lround (cents);
-        return noteName (n) + (c >= 0 ? " +" : " ") + juce::String (c) + centChar();
+        if (f >= 1000.0)
+            return juce::String (f / 1000.0, f >= 10000.0 ? 2 : 3) + " kHz";
+        return juce::String (f, f >= 100.0 ? 1 : 2) + " Hz";
     }
+
 
     [[maybe_unused]] juce::String dbText (double v)
     {
@@ -125,7 +114,7 @@ void AnalyzerView::advance (double ts)
     lastTimestamp = ts;
     model->tick (dtMs, P::meterOptions (state));
     // frozen: redraw only for the mouse (inspector) or on (un)freezing; zoom and settings repaint themselves
-    if (! frozen || frozen != lastFrozenDrawn || isMouseOver (true)) repaint();
+    if (! frozen || frozen != lastFrozenDrawn || isMouseOver (true)) { if (pacedRepaint) wantsRepaint = true; else repaint(); }
     lastFrozenDrawn = frozen;
 }
 
@@ -399,7 +388,7 @@ void AnalyzerView::drawFrequencyGrid (juce::Graphics& g, juce::Rectangle<float> 
             if (pc != 0 && semitone < 5.0)
                 continue;
             const int pr = pc == 0 ? 0 : pc == 9 ? 1 : natural ? 2 : 3;
-            lines.push_back ({ 440.0 * std::exp2 ((n - 69) / 12.0), pr, noteName (n) });
+            lines.push_back ({ (noteRef > 0 ? noteRef : 440.0) * std::exp2 ((n - 69) / 12.0), pr, noteName (n) });
         }
     }
 
@@ -557,7 +546,7 @@ void AnalyzerView::drawInspector (juce::Graphics& g, juce::Rectangle<float> plot
 
     // Spectroscope: just the frequency, level and note under the mouse
     juce::ignoreUnused (pk, hd, av);
-    const juce::String lines[] = { freqText (f) + "   " + juce::String (lv, 1) + " dB   " + noteText (f) };
+    const juce::String lines[] = { freqText (f) + "   " + juce::String (lv, 1) + " dB   " + textfmt::note (f, noteRef) };
     const float lineH = infoFont.getHeight() + 4.0f;
 
     float w = 0.0f;

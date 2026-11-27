@@ -40,6 +40,10 @@ public:
     // the screenshot tool (tools/RenderPreview.cpp) can drive it offline.
     void advance (double timestampSec);
     void showInspectorAt (juce::Point<float> p) { mousePos = p; hovering = true; }
+    // the app's paced frame loop draws what advance() prepared (so GPU frames are never started back to back)
+    void flushRepaint() { if (wantsRepaint) { wantsRepaint = false; repaint(); } }
+    bool pacedRepaint = false;          // set by the app: repaints wait for flushRepaint()
+    int noteRef = 440;                  // A4 for the inspector's note (Settings::noteRef; 0: 440)
 
     std::function<void()> onSettingsRequested;
     std::function<void()> onStateChanged;   // freeze/zoom changed (for toolbar)
@@ -83,7 +87,7 @@ private:
     double lastTimestamp = 0.0;
     juce::Point<float> mousePos;
     bool hovering = false;
-    bool lastFrozenDrawn = false;
+    bool lastFrozenDrawn = false, wantsRepaint = false;
     std::optional<std::pair<double, double>> pin;   // Alt+click: the readout stays at this (Hz, dB)
 
     enum class Drag { None, Pan, Select };

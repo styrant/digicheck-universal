@@ -279,6 +279,11 @@ MainComponent::MainComponent (juce::PropertiesFile& p, Core& c, AnalysisEngine& 
     versionLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.45f));
     versionLabel.setTooltip ("The version you're running");
     options.addAndMakeVisible (versionLabel);
+    whatsNew.setButtonText ("What's new");
+    whatsNew.setURL (juce::URL ("https://github.com/styrant/digicheck-universal/blob/main/CHANGELOG.txt"));
+    whatsNew.setFont (juce::FontOptions (ui::fs (12.0f)), false, juce::Justification::centredRight);
+    whatsNew.setTooltip ("The change log: what each version added or fixed");
+    options.addAndMakeVisible (whatsNew);
     if (settings.checkUpdates)
         juce::Timer::callAfterDelay (4000, [safe = juce::Component::SafePointer<MainComponent> (this)] { if (safe) safe->checkForUpdates(); });
     hdrBox.addItemList ({ "Keep HDR (1 px gap at the bottom)", "Keep HDR (CPU rendering while full screen)", "Exact full screen (may turn HDR off)" }, 1);
@@ -1424,6 +1429,7 @@ void MainComponent::layoutOptions()
     restoreBtn.setBounds (row.removeFromLeft (px (90))); row.removeFromLeft (px (6));
     defaultsBtn.setBounds (row.removeFromLeft (px (140)));
     versionLabel.setFont (juce::FontOptions (ui::fs (12.0f)));
+    whatsNew.setBounds (row.removeFromRight (px (76)));
     versionLabel.setBounds (row.withTrimmedLeft (px (6)));          // the rest of the row, right-aligned
 }
 
